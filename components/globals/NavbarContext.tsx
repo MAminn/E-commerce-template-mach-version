@@ -27,12 +27,14 @@ export function useNavbarMode(): NavbarMode {
  * Everything else gets solid mode automatically.
  */
 const OVERLAY_ROUTES: ((path: string) => boolean)[] = [
-  // Landing / homepage
+  // Landing / homepage — the only route that opens on a full-height hero.
   (p) => p === "/",
-  // Shop collection (has dark hero banner)
-  (p) => p === "/shop",
-  // Dynamic category pages (use SortingMinimalTemplate with dark hero)
-  (p) => p.startsWith("/categories/"),
+  // /shop and /categories/* are deliberately NOT overlay routes. The Mach
+  // storefront is product-first: those pages open on a heading and a product
+  // count, not a hero, so a transparent navbar would float white type over
+  // paper. The shop banner is still available from the CMS — it simply sits
+  // below a solid navbar, which is right for a banner rather than a
+  // full-height hero.
 ];
 
 /**

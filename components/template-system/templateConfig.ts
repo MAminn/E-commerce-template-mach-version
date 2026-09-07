@@ -9,6 +9,8 @@ import { LandingTemplateClassic } from "./landing/LandingTemplateClassic";
 import type { LandingTemplateClassicProps } from "./landing/LandingTemplateClassic";
 import { LandingTemplateEditorial } from "./landing/LandingTemplateEditorial";
 import type { LandingTemplateEditorialProps } from "./landing/LandingTemplateEditorial";
+import { LandingTemplateMach } from "./landing/LandingTemplateMach";
+import type { LandingTemplateMachProps } from "./landing/LandingTemplateMach";
 import { LandingTemplateMinimal } from "./landing/LandingTemplateMinimal";
 import type { LandingTemplateMinimalProps } from "./landing/LandingTemplateMinimal";
 import { ProductPageModernSplit } from "./productPage/ProductPageModernSplit";
@@ -44,6 +46,9 @@ import type { SearchResultsGridProps } from "./searchResults/SearchResultsGrid";
 import { SearchResultsMinimal } from "./searchResults/SearchResultsMinimal";
 import type { SearchResultsMinimalProps } from "./searchResults/SearchResultsMinimal";
 import { SortingEditorialTemplate } from "./sorting/SortingEditorialTemplate";
+import { SortingMachTemplate } from "./mach/shop/SortingMachTemplate";
+import type { SortingMachTemplateProps } from "./mach/shop/SortingMachTemplate";
+import { SortingMachPreview } from "./mach/shop/SortingMachPreview";
 import type { SortingEditorialTemplateProps } from "./sorting/SortingEditorialTemplate";
 import { CartPageEditorialTemplate } from "./cartPage/CartPageEditorialTemplate";
 import type { CartPageEditorialTemplateProps } from "./cartPage/CartPageEditorialTemplate";
@@ -160,10 +165,13 @@ export const templateConfig: TemplateConfig = {
       previewComponent: LandingModernPreview,
     },
     {
+      // The stored template id stays "landing-editorial": it is the key for
+      // this storefront's homepage_content and layout_settings rows, and
+      // renaming it would orphan the client's saved CMS content for no
+      // user-visible gain. Only what it renders has changed.
       id: "landing-editorial",
-      label: "Demo 2: Editorial (Premium Luxury)",
-      component:
-        LandingTemplateEditorial as React.FC<LandingTemplateEditorialProps>,
+      label: "Mach Supplements",
+      component: LandingTemplateMach as React.FC<LandingTemplateMachProps>,
       previewComponent: LandingEditorialPreview,
     },
     {
@@ -204,6 +212,15 @@ export const templateConfig: TemplateConfig = {
   ],
 
   sorting: [
+    {
+      // Mach shop + real category browsing. Serves /shop and
+      // /categories/@slug; the inherited sorting templates below are kept
+      // registered and selectable for other storefronts.
+      id: "sorting-mach",
+      label: "Mach Shop",
+      component: SortingMachTemplate as unknown as React.FC<SortingMachTemplateProps>,
+      previewComponent: SortingMachPreview,
+    },
     {
       id: "sorting-minimal",
       label: "Minimal Grid",

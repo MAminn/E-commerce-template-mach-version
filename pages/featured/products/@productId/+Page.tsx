@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePageContext } from "vike-react/usePageContext";
+import { navigate } from "vike/client/router";
 import { trpc } from "#root/shared/trpc/client";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
@@ -9,9 +10,11 @@ import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext
 import { useCart } from "#root/lib/context/CartContext";
 import { useTracking } from "#root/frontend/contexts/TrackingContext";
 import { TrackingEventName } from "#root/shared/types/pixel-tracking";
-import { STORE_CURRENCY } from "#root/shared/config/branding";
+import { STORE_CURRENCY, isSupplementStore } from "#root/shared/config/branding";
 import type { ProductPageProduct } from "#root/components/template-system/productPage/ProductPageModernSplit";
 import type { FeaturedProduct } from "#root/components/template-system/home/HomeFeaturedProducts";
+import type { ProductPageEditorialContent } from "#root/components/template-system/productPage/ProductPageEditorial";
+import type { ProductReviewItem } from "#root/components/template-system/mach/product/ProductReviews";
 
 /** A group of products belonging to a single category type */
 export interface CategoryProductGroup {
@@ -19,6 +22,30 @@ export interface CategoryProductGroup {
   categoryName: string;
   categoryId: string;
   products: FeaturedProduct[];
+}
+
+/**
+ * Maps the flat supplement label fields onto the product page's generic
+ * `specifications` list. Only rows with a value are emitted, so a product with
+ * no supplement information produces an empty array and the Specifications
+ * accordion stays hidden exactly as it does today.
+ */
+function buildSpecifications(product: {
+  sku?: string | null;
+  supplementInfo?: {
+    netWeight?: string;
+    servingSize?: string;
+    servingsPerContainer?: string;
+  } | null;
+}): { label: string; value: string }[] {
+  const info = product.supplementInfo;
+  const rows: { label: string; value: string }[] = [
+    { label: "SKU", value: product.sku ?? "" },
+    { label: "Net Weight", value: info?.netWeight ?? "" },
+    { label: "Serving Size", value: info?.servingSize ?? "" },
+    { label: "Servings Per Container", value: info?.servingsPerContainer ?? "" },
+  ];
+  return rows.filter((r) => r.value.trim().length > 0);
 }
 
 export default function ProductDetailPage() {
@@ -38,6 +65,13 @@ export default function ProductDetailPage() {
     [],
   );
   const [allProducts, setAllProducts] = useState<FeaturedProduct[]>([]);
+  const [crossSellProducts, setCrossSellProducts] = useState<FeaturedProduct[]>(
+    [],
+  );
+  const [reviews, setReviews] = useState<ProductReviewItem[]>([]);
+  const [pageContent, setPageContent] = useState<ProductPageEditorialContent>(
+    {},
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +141,11 @@ export default function ProductDetailPage() {
           categoryName: item.categoryName || "",
           stock: item.stock || 0,
           available: (item.stock || 0) > 0,
+          // `product.search` rows carry it; the backend's curated related /
+          // add-on lists do not, and those cards then render without a
+          // quick-add rather than assuming the product has no options.
+          variantCount:
+            typeof item.variantCount === "number" ? item.variantCount : undefined,
         }));
 
       // ── Fetch category groups (for inline carousels) ──
@@ -158,8 +197,50 @@ export default function ProductDetailPage() {
         /* ignore */
       }
 
-      // ── Legacy: relatedProducts for non-minimal templates ──
-      let mappedRelatedProducts = allProds.filter((p) => p.id !== product.id);
+      // ── Related products ────────────────────────────────────────────
+      // Priority: the admin's manually curated list (already resolved live and
+      // in CMS order by the backend), otherwise other products sharing any of
+      // this product's categories, queried server-side so deleted/hidden rows
+      // are excluded. The current product is always filtered out.
+      const curated = mapSearchToFeatured(
+        (product.curatedRelatedProducts ?? []) as any[],
+      );
+
+      let mappedRelatedProducts: FeaturedProduct[] = curated;
+
+      if (mappedRelatedProducts.length === 0) {
+        const ownCategoryIds = (product.categories ?? [])
+          .map((c: { id: string }) => c.id)
+          .filter(Boolean);
+
+        if (ownCategoryIds.length > 0) {
+          try {
+            const sameCat = await trpc.product.search.query({
+              categoryIds: ownCategoryIds,
+              limit: 12,
+              includeOutOfStock: false,
+            });
+            if (sameCat.success && sameCat.result?.items?.length) {
+              mappedRelatedProducts = mapSearchToFeatured(
+                sameCat.result.items,
+              ).filter((p) => p.id !== product.id);
+            }
+          } catch {
+            /* fall through to the catalogue-wide list below */
+          }
+        }
+
+        // Only if the category yields nothing at all do we widen, so the
+        // section is never empty purely because of thin category data.
+        if (mappedRelatedProducts.length === 0) {
+          mappedRelatedProducts = allProds.filter((p) => p.id !== product.id);
+        }
+      }
+
+      // Curated add-ons, resolved live by the backend from stored product IDs.
+      const addOns = mapSearchToFeatured(
+        (product.bestLayeredWith ?? []) as any[],
+      );
 
       // Extract reviews and their statistics
       const reviewStats = {
@@ -178,22 +259,31 @@ export default function ProductDetailPage() {
           : null,
         stock: product.stock || 0,
         description: product.description ?? "No description available.",
+        longDescription: product.supplementInfo?.longDescription || undefined,
         inspiredBy: product.inspiredBy || undefined,
         imageUrl: product.images?.[0]?.url ?? undefined,
         images: product.images ?? [],
         categoryName: product.categoryName ?? null,
         features: [],
-        specifications: [],
+        // Simple key/value label data reuses the Editorial template's existing
+        // Specifications accordion. Supplement Facts is deliberately NOT
+        // flattened in here — it needs three columns plus indentation, which
+        // this two-column {label,value} shape cannot represent. It stays
+        // stored on the product until its own panel is built.
+        specifications: buildSpecifications(product),
         available: (product.stock || 0) > 0,
         rating: reviewStats.averageRating,
         reviewCount: reviewStats.totalReviews,
         variants: product.variants ?? [],
         fragranceInfo: product.fragranceInfo ?? null,
+        supplementInfo: product.supplementInfo ?? null,
         bestLayeredWith: product.bestLayeredWith ?? [],
       };
 
       setProductData(mappedProduct);
       setRelatedProducts(mappedRelatedProducts);
+      setCrossSellProducts(addOns);
+      setReviews((reviewsData?.reviews ?? []) as ProductReviewItem[]);
       setCategoryGroups(groups);
       setAllProducts(allProds);
       setIsLoading(false);
@@ -230,7 +320,39 @@ export default function ProductDetailPage() {
     fetchProductData();
   }, [fetchProductData]);
 
-  const isMinimal = layoutSettings.header.navbarStyle === "minimal";
+  // Store-wide product-page copy (headings, shipping & returns). Client-owned
+  // in store settings — nothing visible here is hard-coded in the template.
+  useEffect(() => {
+    let cancelled = false;
+    trpc.settings.getProductPageContent
+      .query()
+      .then((res) => {
+        if (cancelled || !res.success || !res.result) return;
+        const c = res.result;
+        setPageContent({
+          shippingText: c.shippingText,
+          returnsText: c.returnsText,
+          crossSellHeading: c.crossSellHeading,
+          relatedProductsHeading: c.relatedProductsHeading,
+          detailsSectionHeading: c.detailsSectionHeading,
+          shippingSectionHeading: c.shippingSectionHeading,
+        });
+      })
+      .catch(() => {
+        /* copy is an enhancement — never block the page */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A supplement store always honours the Product Page template chosen in the
+  // admin. The navbar-style override below is a legacy pairing that lets a
+  // header setting silently reassign the whole product template — and the
+  // template it forces (product-minimal) renders fragrance-specific content.
+  // Legacy non-supplement deployments keep the old behaviour unchanged.
+  const isMinimal =
+    !isSupplementStore() && layoutSettings.header.navbarStyle === "minimal";
   const activeTemplateId = isMinimal
     ? "product-minimal"
     : (getTemplateId("productPage") ?? "product-perce");
@@ -239,6 +361,57 @@ export default function ProductDetailPage() {
   if (!TemplateEntry) {
     return <div>Product page template not found.</div>;
   }
+
+  /**
+   * Single add-to-cart path shared by Add to Cart and Buy It Now.
+   *
+   * Quantity comes from the product page's selector; `addItem` performs the
+   * stock check and returns false when it cannot satisfy the request, so both
+   * buttons respect stock identically. Variant selections are passed straight
+   * through as the cart line's options.
+   */
+  const addProductToCart = (
+    product: ProductPageProduct,
+    selectedOptions?: Record<string, string>,
+    quantity?: number,
+  ): boolean => {
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+    const unitPrice = Number(product.discountPrice ?? product.price);
+
+    const success = addItem(
+      {
+        id: product.id,
+        name: product.name,
+        price: unitPrice,
+        stock: product.stock,
+        imageUrl: product.imageUrl,
+        categoryName: product.categoryName ?? undefined,
+        available: product.available,
+      },
+      qty,
+      selectedOptions || {},
+    );
+
+    if (success) {
+      trackEvent(TrackingEventName.PRODUCT_ADDED_TO_CART, {
+        ecommerce: {
+          currency: STORE_CURRENCY,
+          value: unitPrice * qty,
+          items: [
+            {
+              itemId: product.id,
+              itemName: product.name,
+              price: unitPrice,
+              quantity: qty,
+              category: product.categoryName ?? undefined,
+            },
+          ],
+        },
+      });
+    }
+
+    return success;
+  };
 
   const Template = TemplateEntry.component;
 
@@ -260,40 +433,28 @@ export default function ProductDetailPage() {
       categoryGroups={categoryGroups}
       allProducts={allProducts}
       isLoading={isLoading}
+      crossSellProducts={crossSellProducts}
+      reviews={reviews}
+      content={pageContent}
       onAddToCart={(
         product: ProductPageProduct,
         selectedOptions?: Record<string, string>,
+        quantity?: number,
+      ) =>
+        // Returned so a template can confirm only a real add — `addItem`
+        // answers false when stock cannot cover the request.
+        addProductToCart(product, selectedOptions, quantity)
+      }
+      onBuyNow={(
+        product: ProductPageProduct,
+        selectedOptions?: Record<string, string>,
+        quantity?: number,
       ) => {
-        const success = addItem(
-          {
-            id: product.id,
-            name: product.name,
-            price: Number(product.discountPrice ?? product.price),
-            stock: product.stock,
-            imageUrl: product.imageUrl,
-            categoryName: product.categoryName ?? undefined,
-            available: product.available,
-          },
-          1, // quantity
-          selectedOptions || {}, // selectedOptions
-        );
-
-        if (success) {
-          trackEvent(TrackingEventName.PRODUCT_ADDED_TO_CART, {
-            ecommerce: {
-              currency: STORE_CURRENCY,
-              value: Number(product.discountPrice ?? product.price),
-              items: [
-                {
-                  itemId: product.id,
-                  itemName: product.name,
-                  price: Number(product.discountPrice ?? product.price),
-                  quantity: 1,
-                  category: product.categoryName ?? undefined,
-                },
-              ],
-            },
-          });
+        // Reuses the same cart mechanism (stock checks, variant keying and
+        // quantity merging all included), then hands off to the existing
+        // checkout route — no parallel checkout path.
+        if (addProductToCart(product, selectedOptions, quantity)) {
+          navigate("/checkout");
         }
       }}
       onAddToWishlist={(product: ProductPageProduct) =>

@@ -7,8 +7,49 @@ import {
 import { getHomepageContent } from "./get-homepage-content";
 import { updateHomepageContent } from "./update-homepage-content";
 import { uploadHeroImage } from "./upload-hero-image";
-import { ValuePropIconType, type HomepageContent } from "#root/shared/types/homepage-content";
+import { uploadHomepageMedia } from "./upload-media";
+import {
+  DISCOUNTED_LIMIT_MAX,
+  DISCOUNTED_LIMIT_MIN,
+  ValuePropIconType,
+  type HomepageContent,
+} from "#root/shared/types/homepage-content";
 import { Effect } from "effect";
+
+// ── Shared content primitives ───────────────────────────────────────────────
+
+/** Matches `MediaSlot` in shared/types/homepage-content.ts. */
+const MediaSlotSchema = z.object({
+  kind: z.enum(["image", "video"]),
+  desktopUrl: z.string(),
+  mobileUrl: z.string().nullish(),
+  posterUrl: z.string().nullish(),
+  alt: z.string().nullish(),
+  focalPoint: z
+    .object({ x: z.number(), y: z.number() })
+    .nullish(),
+});
+
+const TextAlignSchema = z.enum(["left", "center", "right"]);
+const TextVerticalAlignSchema = z.enum(["top", "middle", "bottom"]);
+const TextThemeSchema = z.enum(["light", "dark"]);
+
+/** Matches `HomepageProductGroupContent` — one broad merchandising row. */
+const ProductGroupSchema = z
+  .object({
+    enabled: z.boolean(),
+    title: z.string(),
+    titleAr: z.string().nullish(),
+    subtitle: z.string().nullish(),
+    subtitleAr: z.string().nullish(),
+    viewAllText: z.string(),
+    viewAllTextAr: z.string().nullish(),
+    viewAllLink: z.string(),
+    categoryIds: z.array(z.string().uuid()).nullish(),
+    productIds: z.array(z.string().uuid()).nullish(),
+    limit: z.number().int().min(1).max(24).nullish(),
+  })
+  .nullish();
 
 // Zod schema for validating homepage content
 const HomepageContentSchema = z.object({
@@ -21,6 +62,7 @@ const HomepageContentSchema = z.object({
     enabled: z.boolean(),
     title: z.string(),
     subtitle: z.string(),
+    supportingText: z.string().nullish(),
     ctaText: z.string(),
     ctaLink: z.string(),
     backgroundImage: z.string().nullish(),
@@ -36,6 +78,16 @@ const HomepageContentSchema = z.object({
         }),
       )
       .nullish(),
+    media: MediaSlotSchema.nullish(),
+    productMedia: MediaSlotSchema.nullish(),
+    productScale: z.number().min(60).max(140).nullish(),
+    mediaLayout: z.enum(["split", "full-bleed"]).nullish(),
+    secondaryCtaText: z.string().nullish(),
+    secondaryCtaLink: z.string().nullish(),
+    align: TextAlignSchema.nullish(),
+    verticalAlign: TextVerticalAlignSchema.nullish(),
+    textTheme: TextThemeSchema.nullish(),
+    overlayOpacity: z.number().min(0).max(100).nullish(),
   }),
   brandStatement: z.object({
     enabled: z.boolean(),
@@ -56,6 +108,8 @@ const HomepageContentSchema = z.object({
     subtitle: z.string(),
     ctaText: z.string(),
     ctaLink: z.string(),
+    categoryIds: z.array(z.string().uuid()).nullish(),
+    layoutVariant: z.enum(["tiles-4", "tiles-3", "tiles-2"]).nullish(),
   }),
   featuredProducts: z.object({
     enabled: z.boolean(),
@@ -101,6 +155,12 @@ const HomepageContentSchema = z.object({
       viewAllTextAr: z.string().nullish(),
       viewAllLink: z.string(),
       productIds: z.array(z.string().uuid()).nullish(),
+      limit: z
+        .number()
+        .int()
+        .min(DISCOUNTED_LIMIT_MIN)
+        .max(DISCOUNTED_LIMIT_MAX)
+        .nullish(),
     })
     .nullish(),
   newArrivals: z
@@ -114,6 +174,10 @@ const HomepageContentSchema = z.object({
       productIds: z.array(z.string().uuid()).nullish(),
     })
     .nullish(),
+  // Broad merchandising groups (Stacks & Bundles, Gym Gear). Same shape for
+  // both — the section identity is the key, not a separate schema.
+  stacks: ProductGroupSchema,
+  gymGear: ProductGroupSchema,
   marquee: z
     .object({
       enabled: z.boolean(),
@@ -219,6 +283,102 @@ const HomepageContentSchema = z.object({
       reviewAr: z.string().nullish(),
     })),
   }).nullish(),
+
+  // ── Mach storefront sections ──
+  heroMarquee: z
+    .object({
+      enabled: z.boolean(),
+      text: z.string(),
+      textAr: z.string().nullish(),
+      separator: z.string().nullish(),
+      speedSeconds: z.number().min(4).max(240).nullish(),
+      direction: z.enum(["left", "right"]).nullish(),
+      invert: z.boolean().nullish(),
+    })
+    .nullish(),
+  campaignBanners: z
+    .array(
+      z.object({
+        id: z.string(),
+        enabled: z.boolean(),
+        media: MediaSlotSchema.nullish(),
+        eyebrow: z.string().nullish(),
+        title: z.string(),
+        body: z.string().nullish(),
+        ctaText: z.string().nullish(),
+        ctaLink: z.string().nullish(),
+        align: TextAlignSchema.nullish(),
+        verticalAlign: TextVerticalAlignSchema.nullish(),
+        textTheme: TextThemeSchema.nullish(),
+        overlayOpacity: z.number().min(0).max(100).nullish(),
+        height: z.enum(["standard", "tall"]).nullish(),
+      }),
+    )
+    .nullish(),
+  whyMach: z
+    .object({
+      enabled: z.boolean(),
+      title: z.string(),
+      titleAr: z.string().nullish(),
+      subtitle: z.string(),
+      subtitleAr: z.string().nullish(),
+      items: z.array(
+        z.object({
+          id: z.string(),
+          icon: z.nativeEnum(ValuePropIconType).nullish(),
+          title: z.string(),
+          titleAr: z.string().nullish(),
+          description: z.string(),
+          descriptionAr: z.string().nullish(),
+          imageUrl: z.string().nullish(),
+          stat: z.string().nullish(),
+        }),
+      ),
+    })
+    .nullish(),
+  certificates: z
+    .object({
+      enabled: z.boolean(),
+      title: z.string(),
+      titleAr: z.string().nullish(),
+      subtitle: z.string(),
+      subtitleAr: z.string().nullish(),
+      items: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          titleAr: z.string().nullish(),
+          issuer: z.string().nullish(),
+          thumbnailUrl: z.string(),
+          alt: z.string().nullish(),
+          documentUrl: z.string().nullish(),
+          externalUrl: z.string().nullish(),
+        }),
+      ),
+      factory: z.object({
+        enabled: z.boolean(),
+        heading: z.string(),
+        headingAr: z.string().nullish(),
+        body: z.string(),
+        bodyAr: z.string().nullish(),
+        media: MediaSlotSchema.nullish(),
+        linkLabel: z.string(),
+        linkLabelAr: z.string().nullish(),
+        linkUrl: z.string(),
+      }),
+    })
+    .nullish(),
+  ugc: z
+    .object({
+      enabled: z.boolean(),
+      title: z.string(),
+      titleAr: z.string().nullish(),
+      subtitle: z.string(),
+      subtitleAr: z.string().nullish(),
+      reviewIds: z.array(z.string().uuid()).nullish(),
+    })
+    .nullish(),
+  sectionOrder: z.array(z.string()).nullish(),
 });
 
 export const homepageRouter = router({
@@ -301,6 +461,59 @@ export const homepageRouter = router({
           success: false as const,
           error:
             error instanceof Error ? error.message : "Failed to upload image",
+        };
+      }
+    }),
+
+  /**
+   * Generic CMS media upload for every slot added by the Mach storefront:
+   * campaign banners, category artwork, Why-Mach visuals, factory photos,
+   * hero video, and client-supplied certificate documents.
+   *
+   * Kept separate from `uploadHeroImage` on purpose — that one crops to a
+   * fixed hero ratio and the existing hero controls rely on it.
+   */
+  uploadMedia: protectedProcedure
+    .input(
+      z.object({
+        file: z.object({
+          name: z.string(),
+          type: z.string(),
+          buffer: z.instanceof(Uint8Array),
+        }),
+        /** Filename prefix so uploads stay identifiable on disk. */
+        prefix: z.string().max(24).nullish(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const session = ctx.clientSession;
+
+      if (
+        !session ||
+        (session.role !== "admin" && session.role !== "superadmin")
+      ) {
+        return {
+          success: false as const,
+          error: "Unauthorized. Only admins can upload homepage media.",
+        };
+      }
+
+      try {
+        const result = await Effect.runPromise(
+          uploadHomepageMedia({
+            buffer: input.file.buffer,
+            mimeType: input.file.type,
+            prefix: input.prefix ?? undefined,
+          }),
+        );
+
+        return { success: true as const, data: result };
+      } catch (error) {
+        console.error("Homepage media upload error:", error);
+        return {
+          success: false as const,
+          error:
+            error instanceof Error ? error.message : "Failed to upload media",
         };
       }
     }),

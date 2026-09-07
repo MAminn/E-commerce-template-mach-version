@@ -29,7 +29,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "#root/components/ui/popover";
-import { Check, ChevronsUpDown, XIcon, Zap, Palette } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  XIcon,
+  Zap,
+  Palette,
+} from "lucide-react";
 import { FileUploadInput } from "#root/components/file-uploads/FileUpload";
 import { MultiFileUploadInput } from "#root/components/file-uploads/MultiFileUpload";
 
@@ -37,6 +45,12 @@ import { Label } from "#root/components/ui/label";
 import { Badge } from "#root/components/ui/badge";
 import { Switch } from "#root/components/ui/switch";
 import { trpc } from "#root/shared/trpc/client";
+import {
+  isSupplementStore,
+  showsDescriptionColorControls,
+  showsPerfumeProductFields,
+  showsVariantPriceModifiers,
+} from "#root/shared/config/branding";
 
 // Define the interface to match our component
 export interface FileMetadata {
@@ -47,19 +61,27 @@ export interface FileMetadata {
 }
 
 /**
- * Picker for the "Best Layered With" products shown on this product's page.
- * Fetches the product catalog once on mount and lets the admin search/select
- * any number of products; leaving it empty makes the storefront show a
- * "stay tuned" note instead of the section's contents.
+ * Generic picker for a curated, ordered list of OTHER products.
+ *
+ * Stores product IDs only — the storefront resolves live name/price/image/stock
+ * from the referenced products, so no product data is ever duplicated into the
+ * relationship. Selection order is the display order and is preserved.
+ *
+ * Used for both the add-ons strip and the related-products grid; the wording is
+ * supplied by the caller so no vertical-specific copy lives in here.
  */
-function BestLayeredWithPicker({
+function ProductRefPicker({
   value,
   onChange,
   excludeProductId,
+  label,
+  description,
 }: {
   value: string[];
   onChange: (ids: string[]) => void;
   excludeProductId?: string;
+  label: string;
+  description: string;
 }) {
   const [options, setOptions] = useState<
     { id: string; name: string }[]
@@ -86,24 +108,48 @@ function BestLayeredWithPicker({
     };
   }, [excludeProductId]);
 
-  const selected = options.filter((o) => value.includes(o.id));
+  // Follow the admin's chosen order, not the catalogue fetch order.
+  const selected = value
+    .map((id) => options.find((o) => o.id === id))
+    .filter((o): o is { id: string; name: string } => Boolean(o));
+
+  const move = (idx: number, delta: number) => {
+    const target = idx + delta;
+    if (target < 0 || target >= value.length) return;
+    const next = [...value];
+    const [id] = next.splice(idx, 1);
+    next.splice(target, 0, id!);
+    onChange(next);
+  };
 
   return (
     <FormItem className='flex flex-col'>
-      <FormLabel>Best Layered With (Optional)</FormLabel>
-      <p className='text-xs text-muted-foreground -mt-1 mb-1'>
-        Shown in the "Best Layered With" section on this product's page. Leave
-        empty and the section shows "Stay tuned for our recommended layering
-        combination.." instead.
-      </p>
+      <FormLabel>{label}</FormLabel>
+      <p className='text-xs text-muted-foreground -mt-1 mb-1'>{description}</p>
       {selected.length > 0 && (
         <div className='flex flex-wrap gap-2 mb-2'>
-          {selected.map((p) => (
-            <Badge key={p.id} className='p-2'>
-              {p.name}
+          {selected.map((p, idx) => (
+            <Badge key={p.id} className='ps-1 pe-2 py-1 gap-1'>
               <button
                 type='button'
-                className='ml-1'
+                aria-label='Move earlier'
+                disabled={idx === 0}
+                onClick={() => move(idx, -1)}
+                className='disabled:opacity-30'>
+                <ChevronUp className='h-3 w-3' />
+              </button>
+              <button
+                type='button'
+                aria-label='Move later'
+                disabled={idx === selected.length - 1}
+                onClick={() => move(idx, 1)}
+                className='disabled:opacity-30'>
+                <ChevronDown className='h-3 w-3' />
+              </button>
+              <span>{p.name}</span>
+              <button
+                type='button'
+                aria-label='Remove'
                 onClick={() => onChange(value.filter((id) => id !== p.id))}>
                 ×
               </button>
@@ -213,6 +259,129 @@ function BadgesInput({
   );
 }
 
+type SupplementFactRow = {
+  label: string;
+  amount?: string;
+  dailyValue?: string;
+  indent?: boolean;
+};
+
+/**
+ * Repeatable editor for the Supplement Facts panel.
+ *
+ * Nutrient names are never hard-coded — every row is free text, so any panel
+ * (protein, vitamins, amino profiles) can be entered. Array order IS the
+ * display order, so reordering here reorders the stored JSON array.
+ */
+function SupplementFactsInput({
+  value,
+  onChange,
+}: {
+  value: SupplementFactRow[];
+  onChange: (rows: SupplementFactRow[]) => void;
+}) {
+  const rows = value ?? [];
+
+  const update = (idx: number, patch: Partial<SupplementFactRow>) => {
+    const next = [...rows];
+    next[idx] = { ...next[idx]!, ...patch };
+    onChange(next);
+  };
+
+  const move = (idx: number, delta: number) => {
+    const target = idx + delta;
+    if (target < 0 || target >= rows.length) return;
+    const next = [...rows];
+    const [row] = next.splice(idx, 1);
+    next.splice(target, 0, row!);
+    onChange(next);
+  };
+
+  return (
+    <FormItem>
+      <FormLabel>Supplement Facts</FormLabel>
+      <p className='text-xs text-muted-foreground -mt-1'>
+        One row per line of the panel. Amount and Daily Value are optional —
+        leave Daily Value empty where the label shows none. Use Indent for a
+        sub-nutrient (e.g. Dietary Fiber under Total Carbohydrate).
+      </p>
+      <div className='space-y-2'>
+        {rows.map((row, idx) => (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
+            key={idx}
+            className='flex items-center gap-1.5'>
+            <div className='flex flex-col'>
+              <button
+                type='button'
+                aria-label='Move row up'
+                disabled={idx === 0}
+                onClick={() => move(idx, -1)}
+                className='h-4 w-5 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30'>
+                <ChevronUp className='h-3.5 w-3.5' />
+              </button>
+              <button
+                type='button'
+                aria-label='Move row down'
+                disabled={idx === rows.length - 1}
+                onClick={() => move(idx, 1)}
+                className='h-4 w-5 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30'>
+                <ChevronDown className='h-3.5 w-3.5' />
+              </button>
+            </div>
+            <Input
+              className={cn("flex-1", row.indent && "ms-4")}
+              placeholder='Label (e.g. Protein)'
+              value={row.label}
+              onChange={(e) => update(idx, { label: e.target.value })}
+            />
+            <Input
+              className='w-28 flex-shrink-0'
+              placeholder='24 g'
+              value={row.amount ?? ""}
+              onChange={(e) => update(idx, { amount: e.target.value })}
+            />
+            <Input
+              className='w-20 flex-shrink-0'
+              placeholder='%DV'
+              value={row.dailyValue ?? ""}
+              onChange={(e) => update(idx, { dailyValue: e.target.value })}
+            />
+            <button
+              type='button'
+              title={row.indent ? "Sub-nutrient — click to un-indent" : "Click to indent as a sub-nutrient"}
+              onClick={() => update(idx, { indent: !row.indent })}
+              className={cn(
+                "flex-shrink-0 text-[10px] px-1.5 py-1 rounded border font-medium transition-colors",
+                row.indent
+                  ? "border-blue-500 text-blue-600 bg-blue-50 hover:bg-blue-100"
+                  : "border-gray-300 text-gray-500 hover:bg-gray-50",
+              )}>
+              Indent
+            </button>
+            <Button
+              type='button'
+              size='icon'
+              variant='ghost'
+              aria-label='Remove row'
+              className='h-8 w-8 text-destructive hover:text-destructive flex-shrink-0'
+              onClick={() => onChange(rows.filter((_, i) => i !== idx))}>
+              <XIcon className='w-3.5 h-3.5' />
+            </Button>
+          </div>
+        ))}
+        <Button
+          type='button'
+          size='sm'
+          variant='outline'
+          onClick={() => onChange([...rows, { label: "" }])}>
+          + Add Row
+        </Button>
+      </div>
+    </FormItem>
+  );
+}
+
 export function ProductForm({
   initialValues,
   categories,
@@ -260,12 +429,40 @@ export function ProductForm({
       badges?: string[];
     } | null;
     bestLayeredWithIds?: string[] | null;
+    sku?: string | null;
+    supplementInfo?: {
+      detailsHeading?: string;
+      netWeight?: string;
+      servingSize?: string;
+      servingsPerContainer?: string;
+      ingredients?: string;
+      directions?: string;
+      warnings?: string;
+      longDescription?: string;
+      badges?: string[];
+      supplementFacts?: SupplementFactRow[];
+      relatedProductIds?: string[];
+    } | null;
   }>;
   categories: { id: string; name: string }[];
   vendors?: { id: string; name: string }[];
   onSuccess?: () => void;
   isLoading?: boolean;
 }) {
+  // The inherited perfume-era product fields (Inspired By, Fragrance Info,
+  // Best Layered With) are keyed off the store's business vertical, NOT off
+  // any template selection — a supplement store stays a supplement store
+  // whichever landing template the client picks.
+  //
+  // They are hidden rather than removed: the zod schema, the form state and
+  // the create/update payload are unchanged, so legacy values round-trip
+  // untouched on edit and nothing is required on create.
+  const showPerfumeFields = showsPerfumeProductFields();
+  // The description Color control emits [color:#hex] markup that only
+  // ProductPageMinimal parses back out — every other product template,
+  // including the active one, would show it to customers verbatim.
+  const showColorControls = showsDescriptionColorControls();
+
   const formSchema = z.object({
     name: z.string().min(1, "Product name is required"),
     description: z
@@ -339,6 +536,32 @@ export function ProductForm({
       })
       .optional(),
     bestLayeredWithIds: z.array(z.string()).optional().default([]),
+    sku: z.string().max(64).optional(),
+    supplementInfo: z
+      .object({
+        detailsHeading: z.string().max(120).optional(),
+        netWeight: z.string().max(60).optional(),
+        servingSize: z.string().max(60).optional(),
+        servingsPerContainer: z.string().max(60).optional(),
+        ingredients: z.string().max(4000).optional(),
+        directions: z.string().max(2000).optional(),
+        warnings: z.string().max(2000).optional(),
+        longDescription: z.string().max(6000).optional(),
+        badges: z.array(z.string().max(50)).max(10).optional(),
+        supplementFacts: z
+          .array(
+            z.object({
+              label: z.string().max(120),
+              amount: z.string().max(60).optional(),
+              dailyValue: z.string().max(20).optional(),
+              indent: z.boolean().optional(),
+            }),
+          )
+          .max(60)
+          .optional(),
+        relatedProductIds: z.array(z.string()).max(24).optional(),
+      })
+      .optional(),
   });
 
   // Debug initial values
@@ -380,6 +603,8 @@ export function ProductForm({
       bestLayeredWithIds: Array.isArray(initialValues?.bestLayeredWithIds)
         ? initialValues.bestLayeredWithIds
         : [],
+      sku: initialValues?.sku ?? "",
+      supplementInfo: initialValues?.supplementInfo ?? undefined,
     },
   });
 
@@ -565,6 +790,7 @@ export function ProductForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Description</FormLabel>
+                {showColorControls && (
                 <div className='flex items-center gap-2 mb-1'>
                   <DescriptionColorButton
                     value={field.value}
@@ -574,6 +800,7 @@ export function ProductForm({
                     Select text, then pick a color
                   </span>
                 </div>
+                )}
                 <FormControl>
                   <Textarea
                     id='product-description-textarea'
@@ -587,6 +814,9 @@ export function ProductForm({
             )}
           />
 
+          {/* Perfume positioning ("inspired by <designer scent>") — perfume
+              verticals only. The inspiredBy column and schema are untouched. */}
+          {showPerfumeFields && (
           <FormField
             control={form.control}
             name='inspiredBy'
@@ -613,7 +843,10 @@ export function ProductForm({
               </FormItem>
             )}
           />
+          )}
 
+          {/* Inherited perfume-era block — perfume verticals only. */}
+          {showPerfumeFields && (
           <div className='border rounded-md p-4 space-y-3'>
             <p className='text-sm font-medium'>Fragrance Info (Optional)</p>
             <p className='text-xs text-muted-foreground -mt-2'>
@@ -787,15 +1020,25 @@ export function ProductForm({
               Arabic versions can be added later via direct API if needed — English fields above are shown when no Arabic override is set.
             </p>
           </div>
+          )}
 
+          {/* Curated cross-sell strip. The DB column is still the legacy
+              `best_layered_with_ids` for data compatibility, but the concept and
+              the wording are neutral ecommerce add-ons. */}
           <FormField
             control={form.control}
             name='bestLayeredWithIds'
             render={({ field }) => (
-              <BestLayeredWithPicker
+              <ProductRefPicker
                 value={field.value ?? []}
                 onChange={field.onChange}
                 excludeProductId={initialValues?.id}
+                label={
+                  isSupplementStore()
+                    ? "Add-ons / Frequently Bought Together (Optional)"
+                    : "Best Layered With (Optional)"
+                }
+                description='Products shown alongside this one on its product page. Use the arrows to set the order. Leave empty to hide the section.'
               />
             )}
           />
@@ -1041,7 +1284,9 @@ export function ProductForm({
                 <FormItem>
                   <FormLabel className='text-lg'>Variants (Optional)</FormLabel>
                   <p className='text-sm text-muted-foreground mb-2'>
-                    Add product variants like size, color, etc. if needed
+                    {isSupplementStore()
+                      ? 'Use variants for same-price options such as Flavour. A size or weight that costs a different amount must be its own product.'
+                      : 'Add product variants like size, color, etc. if needed'}
                   </p>
                   <FormControl>
                     <VariantsInput
@@ -1053,6 +1298,185 @@ export function ProductForm({
               );
             }}
           />
+
+          {/* ── Supplement Information ──────────────────────────────────
+              Supplement-store only. Everything here persists to the
+              product.supplement_info jsonb column, except SKU which is its
+              own product column. All fields are optional. */}
+          {isSupplementStore() && (
+          <div className='border rounded-md p-4 space-y-3'>
+            <p className='text-sm font-medium'>Supplement Information</p>
+            <p className='text-xs text-muted-foreground -mt-2'>
+              Label data for this product. Every field is optional — leave any
+              of them blank and the product still saves.
+            </p>
+
+            <FormField
+              control={form.control}
+              name='supplementInfo.detailsHeading'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Details Heading</FormLabel>
+                  <p className='text-xs text-muted-foreground -mt-1'>
+                    Short heading for the details section, separate from the full
+                    product name. e.g. name "Mach Whey Blend - Vanilla - 30 Serve",
+                    details heading "Whey Protein Blend".
+                  </p>
+                  <FormControl>
+                    <Input placeholder='e.g. Whey Protein Blend' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className='grid grid-cols-2 gap-4'>
+            <FormField
+              control={form.control}
+              name='sku'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>SKU</FormLabel>
+                  <FormControl>
+                    <Input placeholder='e.g. MACH-WHEY-2KG' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='supplementInfo.netWeight'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Net Weight</FormLabel>
+                  <FormControl>
+                    <Input placeholder='e.g. 2 kg (4.4 lb)' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            </div>
+
+            <div className='grid grid-cols-2 gap-4'>
+            <FormField
+              control={form.control}
+              name='supplementInfo.servingSize'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Serving Size</FormLabel>
+                  <FormControl>
+                    <Input placeholder='e.g. 1 scoop (31 g)' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='supplementInfo.servingsPerContainer'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Servings Per Container</FormLabel>
+                  <FormControl>
+                    <Input placeholder='e.g. About 64' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            </div>
+
+            <FormField
+              control={form.control}
+              name='supplementInfo.ingredients'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ingredients</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder='Whey Protein Isolate, Cocoa Powder, Natural Flavour, ...' className='resize-none' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='supplementInfo.directions'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Directions</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder='Mix 1 scoop with 250-300 ml of water or milk...' className='resize-none' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='supplementInfo.warnings'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Warnings</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder='Not suitable for children. Consult your physician if...' className='resize-none' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='supplementInfo.badges'
+              render={({ field }) => (
+                <BadgesInput value={field.value ?? []} onChange={field.onChange} />
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='supplementInfo.supplementFacts'
+              render={({ field }) => (
+                <SupplementFactsInput
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='supplementInfo.relatedProductIds'
+              render={({ field }) => (
+                <ProductRefPicker
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  excludeProductId={initialValues?.id}
+                  label='Related Products (Optional)'
+                  description='Manually chosen products for the related-products grid, in this order. Leave empty to fall back automatically to other products in the same categories.'
+                />
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='supplementInfo.longDescription'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Long Description</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder='The full product story, shown in the Description accordion on the product page...' className='resize-none' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          )}
+
           <Button type='submit' size='lg' className='w-full'>
             Submit
           </Button>
@@ -1214,6 +1638,12 @@ export function VariantInput({
   /** Values that are globally strikethrough for this variant name (from preset) */
   globalStrikethroughValues?: string[];
 }) {
+  // Per-value price modifiers are display-only (never charged at checkout),
+  // so supplement stores edit values without them. Stored modifiers are left
+  // untouched in form state and round-trip unchanged on save.
+  const showPriceModifiers = showsVariantPriceModifiers();
+  const isSupplements = isSupplementStore();
+
   return (
     <div className='flex flex-col gap-2'>
       <div className='flex flex-col gap-1'>
@@ -1225,7 +1655,7 @@ export function VariantInput({
       </div>
 
       <div className='flex flex-col gap-1'>
-        <Label>Values & Price Modifiers</Label>
+        <Label>{showPriceModifiers ? 'Values & Price Modifiers' : 'Values'}</Label>
         <div className='space-y-2'>
           {value.values.map((vv, idx) => {
             const isGloballyStruck = globalStrikethroughValues.includes(vv.value);
@@ -1234,7 +1664,7 @@ export function VariantInput({
             <div key={idx} className='flex items-center gap-2'>
               <Input
                 className='flex-1'
-                placeholder='Value (e.g. 100ml)'
+                placeholder={isSupplements ? 'Value (e.g. Chocolate)' : 'Value (e.g. 100ml)'}
                 value={vv.value}
                 onChange={(e) => {
                   const updated = [...value.values];
@@ -1242,6 +1672,7 @@ export function VariantInput({
                   onChange({ ...value, values: updated });
                 }}
               />
+              {showPriceModifiers && (
               <div className='flex items-center gap-1 w-36 flex-shrink-0'>
                 <span className='text-xs text-muted-foreground'>+</span>
                 <Input
@@ -1258,6 +1689,7 @@ export function VariantInput({
                 />
                 <span className='text-xs text-muted-foreground whitespace-nowrap'>EGP</span>
               </div>
+              )}
               {/* Override toggle — only shown for globally-strikethrough values */}
               {isGloballyStruck && (
                 <button
@@ -1303,9 +1735,11 @@ export function VariantInput({
             + Add Value
           </Button>
         </div>
-        <p className='text-xs text-muted-foreground'>
-          Set a price modifier (e.g. +50 EGP for 100ml) — added on top of base price
-        </p>
+        {showPriceModifiers && (
+          <p className='text-xs text-muted-foreground'>
+            Set a price modifier (e.g. +50 EGP for 100ml) — added on top of base price
+          </p>
+        )}
       </div>
     </div>
   );

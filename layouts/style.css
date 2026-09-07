@@ -394,6 +394,76 @@ input[type="number"] {
   }
 }
 
+/* ── Mach Supplements design tokens ─────────────────────────────────────────
+   Mach is a black-and-white brand. There is no accent hue — energy comes from
+   photography, product scale, type weight and hard contrast inversion, not
+   from colour. The scale below is the entire palette: true black, a lifted
+   charcoal for section separation, warm off-white paper, and hairlines.
+
+   `--mach-accent` / `--mach-on-accent` are kept as names because the older
+   editorial chrome still references them; they now resolve to a white-on-black
+   inversion, so nothing renders neon while those components remain in the
+   tree. New Mach components use the explicit tokens instead. */
+:root {
+  --mach-ink: #000000;
+  --mach-ink-soft: #0e0e10;
+  --mach-ink-raised: #17171a;
+  --mach-ink-line: rgba(255, 255, 255, 0.14);
+  --mach-paper: #f2f1ed;
+  --mach-paper-soft: #e7e5df;
+  --mach-paper-line: rgba(0, 0, 0, 0.12);
+  --mach-mute: #737373;
+  --mach-mute-invert: rgba(255, 255, 255, 0.56);
+
+  /* Inversion pair — replaces the retired volt accent. */
+  --mach-accent: #ffffff;
+  --mach-accent-dim: rgba(255, 255, 255, 0.7);
+  --mach-on-accent: #000000;
+}
+
+/* Continuous marquee used by the Mach hero strip. Translating a duplicated
+   track by -50% gives a seamless loop at any content width. */
+@keyframes mach-marquee-left {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+@keyframes mach-marquee-right {
+  from { transform: translate3d(-50%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+.mach-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation-name: mach-marquee-left;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.mach-marquee-track[data-direction="right"] {
+  animation-name: mach-marquee-right;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mach-marquee-track { animation: none; transform: none; }
+}
+
+/* Mach add-to-cart confirmation toast. Enters from the top edge, which is
+   where it sits — clear of the product page's sticky mobile purchase bar. */
+@keyframes mach-toast-enter {
+  from { opacity: 0; transform: translate3d(0, -10px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+.animate-mach-toast-enter {
+  animation: mach-toast-enter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-mach-toast-enter { animation: none; }
+}
+
+/* Mach chrome toggle — hide the global footer when the Mach footer is active */
+html[data-mach-chrome="true"] #global-footer {
+  display: none !important;
+}
+
 /* Editorial chrome toggle — hide global footer when editorial chrome is active */
 html[data-editorial-chrome="true"] #global-footer {
   display: none !important;

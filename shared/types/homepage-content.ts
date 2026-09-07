@@ -5,6 +5,64 @@
  * Layout and styling are NOT part of this schema - only editable content.
  */
 
+/* ------------------------------------------------------------------ */
+/*  Shared content primitives                                         */
+/* ------------------------------------------------------------------ */
+
+/** What a MediaSlot is pointing at. */
+export type MediaKind = "image" | "video";
+
+/**
+ * A single CMS-managed media slot.
+ *
+ * Every large visual on the storefront (hero, campaign banners, category
+ * artwork, factory shot) uses this shape so the client gets the same controls
+ * everywhere: a desktop asset, an optional dedicated mobile crop, and — for
+ * video — a poster frame that shows before playback starts.
+ *
+ * `focalPoint` drives CSS `object-position` so hard full-bleed crops can be
+ * re-centred from the CMS instead of needing the image re-cut.
+ */
+export interface MediaSlot {
+  kind: MediaKind;
+  /** Desktop / default asset URL. Empty string means "not set yet". */
+  desktopUrl: string;
+  /** Dedicated mobile crop. Falls back to desktopUrl when empty. */
+  mobileUrl?: string;
+  /** Poster frame for video slots. Ignored for images. */
+  posterUrl?: string;
+  alt?: string;
+  /** Percentages, 0-100. Defaults to dead centre (50/50). */
+  focalPoint?: { x: number; y: number };
+}
+
+/** How the hero arranges its copy against its media. */
+export type HeroMediaLayout = "split" | "full-bleed";
+
+/** Horizontal placement of a text block over media. */
+export type TextAlign = "left" | "center" | "right";
+
+/** Vertical placement of a text block over media. */
+export type TextVerticalAlign = "top" | "middle" | "bottom";
+
+/** Which way text has to read against the media behind it. */
+export type TextTheme = "light" | "dark";
+
+/** Empty media slot — the shape the CMS starts every new slot from. */
+export const EMPTY_MEDIA_SLOT: MediaSlot = {
+  kind: "image",
+  desktopUrl: "",
+  mobileUrl: "",
+  posterUrl: "",
+  alt: "",
+};
+
+/** True when a slot has nothing to render. */
+export function isMediaSlotEmpty(slot: MediaSlot | undefined | null): boolean {
+  if (!slot) return true;
+  return !(slot.desktopUrl || "").trim() && !(slot.mobileUrl || "").trim();
+}
+
 /**
  * Meta information for SEO and page head
  */
@@ -32,6 +90,8 @@ export interface HomepageHeroContent {
   enabled: boolean;
   title: string;
   subtitle: string;
+  /** Short supporting paragraph rendered under the headline. Optional. */
+  supportingText?: string;
   ctaText: string;
   ctaLink: string;
   backgroundImage?: string;
@@ -39,6 +99,51 @@ export interface HomepageHeroContent {
   mobileBackgroundImage?: string;
   /** Multiple hero carousel slides (takes priority over backgroundImage if non-empty) */
   heroSlides?: HeroSlideContent[];
+
+  /* ── Campaign hero controls (Mach) ── */
+  /**
+   * Primary campaign media. Supersedes backgroundImage/mobileBackgroundImage,
+   * which are kept so content saved before the Mach rebuild still renders.
+   */
+  media?: MediaSlot;
+  /**
+   * Foreground product cut-out laid over the campaign scene.
+   *
+   * This is the hero's focal point — a pack shot on a transparent background
+   * (PNG / WebP), lit and grounded by the template rather than baked into the
+   * photograph. Keeping it separate from `media` is what lets the same hero
+   * work as a full lifestyle campaign, as a studio product shot on black, or
+   * as pure type, without re-cutting artwork every time the campaign changes.
+   */
+  productMedia?: MediaSlot;
+  /**
+   * How large the cut-out renders, as a percentage of the template's default
+   * size. 60-140, defaults to 100. Pack shots arrive framed very differently
+   * from one another; this is the client's way of matching them without
+   * re-exporting the asset.
+   */
+  productScale?: number;
+  /**
+   * How the hero arranges copy against media.
+   *
+   *  `split`      copy in the left column, media held in a framed stage down
+   *               the right — the default, and the composition the campaign
+   *               artwork is being produced for.
+   *  `full-bleed` the scene covers the whole frame and the copy is overlaid,
+   *               for the occasions where a single photograph is the whole
+   *               idea and cropping it into a column would waste it.
+   */
+  mediaLayout?: HeroMediaLayout;
+  /** Secondary / outline CTA shown beside the primary one. */
+  secondaryCtaText?: string;
+  secondaryCtaLink?: string;
+  /** Where the text block sits within the hero. */
+  align?: TextAlign;
+  verticalAlign?: TextVerticalAlign;
+  /** Whether the copy reads light-on-dark or dark-on-light. */
+  textTheme?: TextTheme;
+  /** Scrim strength over the media, 0-100. */
+  overlayOpacity?: number;
 }
 
 /**
@@ -104,7 +209,19 @@ export interface HomepageCategoriesContent {
   subtitle: string;
   ctaText: string;
   ctaLink: string;
+  /**
+   * Categories the client picked for the homepage, in display order.
+   * When empty the storefront falls back to every category flagged
+   * `showOnLanding` in the category system — which stays authoritative for
+   * the category's own name, slug and artwork either way.
+   */
+  categoryIds?: string[];
+  /** Tile grid density. */
+  layoutVariant?: CategoryLayoutVariant;
 }
+
+/** How the category tiles are laid out on desktop. */
+export type CategoryLayoutVariant = "tiles-4" | "tiles-3" | "tiles-2";
 
 /**
  * Featured products section content
@@ -156,7 +273,32 @@ export interface HomepageDiscountedProductsContent {
   viewAllLink: string;
   /** Manually selected product IDs (when set, only these products are shown) */
   productIds?: string[];
+  /**
+   * How many offers the homepage shelf carries.
+   *
+   * The offers query returns everything currently discounted, which on a busy
+   * sale wraps the shelf onto a second row and makes it the tallest block on
+   * the page. This is the merchant's call, not the layout's: show the first
+   * few here and let "view all" carry the rest.
+   *
+   * Optional, because content saved before this field existed has no value for
+   * it — read it through `DEFAULT_DISCOUNTED_LIMIT`.
+   */
+  limit?: number;
 }
+
+/**
+ * Offers shown on the homepage shelf when the CMS has no `limit` saved.
+ *
+ * Four, because that is the shelf's own column count — one full row, no
+ * wrapping. Defined here rather than at the point of use so the storefront and
+ * the shipped default content cannot drift apart.
+ */
+export const DEFAULT_DISCOUNTED_LIMIT = 4;
+
+/** Range the Homepage Admin offers limit accepts. */
+export const DISCOUNTED_LIMIT_MIN = 1;
+export const DISCOUNTED_LIMIT_MAX = 12;
 
 /**
  * New Arrivals products section content
@@ -170,6 +312,41 @@ export interface HomepageNewArrivalsContent {
   viewAllLink: string;
   /** Manually selected product IDs (when set, only these products are shown) */
   productIds?: string[];
+}
+
+/**
+ * A broad product group merchandised on the homepage.
+ *
+ * Mach's storefront is product-first, not taxonomy-first: the client sells out
+ * of three broad groups (Supplements, Stacks & Bundles, Gym Gear) rather than
+ * a deep category tree. A group section is therefore a *merchandising* block
+ * that happens to be backed by the category system, not a category landing.
+ *
+ * Two ways to fill it, checked in this order:
+ *
+ *  1. `productIds` — an explicit, ordered client selection. Always wins, so a
+ *     section can be curated exactly.
+ *  2. `categoryIds` — the broad group(s) the section draws from, resolved
+ *     through the existing `product.search` procedure.
+ *
+ * With neither set the section has nothing to show and renders nothing at all.
+ * No product name or id is ever hard-coded in a component.
+ */
+export interface HomepageProductGroupContent {
+  enabled: boolean;
+  title: string;
+  titleAr?: string;
+  subtitle?: string;
+  subtitleAr?: string;
+  viewAllText: string;
+  viewAllTextAr?: string;
+  viewAllLink: string;
+  /** Broad group(s) this section merchandises, by category id. */
+  categoryIds?: string[];
+  /** Explicit, ordered product selection. Takes precedence over categoryIds. */
+  productIds?: string[];
+  /** How many products the row shows. */
+  limit?: number;
 }
 
 /**
@@ -270,6 +447,277 @@ export interface HomepageReturnPolicyContent {
   contactLinkUrl: string;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Mach storefront sections                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Kinetic strip that runs directly under the hero.
+ *
+ * Carries the page's first motion beat without spending any colour on it —
+ * the line repeats across the full width and scrolls continuously.
+ */
+export interface HomepageHeroMarqueeContent {
+  enabled: boolean;
+  text: string;
+  textAr?: string;
+  /** Glyph placed between repeats. Defaults to a bullet. */
+  separator?: string;
+  /** Seconds for one full pass. Lower is faster. */
+  speedSeconds?: number;
+  direction?: "left" | "right";
+  /** Inverted = white text on black. */
+  invert?: boolean;
+}
+
+/**
+ * A full-bleed campaign banner.
+ *
+ * Stored as an array so the client can add a second or third banner between
+ * merchandising rows without any code change.
+ */
+export interface CampaignBannerContent {
+  id: string;
+  enabled: boolean;
+  media?: MediaSlot;
+  eyebrow?: string;
+  title: string;
+  body?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  /** Where the copy sits over the media. */
+  align?: TextAlign;
+  verticalAlign?: TextVerticalAlign;
+  textTheme?: TextTheme;
+  /** Scrim strength over the media, 0-100. */
+  overlayOpacity?: number;
+  height?: "standard" | "tall";
+}
+
+/** One "Why Mach" pillar. */
+export interface WhyMachItem {
+  id: string;
+  icon?: ValuePropIconType;
+  title: string;
+  titleAr?: string;
+  description: string;
+  descriptionAr?: string;
+  /** Optional supporting visual for the pillar. */
+  imageUrl?: string;
+  /** Optional short figure rendered oversized (e.g. "100%"). */
+  stat?: string;
+}
+
+/** "Why Mach" trust section. */
+export interface HomepageWhyMachContent {
+  enabled: boolean;
+  title: string;
+  titleAr?: string;
+  subtitle: string;
+  subtitleAr?: string;
+  items: WhyMachItem[];
+}
+
+/**
+ * A single certificate or compliance document.
+ *
+ * `thumbnailUrl` is the seal/logo shown in the strip; `documentUrl` is the
+ * full scan or PDF opened on click. Both are uploaded by the client — none of
+ * this is ever generated or bundled, because it is compliance evidence.
+ */
+export interface CertificateItem {
+  id: string;
+  title: string;
+  titleAr?: string;
+  issuer?: string;
+  thumbnailUrl: string;
+  /**
+   * Alt text for the certificate image, authored independently of the title.
+   *
+   * A certificate's title is a label under the document ("ISO 9001:2015"); its
+   * alt text describes the image for someone who cannot see it. They are not
+   * the same sentence, and the admin previously had nowhere to put the second
+   * one — the field was fed from `title` and never stored, so it could not be
+   * edited or cleared. Optional: blank is a legitimate saved value, and the
+   * storefront decides what to fall back to at render time.
+   */
+  alt?: string;
+  documentUrl?: string;
+  externalUrl?: string;
+}
+
+/** Manufacturing / factory trust block shown with the certificates. */
+export interface FactoryContent {
+  enabled: boolean;
+  heading: string;
+  headingAr?: string;
+  body: string;
+  bodyAr?: string;
+  media?: MediaSlot;
+  linkLabel: string;
+  linkLabelAr?: string;
+  linkUrl: string;
+}
+
+/** Certificates + manufacturing section. */
+export interface HomepageCertificatesContent {
+  enabled: boolean;
+  title: string;
+  titleAr?: string;
+  subtitle: string;
+  subtitleAr?: string;
+  items: CertificateItem[];
+  factory: FactoryContent;
+}
+
+/**
+ * Community / UGC section.
+ *
+ * Typed and CMS-editable now so the homepage composition reserves the slot,
+ * but it renders nothing until the review system carries media. `reviewIds`
+ * will select from the existing product_review data — no separate community
+ * store.
+ */
+export interface HomepageUgcContent {
+  enabled: boolean;
+  title: string;
+  titleAr?: string;
+  subtitle: string;
+  subtitleAr?: string;
+  /** Reviews promoted to the homepage, in display order. */
+  reviewIds?: string[];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Section ordering                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Homepage sections the client can reorder.
+ *
+ * The hero is deliberately not in this list — it is the page opener and
+ * anchors the navbar's transparent-over-hero behaviour, so it stays pinned
+ * at the top. Everything below it is free to move.
+ *
+ * Campaign banners are addressed dynamically as `campaign:<bannerId>` so a
+ * banner added in the CMS can be dropped anywhere in the sequence.
+ */
+export const ORDERABLE_SECTION_KEYS = [
+  "heroMarquee",
+  "categories",
+  "stacks",
+  "newArrivals",
+  "featuredProducts",
+  "gymGear",
+  "discountedProducts",
+  "whyMach",
+  "certificates",
+  "ugc",
+  "newsletter",
+  "footerCta",
+] as const;
+
+export type OrderableSectionKey = (typeof ORDERABLE_SECTION_KEYS)[number];
+
+/** Prefix marking a section-order entry as a campaign banner reference. */
+export const CAMPAIGN_SECTION_PREFIX = "campaign:";
+
+/** Human labels for the reorder UI in Homepage Admin. */
+export const SECTION_LABELS: Record<OrderableSectionKey, string> = {
+  heroMarquee: "Promotional strip",
+  categories: "Shop by group",
+  stacks: "Stacks & Bundles",
+  newArrivals: "New Drops",
+  featuredProducts: "Best Sellers",
+  gymGear: "Gym Gear",
+  discountedProducts: "Offers",
+  whyMach: "Why Mach",
+  certificates: "Certificates & manufacturing",
+  ugc: "Community",
+  newsletter: "Newsletter",
+  footerCta: "Closing CTA",
+};
+
+/**
+ * Resolves the section sequence actually rendered on the homepage.
+ *
+ * Takes the client's saved order, drops entries that no longer exist (a
+ * deleted campaign banner, a key we no longer render), then splices in any
+ * known section the saved order predates — at the position the default
+ * composition puts it, not at the end. That is what lets us ship a new
+ * merchandising section into an existing storefront and have it land in the
+ * middle of the page where it belongs, without the client having to re-save
+ * their order first.
+ */
+export function resolveSectionOrder(
+  savedOrder: string[] | undefined,
+  campaignBannerIds: string[],
+): string[] {
+  const valid = new Set<string>([
+    ...ORDERABLE_SECTION_KEYS,
+    ...campaignBannerIds.map((id) => `${CAMPAIGN_SECTION_PREFIX}${id}`),
+  ]);
+
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  for (const key of savedOrder ?? []) {
+    if (valid.has(key) && !seen.has(key)) {
+      ordered.push(key);
+      seen.add(key);
+    }
+  }
+
+  // Sections the saved order predates are inserted immediately after whichever
+  // of their default-order predecessors is already on the page, so a new
+  // section keeps its intended place in the composition instead of being
+  // dumped below the closing CTA.
+  let anchor = -1;
+  for (const key of DEFAULT_SECTION_ORDER) {
+    if (!valid.has(key)) continue;
+    const existing = ordered.indexOf(key);
+    if (existing >= 0) {
+      anchor = existing;
+      continue;
+    }
+    const at = anchor + 1;
+    ordered.splice(at, 0, key);
+    seen.add(key);
+    anchor = at;
+  }
+
+  // Campaign banners the default order doesn't know about land before the
+  // closing CTA rather than being silently dropped.
+  for (const id of campaignBannerIds) {
+    const key = `${CAMPAIGN_SECTION_PREFIX}${id}`;
+    if (seen.has(key)) continue;
+    const ctaIndex = ordered.indexOf("footerCta");
+    if (ctaIndex >= 0) ordered.splice(ctaIndex, 0, key);
+    else ordered.push(key);
+    seen.add(key);
+  }
+
+  return ordered;
+}
+
+/** The composition the Mach storefront ships with out of the box. */
+export const DEFAULT_SECTION_ORDER: string[] = [
+  "heroMarquee",
+  "categories",
+  "stacks",
+  "newArrivals",
+  `${CAMPAIGN_SECTION_PREFIX}campaign-primary`,
+  "featuredProducts",
+  "gymGear",
+  "discountedProducts",
+  "whyMach",
+  `${CAMPAIGN_SECTION_PREFIX}campaign-secondary`,
+  "certificates",
+  "ugc",
+  "newsletter",
+  "footerCta",
+];
+
 /**
  * Complete homepage content structure
  */
@@ -300,6 +748,24 @@ export interface HomepageContent {
   /** Product page inline carousel custom title */
   productCarouselTitle?: string;
   productCarouselTitleAr?: string;
+  /* ── Mach storefront sections ── */
+  /** Kinetic strip under the hero. */
+  heroMarquee?: HomepageHeroMarqueeContent;
+  /** "Stacks & Bundles" merchandising row. */
+  stacks?: HomepageProductGroupContent;
+  /** "Gym Gear" merchandising row. */
+  gymGear?: HomepageProductGroupContent;
+  /** Full-bleed campaign banners, placed via `sectionOrder`. */
+  campaignBanners?: CampaignBannerContent[];
+  /** "Why Mach" trust pillars (supersedes `valueProps` on the Mach template). */
+  whyMach?: HomepageWhyMachContent;
+  /** Certificates + manufacturing trust section. */
+  certificates?: HomepageCertificatesContent;
+  /** Community / UGC slot — reserved, renders once reviews carry media. */
+  ugc?: HomepageUgcContent;
+  /** Client-defined order of the sections below the hero. */
+  sectionOrder?: string[];
+
   /** CMS-controlled testimonials (minimal template) */
   testimonials?: {
     enabled: boolean;
@@ -321,25 +787,47 @@ export interface HomepageContent {
 export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
   meta: {
     enabled: true,
-    pageTitle: "Welcome to Our Store",
-    pageDescription: "Discover amazing products curated just for you",
+    pageTitle: "Mach Supplements",
+    pageDescription:
+      "Sports nutrition and gym supplements built for serious training.",
   },
   hero: {
     enabled: true,
-    title: "Welcome to Our Store",
-    subtitle: "Discover amazing products curated just for you",
-    ctaText: "Start Shopping",
+    title: "FUEL THE NEXT LEVEL",
+    // The eyebrow line above the headline in the editorial hero.
+    subtitle: "MACH SUPPLEMENTS",
+    supportingText:
+      "Protein, creatine and pre-workout formulated for real training loads. Built for the sessions that actually count.",
+    ctaText: "SHOP SUPPLEMENTS",
     ctaLink: "/shop",
+    // No bundled hero photo yet — the template renders its own typographic
+    // fallback so nothing requests a missing upload. Real Mach lifestyle /
+    // product media gets uploaded through Dashboard → Homepage later.
     backgroundImage: undefined,
     mobileBackgroundImage: undefined,
     heroSlides: [],
+    // Campaign media is uploaded through Dashboard -> Homepage. Until then the
+    // hero renders its typographic treatment rather than a broken <img>.
+    media: { ...EMPTY_MEDIA_SLOT },
+    // The foreground pack shot. Also empty until real Mach product artwork is
+    // cut out; the hero degrades to a studio-lit typographic stage without it.
+    productMedia: { ...EMPTY_MEDIA_SLOT },
+    productScale: 100,
+    mediaLayout: "split",
+    secondaryCtaText: "VIEW ALL PRODUCTS",
+    secondaryCtaLink: "/shop",
+    align: "left",
+    verticalAlign: "bottom",
+    textTheme: "light",
+    overlayOpacity: 55,
   },
   brandStatement: {
     enabled: true,
-    title: "Worn with intention. Designed for life.",
+    title: "Train hard. Recover harder.",
     description:
-      "Every piercing is an expression of self. Our pieces are crafted to honor that commitment—refined in form, enduring in quality, and timeless in design.",
-    image: "/uploads/homepage/brand-statement.jpg",
+      "Mach is built for people who show up. Every formula is made for real training loads — clean ingredients, honest doses, and labels that say exactly what's inside. No filler, no guesswork, no shortcuts between you and the next set.",
+    // Intentionally empty until Mach brand photography is supplied.
+    image: "",
   },
   promoBanner: {
     enabled: false,
@@ -349,64 +837,71 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
   },
   categories: {
     enabled: true,
-    title: "Shop by Category",
-    subtitle: "Browse our curated selection of product categories",
-    ctaText: "View All Categories",
-    ctaLink: "/categories",
+    title: "SHOP BY CATEGORY",
+    subtitle: "Find what your training actually needs.",
+    ctaText: "SHOP ALL",
+    ctaLink: "/shop",
+    // Empty = every category flagged "show on landing" in the category system.
+    categoryIds: [],
+    layoutVariant: "tiles-4",
   },
   featuredProducts: {
     enabled: true,
-    title: "Featured Products",
-    subtitle: "Check out our handpicked selection of trending products",
-    viewAllText: "View All Products",
+    title: "BEST SELLERS",
+    subtitle: "The products our athletes reorder most.",
+    viewAllText: "VIEW ALL",
     viewAllLink: "/shop",
   },
   valueProps: {
     enabled: true,
     items: [
       {
-        icon: ValuePropIconType.SHOPPING,
-        title: "Wide Selection",
-        description: "Discover thousands of products from top brands",
+        icon: ValuePropIconType.QUALITY,
+        title: "Quality You Can Read",
+        description:
+          "Full label transparency — every ingredient and dose listed up front.",
+      },
+      {
+        icon: ValuePropIconType.SECURITY,
+        title: "Trusted Manufacturing",
+        description:
+          "Sourced from certified facilities with batch-level quality control.",
       },
       {
         icon: ValuePropIconType.SHIPPING,
         title: "Fast Delivery",
         description:
-          "Get your orders delivered quickly with our reliable shipping",
-      },
-      {
-        icon: ValuePropIconType.SECURITY,
-        title: "Secure Shopping",
-        description: "Shop with confidence using our secure payment system",
+          "Nationwide shipping across Egypt with tracking from checkout to door.",
       },
     ],
   },
   newsletter: {
     enabled: true,
-    title: "Stay Updated",
-    subtitle: "Subscribe to our newsletter for exclusive deals and updates",
+    title: "JOIN THE MACH CREW",
+    subtitle:
+      "Drop dates, restocks and training-day offers — straight to your inbox, no noise.",
     placeholderText: "Enter your email address",
-    ctaText: "Subscribe",
+    ctaText: "JOIN",
     privacyText: "We respect your privacy. Unsubscribe at any time.",
   },
   footerCta: {
     enabled: true,
-    title: "Ready to Start Shopping?",
-    subtitle: "Join thousands of satisfied customers today",
-    ctaText: "Browse Products",
+    title: "YOUR NEXT SESSION STARTS HERE",
+    subtitle: "Built for the work",
+    ctaText: "SHOP SUPPLEMENTS",
     ctaLink: "/shop",
   },
   discountedProducts: {
     enabled: true,
-    title: "Offers",
-    viewAllText: "View All",
+    title: "OFFERS",
+    viewAllText: "VIEW ALL",
     viewAllLink: "/shop",
+    limit: DEFAULT_DISCOUNTED_LIMIT,
   },
   newArrivals: {
     enabled: true,
-    title: "New Arrivals",
-    viewAllText: "View All",
+    title: "NEW DROPS",
+    viewAllText: "VIEW ALL",
     viewAllLink: "/shop",
   },
   marquee: {
@@ -437,7 +932,7 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
     title: "About Us",
     titleAr: "من نحن",
     description:
-      "Welcome to our store. We are passionate about bringing you the finest products.",
+      "Mach Supplements exists to fuel serious training — honest formulas, tested ingredients, and no compromises.",
     descriptionAr: "",
     imageUrl: "",
   },
@@ -446,9 +941,9 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
     title: "Return Policy",
     titleAr: "سياسة الإرجاع",
     intro:
-      "We want you to love every Synt fragrance. If something's not right, we're here to help.",
+      "We want you to be happy with every Mach order. If something's not right, we're here to help.",
     introAr:
-      "نريدك أن تحب كل عطر من Synt. إذا كان هناك أي مشكلة، نحن هنا لمساعدتك.",
+      "نريدك أن تكون راضياً عن كل طلب من Mach. إذا كان هناك أي مشكلة، نحن هنا لمساعدتك.",
     steps: [
       {
         icon: ValuePropIconType.PACKAGE,
@@ -489,9 +984,9 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
       {
         title: "Non-Returnable Items",
         titleAr: "منتجات غير قابلة للإرجاع",
-        body: "For hygiene and safety reasons, we cannot accept returns on opened fragrance bottles. Gift cards and promotional items are also non-returnable.",
+        body: "For hygiene and safety reasons, we cannot accept returns on opened or unsealed supplement containers. Gift cards and promotional items are also non-returnable.",
         bodyAr:
-          "لأسباب صحية وأمنية، لا نقبل إرجاع زجاجات العطور المفتوحة. بطاقات الهدايا والعروض الترويجية غير قابلة للإرجاع أيضاً.",
+          "لأسباب صحية وأمنية، لا نقبل إرجاع عبوات المكملات المفتوحة أو غير المختومة. بطاقات الهدايا والعروض الترويجية غير قابلة للإرجاع أيضاً.",
       },
       {
         title: "Damaged or Wrong Items",
@@ -504,13 +999,133 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
     footerPrefix:
       "Need help? We're just an email away. Reach out to us at",
     footerPrefixAr: "تحتاج مساعدة؟ نحن على بعد بريد إلكتروني. تواصل معنا على",
-    supportEmail: "syntperfumes@gmail.com",
+    // Left blank on purpose — set the real Mach support address in
+    // Dashboard → Homepage before enabling this page.
+    supportEmail: "",
     footerMiddle: "or via our",
     footerMiddleAr: "أو عبر",
     contactLinkLabel: "Contact Us page",
     contactLinkLabelAr: "صفحة اتصل بنا",
     contactLinkUrl: "/contact",
   },
+  heroMarquee: {
+    enabled: true,
+    text: "BUILT FOR THE WORK",
+    separator: "•",
+    speedSeconds: 28,
+    direction: "left",
+    invert: true,
+  },
+  // Both group rows ship enabled but unbound: with no category or product
+  // selection they resolve to nothing and render nothing, so the storefront is
+  // never showing an empty block while the catalog is being loaded. The client
+  // points each one at its broad group in Dashboard → Homepage.
+  stacks: {
+    enabled: true,
+    title: "STACKS & BUNDLES",
+    subtitle: "Built to work together. Priced to move as one.",
+    viewAllText: "VIEW ALL",
+    viewAllLink: "/shop",
+    categoryIds: [],
+    productIds: [],
+    limit: 4,
+  },
+  gymGear: {
+    enabled: true,
+    title: "GYM GEAR",
+    subtitle: "The kit that goes in the bag.",
+    viewAllText: "VIEW ALL",
+    viewAllLink: "/shop",
+    categoryIds: [],
+    productIds: [],
+    limit: 4,
+  },
+  campaignBanners: [
+    {
+      id: "campaign-primary",
+      enabled: true,
+      media: { ...EMPTY_MEDIA_SLOT },
+      eyebrow: "",
+      title: "",
+      body: "",
+      ctaText: "",
+      ctaLink: "",
+      align: "left",
+      verticalAlign: "bottom",
+      textTheme: "light",
+      overlayOpacity: 45,
+      height: "standard",
+    },
+    {
+      id: "campaign-secondary",
+      enabled: false,
+      media: { ...EMPTY_MEDIA_SLOT },
+      eyebrow: "",
+      title: "",
+      body: "",
+      ctaText: "",
+      ctaLink: "",
+      align: "left",
+      verticalAlign: "middle",
+      textTheme: "light",
+      overlayOpacity: 45,
+      height: "standard",
+    },
+  ],
+  whyMach: {
+    enabled: true,
+    title: "WHY MACH",
+    subtitle: "What you are actually buying.",
+    items: [
+      {
+        id: "why-transparency",
+        icon: ValuePropIconType.QUALITY,
+        stat: "01",
+        title: "Quality You Can Read",
+        description:
+          "Full label transparency — every ingredient and dose listed up front.",
+      },
+      {
+        id: "why-manufacturing",
+        icon: ValuePropIconType.SECURITY,
+        stat: "02",
+        title: "Trusted Manufacturing",
+        description:
+          "Sourced from certified facilities with batch-level quality control.",
+      },
+      {
+        id: "why-delivery",
+        icon: ValuePropIconType.SHIPPING,
+        stat: "03",
+        title: "Fast Delivery",
+        description:
+          "Nationwide shipping across Egypt with tracking from checkout to door.",
+      },
+    ],
+  },
+  certificates: {
+    enabled: false,
+    title: "",
+    subtitle: "",
+    // Certificates are compliance evidence — the client uploads the real
+    // documents in Dashboard -> Homepage. Nothing is shipped pre-filled.
+    items: [],
+    factory: {
+      enabled: false,
+      heading: "",
+      body: "",
+      media: { ...EMPTY_MEDIA_SLOT },
+      linkLabel: "",
+      linkUrl: "",
+    },
+  },
+  ugc: {
+    enabled: false,
+    title: "",
+    subtitle: "",
+    reviewIds: [],
+  },
+  sectionOrder: [...DEFAULT_SECTION_ORDER],
   testimonials: {
     enabled: true,
     title: undefined,

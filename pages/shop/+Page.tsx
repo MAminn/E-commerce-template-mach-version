@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { trpc } from "#root/shared/trpc/client";
+import { mapSearchProducts } from "#root/lib/utils/product-media";
+import { MachShopView } from "#root/components/template-system/mach/shop/MachShopView";
+import { useData } from "vike-react/useData";
+import type { Data } from "./+data";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
@@ -21,7 +25,40 @@ import type { HomepageContent } from "#root/shared/types/homepage-content";
  * When the store uses the minimal navbar, renders the MinimalCategoryPage
  * with paginated grid, search, sort, and breadcrumbs (same UI as category pages).
  */
+/**
+ * Chooses the browsing implementation before any data-loading hook runs.
+ *
+ * `LegacyShopPage` below owns the inherited client-side fetching. Keeping it in
+ * its own component means that when the Mach template is active those hooks are
+ * never mounted, so the page issues exactly one product search — the
+ * server-side one inside MachShopView — instead of two.
+ *
+ * The `isMinimal` check is evaluated first, preserving the precedence the
+ * legacy route already had.
+ */
 export default function ShopPage() {
+  const { getTemplateId } = useTemplate();
+  const layoutSettings = useLayoutSettings();
+  const { shopContent } = useData<Data>();
+  const searchParams = useSearchParams();
+
+  const isMinimalNavbar = layoutSettings.header.navbarStyle === "minimal";
+  const activeTemplateId = getTemplateId("sorting") ?? "sorting-minimal";
+
+  if (!isMinimalNavbar && activeTemplateId === "sorting-mach") {
+    return (
+      <MachShopView
+        initialCategoryId={searchParams.get("category")}
+        initialSection={searchParams.get("section")}
+        content={shopContent}
+      />
+    );
+  }
+
+  return <LegacyShopPage />;
+}
+
+function LegacyShopPage() {
   const [products, setProducts] = useState<SortingPageProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sortOption, setSortOption] = useState("featured");
@@ -193,18 +230,11 @@ export default function ShopPage() {
         if (cancelled) return;
 
         if (result.success && result.result) {
-          const mapped: SortingPageProduct[] = result.result.items.map((p) => ({
-            id: p.id,
-            slug: p.slug,
-            name: p.name,
-            price: Number(p.price),
-            discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-            stock: p.stock,
-            imageUrl: p.imageUrl ?? undefined,
-            images: p.images,
-            categoryName: p.categoryName || null,
-            available: p.stock > 0,
-          }));
+          // Shared boundary mapper — normalises bare disk filenames from
+          // product.search into /uploads/ URLs. See lib/utils/product-media.ts.
+          const mapped: SortingPageProduct[] = mapSearchProducts(
+            result.result.items,
+          );
           setProducts(mapped);
           setTotalProducts(result.result.total ?? mapped.length);
         }

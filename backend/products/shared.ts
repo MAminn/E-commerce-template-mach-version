@@ -31,6 +31,40 @@ export const fragranceInfoSchema = z
   })
   .optional();
 
+/** One row of the Supplement Facts panel. `amount` and `dailyValue` are both
+ * optional — "Calories — 120" has no unit-suffixed amount pattern and many
+ * rows (protein, sugars) legitimately carry no %DV. `indent` marks a
+ * sub-nutrient nested under the row above it. */
+export const supplementFactRowSchema = z.object({
+  label: z.string().min(1).max(120),
+  amount: z.string().max(60).optional(),
+  dailyValue: z.string().max(20).optional(),
+  indent: z.boolean().optional(),
+});
+
+/** Supplement label data shown on the product page. Entirely optional: legacy
+ * (perfume-era) products carry none and require no backfill. Array order is
+ * the admin's chosen row order and is preserved verbatim. */
+export const supplementInfoSchema = z
+  .object({
+    detailsHeading: z.string().max(120).optional(),
+    netWeight: z.string().max(60).optional(),
+    servingSize: z.string().max(60).optional(),
+    servingsPerContainer: z.string().max(60).optional(),
+    ingredients: z.string().max(4000).optional(),
+    directions: z.string().max(2000).optional(),
+    warnings: z.string().max(2000).optional(),
+    longDescription: z.string().max(6000).optional(),
+    badges: z.array(z.string().max(50)).max(10).optional(),
+    supplementFacts: z.array(supplementFactRowSchema).max(60).optional(),
+    /** Product IDs only — never denormalised product data. */
+    relatedProductIds: z.array(z.string().uuid()).max(24).optional(),
+  })
+  .nullish();
+
+/** Stock-keeping unit. Optional and not unique-constrained yet. */
+export const skuSchema = z.string().max(64).nullish();
+
 export const validateProductRules = (
   data: z.infer<typeof createProductSchema>
 ) =>

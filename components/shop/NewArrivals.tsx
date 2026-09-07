@@ -17,6 +17,18 @@ export interface NewArrivalProduct {
   images?: { url: string; isPrimary?: boolean }[];
   categoryName?: string | null;
   available: boolean;
+  /** Broad groups the product belongs to. Populated by the landing routes. */
+  categories?: { id: string; name: string }[];
+  /**
+   * How many option groups (flavour, size, …) the product carries.
+   *
+   * `0` means it can go straight into the cart; a positive number means a
+   * selection is mandatory and the shopper has to go to the product page.
+   * `undefined` means the surface that built this object does not know —
+   * cards treat that as "no quick-add" rather than guessing. Populated by
+   * `product.search`.
+   */
+  variantCount?: number;
 }
 
 export interface NewArrivalsProps {

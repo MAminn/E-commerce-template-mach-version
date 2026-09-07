@@ -155,6 +155,14 @@ export const settingsRouter = router({
             )
             .max(20)
             .optional(),
+          crossSellHeading: z.string().max(120).optional(),
+          crossSellHeadingAr: z.string().max(120).optional(),
+          relatedProductsHeading: z.string().max(120).optional(),
+          relatedProductsHeadingAr: z.string().max(120).optional(),
+          detailsSectionHeading: z.string().max(120).optional(),
+          detailsSectionHeadingAr: z.string().max(120).optional(),
+          shippingSectionHeading: z.string().max(120).optional(),
+          shippingSectionHeadingAr: z.string().max(120).optional(),
         }),
       }),
     )

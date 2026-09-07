@@ -83,6 +83,12 @@ export default function SettingsPage() {
   const [returnsText, setReturnsText] = useState("");
   const [returnsTextAr, setReturnsTextAr] = useState("");
   const [faqs, setFaqs] = useState<Faq[]>([]);
+  // Section headings shown on the product page. Stored in the same
+  // product_page_content setting so the client owns every visible string.
+  const [crossSellHeading, setCrossSellHeading] = useState("");
+  const [relatedProductsHeading, setRelatedProductsHeading] = useState("");
+  const [detailsSectionHeading, setDetailsSectionHeading] = useState("");
+  const [shippingSectionHeading, setShippingSectionHeading] = useState("");
   const [isSavingPageContent, setIsSavingPageContent] = useState(false);
 
   // Fetch current shipping fee on mount
@@ -106,6 +112,10 @@ export default function SettingsPage() {
               setReturnsText(r.result.returnsText ?? "");
               setReturnsTextAr(r.result.returnsTextAr ?? "");
               setFaqs(r.result.faqs ?? []);
+              setCrossSellHeading(r.result.crossSellHeading ?? "");
+              setRelatedProductsHeading(r.result.relatedProductsHeading ?? "");
+              setDetailsSectionHeading(r.result.detailsSectionHeading ?? "");
+              setShippingSectionHeading(r.result.shippingSectionHeading ?? "");
             }
           }).catch(() => {}),
         ]);
@@ -162,6 +172,10 @@ export default function SettingsPage() {
           returnsText: returnsText || undefined,
           returnsTextAr: returnsTextAr || undefined,
           faqs: faqs.filter((f) => f.question.trim() && f.answer.trim()),
+          crossSellHeading: crossSellHeading || undefined,
+          relatedProductsHeading: relatedProductsHeading || undefined,
+          detailsSectionHeading: detailsSectionHeading || undefined,
+          shippingSectionHeading: shippingSectionHeading || undefined,
         },
       });
       if (result.success) {
@@ -441,12 +455,59 @@ export default function SettingsPage() {
             Product Page Content
           </CardTitle>
           <CardDescription>
-            Control the Shipping, Returns and FAQs text shown in the
-            accordion on every product page. Leave blank to use the
-            defaults.
+            Control the section headings and the Shipping, Returns and FAQs
+            text shown on every product page. These apply store-wide — they
+            are not set per product. Leave any field blank to hide or fall
+            back to the default.
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-6'>
+          <div className='space-y-3 rounded-md border p-4'>
+            <p className='text-sm font-medium'>Section headings</p>
+            <p className='text-xs text-muted-foreground -mt-2'>
+              Shown above each product-page section. Leave blank to hide the
+              heading.
+            </p>
+            <div className='grid gap-4 sm:grid-cols-2'>
+              <div className='space-y-2'>
+                <Label htmlFor='detailsSectionHeading'>Product details heading</Label>
+                <Input
+                  id='detailsSectionHeading'
+                  value={detailsSectionHeading}
+                  onChange={(e) => setDetailsSectionHeading(e.target.value)}
+                  placeholder='e.g. Details'
+                />
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='shippingSectionHeading'>Shipping section heading</Label>
+                <Input
+                  id='shippingSectionHeading'
+                  value={shippingSectionHeading}
+                  onChange={(e) => setShippingSectionHeading(e.target.value)}
+                  placeholder='e.g. Shipping & Returns'
+                />
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='crossSellHeading'>Add-ons heading</Label>
+                <Input
+                  id='crossSellHeading'
+                  value={crossSellHeading}
+                  onChange={(e) => setCrossSellHeading(e.target.value)}
+                  placeholder='e.g. Make Every Scoop Easier'
+                />
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='relatedProductsHeading'>Related products heading</Label>
+                <Input
+                  id='relatedProductsHeading'
+                  value={relatedProductsHeading}
+                  onChange={(e) => setRelatedProductsHeading(e.target.value)}
+                  placeholder='e.g. Shop the Full Collection'
+                />
+              </div>
+            </div>
+          </div>
+
           <div className='space-y-2'>
             <Label htmlFor='shippingText'>Shipping text (English)</Label>
             <Textarea

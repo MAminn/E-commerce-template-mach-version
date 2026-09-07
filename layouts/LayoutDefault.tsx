@@ -1,5 +1,5 @@
 import Navbar from "#root/components/globals/Navbar.jsx";
-import { EditorialNavbar } from "#root/components/template-system/editorial/EditorialNavbar";
+import { MachNavbar } from "#root/components/template-system/mach/MachNavbar";
 import { MinimalNavbar } from "#root/components/template-system/minimal/MinimalNavbar";
 import { MinimalFooter } from "#root/components/template-system/minimal/MinimalFooter";
 import { MinimalMobileBottomNav } from "#root/components/template-system/minimal/MinimalMobileBottomNav";
@@ -12,6 +12,7 @@ import { toast, Toaster } from "sonner";
 import { CartToastContainer } from "#root/components/ui/cart-toast";
 import { EntryPopup } from "#root/components/EntryPopup";
 import { StickyCartBar } from "#root/components/ui/StickyCartBar";
+import { MachCartToastContainer } from "#root/components/template-system/mach/MachCartFeedback";
 import type { ClientSession } from "#root/backend/auth/shared/entities.js";
 import { usePageContext } from "vike-react/usePageContext";
 import { AuthContext } from "#root/context/AuthContext.js";
@@ -28,8 +29,9 @@ import {
 } from "#root/components/globals/NavbarContext";
 import { LayoutSettingsContext } from "#root/frontend/contexts/LayoutSettingsContext";
 import type { LayoutSettings } from "#root/shared/types/layout-settings";
-import { DEFAULT_LAYOUT_SETTINGS } from "#root/shared/types/layout-settings";
+import { getDefaultLayoutSettings } from "#root/shared/types/layout-settings";
 import { getStoreOwnerId } from "#root/shared/config/store";
+import { isSupplementStore } from "#root/shared/config/branding";
 import { trpc } from "#root/shared/trpc/client.js";
 import { authClient } from "#root/lib/auth-client.js";
 
@@ -158,19 +160,22 @@ function LayoutShell({
     | LayoutSettings
     | undefined;
 
-  // Initialise from SSR data if available — prevents flicker
+  const activeLandingTemplateId = getTemplateId("landing") ?? undefined;
+
+  // Initialise from SSR data if available — prevents flicker. Without it, fall
+  // back to the active template's own chrome defaults rather than the global
+  // ones, so an editorial/minimal storefront doesn't flash the default navbar.
   const [layoutSettings, setLayoutSettings] = useState<LayoutSettings>(
-    ssrLayoutSettings ?? DEFAULT_LAYOUT_SETTINGS,
+    ssrLayoutSettings ?? getDefaultLayoutSettings(activeLandingTemplateId),
   );
 
   // Fetch CMS layout settings (template-scoped) — only if SSR didn't provide them
   useEffect(() => {
     if (ssrLayoutSettings) return; // SSR already provided, skip client fetch
-    const activeLandingTemplate = getTemplateId("landing") ?? undefined;
     trpc.layout.getSettings
       .query({
         merchantId: getStoreOwnerId(),
-        templateId: activeLandingTemplate,
+        templateId: activeLandingTemplateId,
       })
       .then((res) => {
         if (res.success && res.result) {
@@ -180,9 +185,32 @@ function LayoutShell({
       .catch((err) => {
         console.error("Failed to fetch layout settings:", err);
       });
-  }, [getTemplateId, ssrLayoutSettings]);
+  }, [activeLandingTemplateId, ssrLayoutSettings]);
 
   const isMinimal = layoutSettings.header.navbarStyle === "minimal";
+
+  /**
+   * Mach suppresses the inherited `StickyCartBar`.
+   *
+   * That component is a bottom-anchored amber/emerald gradient pill. It is the
+   * add-to-cart feedback for the templates it was built for and stays mounted
+   * for every one of them; on Mach it is the only accent colour on a storefront
+   * whose interface is defined by having none, and on a phone it floats on top
+   * of the Mach product page's own sticky purchase bar. `MachCartToastContainer`
+   * takes its place here, alongside the navbar's live bag count and the
+   * in-place confirmation on the button that was pressed.
+   *
+   * Keyed off the store's vertical rather than off a template id: the vertical
+   * is a compile-time constant (shared/config/branding.ts), so no admin
+   * template switch can hand another storefront this branch, and a fork
+   * re-targeted at another vertical gets the inherited bar back untouched.
+   *
+   * Narrowed by `!isMinimal` so this only applies where the Mach chrome is
+   * actually on screen. Switching this store's navbar to "minimal" renders the
+   * minimal template's own navigation and bottom nav, and its desktop cart
+   * pill below is part of that template — Mach must not reach in and remove it.
+   */
+  const isMachStorefront = isSupplementStore() && !isMinimal;
 
   // ── Coming-soon gate (minimal template only) ──────────────────────────────
   const { session } = useContext(AuthContext);
@@ -209,8 +237,11 @@ function LayoutShell({
 
   const renderNavbar = () => {
     switch (layoutSettings.header.navbarStyle) {
+      // "editorial" is the stored navbarStyle for this storefront; it now
+      // resolves to the Mach navigation. The value is left alone so existing
+      // layout_settings rows keep working.
       case "editorial":
-        return <EditorialNavbar />;
+        return <MachNavbar />;
       case "minimal":
         return <MinimalNavbar />;
       default:
@@ -253,11 +284,14 @@ function LayoutShell({
             {!isDashboardRoute && <GlobalFooter />}
             {!isDashboardRoute && <CartToastContainer />}
             {!isDashboardRoute && <EntryPopup />}
+            {/* Mach's own add-to-cart confirmation. Replaces StickyCartBar for
+                this storefront — see the suppression note below. */}
+            {!isDashboardRoute && isMachStorefront && <MachCartToastContainer />}
             {/* Minimal template: mobile relies on the bottom nav's "Offers" tab
                 instead, but desktop still gets this pill — CTA uses the
                 component's own default (/shop, "SHOP MORE") so users chasing
                 a reward threshold land on the catalogue, not a dead end. */}
-            {!isDashboardRoute && !isMinimal && (
+            {!isDashboardRoute && !isMinimal && !isMachStorefront && (
               <StickyCartBar raiseForBottomNav={isMinimal} />
             )}
             {!isDashboardRoute && isMinimal && <StickyCartBar desktopOnly />}

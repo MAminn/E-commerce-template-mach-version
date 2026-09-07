@@ -109,14 +109,11 @@ export default function HeadDefault() {
         crossOrigin='anonymous'
       />
 
-      {/* Preload critical assets - only preload landing.webp */}
-      <link
-        rel='preload'
-        href='/assets/landing.webp'
-        as='image'
-        type='image/webp'
-        fetchPriority='high'
-      />
+      {/* The old fashion hero (assets/landing.webp) used to be preloaded here
+          on every page. No Mach template references it, so the preload only
+          cost every visitor a 57 KB download for an image that is never
+          painted. The legacy templates that do use it still work — a preload
+          is a hint, not a dependency. */}
 
       {/* Font display optimization with React-friendly approach */}
       <link

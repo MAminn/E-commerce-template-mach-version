@@ -78,6 +78,7 @@ export function DashboardSidebar() {
       label: "Storefront",
       items: [
         { label: "Homepage", href: "/dashboard/admin/homepage", icon: Home },
+        { label: "Shop Page", href: "/dashboard/admin/shop", icon: Store },
         { label: "Layout", href: "/dashboard/admin/layout-settings", icon: PanelTop },
         { label: "Templates", href: "/dashboard/admin/templates", icon: Palette },
         { label: "Typography", href: "/dashboard/admin/typography", icon: Type },

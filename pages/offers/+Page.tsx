@@ -166,8 +166,8 @@ export default function OffersPage() {
           </h1>
           <p className='text-sm lg:text-base text-gray-500 mt-3'>
             {isAr
-              ? "عروض حصرية على عطورك المفضلة."
-              : "Exclusive deals on your favorite scents."}
+              ? "عروض حصرية على منتجاتك المفضلة."
+              : "Exclusive deals on your favorite products."}
           </p>
         </div>
 
@@ -319,8 +319,8 @@ export default function OffersPage() {
               </h4>
               <p className='text-xs lg:text-sm text-gray-500 mt-0.5'>
                 {isAr
-                  ? "كن أول من يعرف عن العطور الجديدة والعروض الحصرية."
-                  : "Be the first to know about new scents and exclusive deals."}
+                  ? "كن أول من يعرف عن المنتجات الجديدة والعروض الحصرية."
+                  : "Be the first to know about new products and exclusive deals."}
               </p>
             </div>
           </div>

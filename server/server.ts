@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import pinoPretty from "pino-pretty";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDevMiddleware, renderPage } from "vike/server";
@@ -82,13 +83,17 @@ const root = getRootPath();
 const productionFastifyConfig = { logger: true };
 const developmentFastifyConfig = {
   logger: {
-    transport: {
-      target: "pino-pretty",
-      options: {
-        translateTime: "HH:MM:ss Z",
-        ignore: "pid,hostname",
-      },
-    },
+    // pino-pretty is attached as a direct stream rather than via `transport`.
+    // A transport runs pretty-printing in a thread-stream worker, and on
+    // Windows that worker's startup races the esbuild child process Vite
+    // spawns moments later inside createDevMiddleware() — intermittently
+    // killing the dev server before it ever reaches migrations or listen(),
+    // silently, because the worker owns stdout. Same output, no worker.
+    stream: pinoPretty({
+      translateTime: "HH:MM:ss Z",
+      ignore: "pid,hostname",
+      colorize: true,
+    }),
   },
 };
 

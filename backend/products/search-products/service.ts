@@ -6,6 +6,7 @@ import {
   product,
   productImage,
   productCategory,
+  productVariant,
 } from "#root/shared/database/drizzle/schema";
 import {
   and,
@@ -213,6 +214,30 @@ export const searchProducts = (input: z.infer<typeof searchProductsSchema>) =>
           .orderBy(productImage.sortOrder, productImage.isPrimary)
           .execute();
 
+        // How many option groups each product carries.
+        //
+        // Storefront cards need to know whether a product can go straight into
+        // the cart or has to send the shopper to the product page first. Every
+        // variant group the product page renders is mandatory — it will not
+        // enable Add to Cart until each one has a value — so a non-zero count
+        // means "this product cannot be added without a selection".
+        //
+        // Only the count is returned: the values themselves are the product
+        // page's job, and a card never needs them.
+        const productVariantsQuery = await db
+          .select({ productId: productVariant.productId })
+          .from(productVariant)
+          .where(inArray(productVariant.productId, productIds))
+          .execute();
+
+        const variantCountMap = new Map<string, number>();
+        for (const v of productVariantsQuery) {
+          variantCountMap.set(
+            v.productId,
+            (variantCountMap.get(v.productId) ?? 0) + 1,
+          );
+        }
+
         // Fetch all categories for these products
         const productCategoriesQuery = await db
           .select({
@@ -267,6 +292,7 @@ export const searchProducts = (input: z.infer<typeof searchProductsSchema>) =>
                   ? [{ url: item.imageUrl, isPrimary: true }]
                   : [],
             categories: categories,
+            variantCount: variantCountMap.get(item.id) ?? 0,
           };
         });
 

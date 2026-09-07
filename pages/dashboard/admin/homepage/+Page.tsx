@@ -22,7 +22,10 @@ import {
 } from "#root/components/ui/select";
 import { Separator } from "#root/components/ui/separator";
 import {
+  DEFAULT_DISCOUNTED_LIMIT,
   DEFAULT_HOMEPAGE_CONTENT,
+  DISCOUNTED_LIMIT_MAX,
+  DISCOUNTED_LIMIT_MIN,
   ValuePropIconType,
   type HomepageContent,
   type ValuePropItem,
@@ -49,6 +52,18 @@ import {
 } from "#root/components/template-system/templateConfig";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { HomepageProductPicker } from "#root/components/admin/HomepageProductPicker";
+import {
+  MachHeroCampaignCard,
+  MachMarqueeCard,
+  MachProductGroupCard,
+  MachCategorySelectionCard,
+  MachCampaignBannersCard,
+  MachWhyCard,
+  MachCertificatesCard,
+  MachNewsletterCard,
+  MachClosingCtaCard,
+  MachSectionOrderCard,
+} from "./sections/MachSections";
 import { translations as staticTranslations } from "#root/lib/i18n/translations";
 import type { TranslationOverrides } from "#root/shared/types/layout-settings";
 
@@ -886,6 +901,12 @@ export default function HomepageAdminPage() {
   };
 
   const isMinimal = selectedTemplateId === "landing-minimal";
+  /**
+   * The Mach storefront. Its stored template id is still "landing-editorial"
+   * — that is the key for this store's saved homepage_content row, so it was
+   * kept when the editorial demo was replaced by the Mach implementation.
+   */
+  const isMach = selectedTemplateId === "landing-editorial";
 
   // Helper: render an Arabic translation input below an English field
   // Only renders when the minimal template is selected
@@ -1059,12 +1080,24 @@ export default function HomepageAdminPage() {
       )}
 
       <div className='space-y-6'>
+        {/* ── Mach storefront: page composition ──
+            Section order comes first so the client sees the shape of the page
+            before editing any single section's copy. */}
+        {isMach && (
+          <>
+            <MachSectionOrderCard content={content} setContent={setContent} />
+            <MachMarqueeCard content={content} setContent={setContent} />
+          </>
+        )}
+
         {/* Hero Section — only for non-minimal templates */}
         {!isMinimal && (
           <Card>
             <CardHeader>
               <div className='flex items-center justify-between'>
-                <CardTitle>Hero Section</CardTitle>
+                <CardTitle>
+                  {isMach ? "Hero — Text & Buttons" : "Hero Section"}
+                </CardTitle>
                 <div className='flex items-center gap-2'>
                   <Label htmlFor='hero-enabled'>Enabled</Label>
                   <Switch
@@ -1081,6 +1114,10 @@ export default function HomepageAdminPage() {
               </div>
             </CardHeader>
             <CardContent className='space-y-4'>
+              {/* On Mach the hero switch publishes, it does not lock: the
+                  text and CTA fields below stay editable while the section is
+                  hidden (hence `&& !isMach`). Other templates keep the
+                  original disable-when-off behaviour. */}
               <div>
                 <Label htmlFor='hero-title'>Title</Label>
                 <Input
@@ -1092,8 +1129,8 @@ export default function HomepageAdminPage() {
                       hero: { ...prev.hero, title: e.target.value },
                     }))
                   }
-                  placeholder='Welcome to Our Store'
-                  disabled={!content.hero.enabled}
+                  placeholder='FUEL THE NEXT LEVEL'
+                  disabled={!content.hero.enabled && !isMach}
                 />
                 {getHeroTitleWarning() && (
                   <p className='text-sm text-amber-600 mt-1'>
@@ -1113,8 +1150,8 @@ export default function HomepageAdminPage() {
                       hero: { ...prev.hero, subtitle: e.target.value },
                     }))
                   }
-                  placeholder='Discover amazing products curated just for you'
-                  disabled={!content.hero.enabled}
+                  placeholder='MACH SUPPLEMENTS'
+                  disabled={!content.hero.enabled && !isMach}
                   rows={2}
                 />
                 {getHeroSubtitleWarning() && (
@@ -1122,6 +1159,32 @@ export default function HomepageAdminPage() {
                     ⚠️ {getHeroSubtitleWarning()}
                   </p>
                 )}
+                <p className='text-sm text-muted-foreground mt-1'>
+                  Renders as the small eyebrow line above the headline.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor='hero-supporting-text'>
+                  Supporting Text (optional)
+                </Label>
+                <Textarea
+                  id='hero-supporting-text'
+                  value={content.hero.supportingText ?? ""}
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      hero: { ...prev.hero, supportingText: e.target.value },
+                    }))
+                  }
+                  placeholder='Protein, creatine and pre-workout formulated for real training loads...'
+                  disabled={!content.hero.enabled && !isMach}
+                  rows={2}
+                />
+                <p className='text-sm text-muted-foreground mt-1'>
+                  Short paragraph shown under the headline. Leave empty to hide
+                  it.
+                </p>
               </div>
 
               <div>
@@ -1135,8 +1198,8 @@ export default function HomepageAdminPage() {
                       hero: { ...prev.hero, ctaText: e.target.value },
                     }))
                   }
-                  placeholder='Start Shopping'
-                  disabled={!content.hero.enabled}
+                  placeholder='SHOP SUPPLEMENTS'
+                  disabled={!content.hero.enabled && !isMach}
                 />
                 {getHeroCtaTextWarning() && (
                   <p className='text-sm text-amber-600 mt-1'>
@@ -1151,7 +1214,7 @@ export default function HomepageAdminPage() {
                   <Select
                     value={content.hero.ctaLink}
                     onValueChange={handleHeroCTAChange}
-                    disabled={!content.hero.enabled}>
+                    disabled={!content.hero.enabled && !isMach}>
                     <SelectTrigger id='hero-cta-link'>
                       <SelectValue placeholder='Select a page' />
                     </SelectTrigger>
@@ -1170,7 +1233,7 @@ export default function HomepageAdminPage() {
                         value={heroCTACustomValue}
                         onChange={(e) => handleCustomCTAChange(e.target.value)}
                         placeholder='/your-page or https://example.com'
-                        disabled={!content.hero.enabled}
+                        disabled={!content.hero.enabled && !isMach}
                         className={
                           heroCTACustomValue &&
                           !validateCustomCTA(heroCTACustomValue)
@@ -1187,7 +1250,7 @@ export default function HomepageAdminPage() {
                             hero: { ...prev.hero, ctaLink: "/shop" },
                           }));
                         }}
-                        disabled={!content.hero.enabled}>
+                        disabled={!content.hero.enabled && !isMach}>
                         Use Preset
                       </Button>
                     </div>
@@ -1201,6 +1264,10 @@ export default function HomepageAdminPage() {
                 )}
               </div>
 
+              {/* Legacy flat background fields — superseded on Mach by
+                  the campaign MediaSlot (mobile crop, video, focal point). */}
+              {!isMach && (
+                <>
               <div>
                 <Label htmlFor='hero-bg-image'>
                   Background Image URL (optional)
@@ -1412,12 +1479,21 @@ export default function HomepageAdminPage() {
                   </div>
                 )}
               </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {/* Hero Carousel Slides */}
-        <Card>
+        {/* Hero — media, placement and second CTA (Mach). Rendered right
+            after the text fields above so the hero reads as one editor. */}
+        {isMach && (
+          <MachHeroCampaignCard content={content} setContent={setContent} />
+        )}
+
+        {/* Hero Carousel Slides — not used by the Mach hero */}
+        {!isMach && (
+          <Card>
           <CardHeader>
             <div className='flex items-center justify-between'>
               <CardTitle className='text-base'>Hero Carousel Slides</CardTitle>
@@ -1713,7 +1789,8 @@ export default function HomepageAdminPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+          </Card>
+        )}
 
         {/* Brand Statement Section — only for non-minimal templates */}
         {!isMinimal && (
@@ -1754,7 +1831,7 @@ export default function HomepageAdminPage() {
                       },
                     }))
                   }
-                  placeholder='Worn with intention. Designed for life.'
+                  placeholder='Train hard. Recover harder.'
                   disabled={!content.brandStatement.enabled}
                 />
               </div>
@@ -1773,7 +1850,7 @@ export default function HomepageAdminPage() {
                       },
                     }))
                   }
-                  placeholder='Every piercing is an expression of self...'
+                  placeholder='Mach is built for people who show up...'
                   disabled={!content.brandStatement.enabled}
                   rows={3}
                 />
@@ -1799,7 +1876,7 @@ export default function HomepageAdminPage() {
                   disabled={!content.brandStatement.enabled}
                 />
                 <p className='text-sm text-muted-foreground mt-1'>
-                  Recommended: Editorial portrait image (ear piercing close-up)
+                  Recommended: a wide training / product shot. Leave empty to use the built-in typographic panel.
                 </p>
 
                 {/* Upload Controls */}
@@ -2415,7 +2492,7 @@ export default function HomepageAdminPage() {
                   }))
                 }
                 placeholder='Offers'
-                disabled={!(content.discountedProducts?.enabled ?? true)}
+                disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
               />
               {isMinimal && (
                 <div className='mt-1'>
@@ -2442,7 +2519,7 @@ export default function HomepageAdminPage() {
                     }
                     placeholder='عروض'
                     className='text-sm mt-0.5'
-                    disabled={!(content.discountedProducts?.enabled ?? true)}
+                    disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
                   />
                 </div>
               )}
@@ -2468,7 +2545,7 @@ export default function HomepageAdminPage() {
                   }))
                 }
                 placeholder='View All'
-                disabled={!(content.discountedProducts?.enabled ?? true)}
+                disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
               />
               {isMinimal && (
                 <div className='mt-1'>
@@ -2495,7 +2572,7 @@ export default function HomepageAdminPage() {
                     }
                     placeholder='عرض الكل'
                     className='text-sm mt-0.5'
-                    disabled={!(content.discountedProducts?.enabled ?? true)}
+                    disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
                   />
                 </div>
               )}
@@ -2523,16 +2600,64 @@ export default function HomepageAdminPage() {
                   },
                 }))
               }
-              disabled={!(content.discountedProducts?.enabled ?? true)}
+              disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
             />
+
+            {/* How many offers reach the homepage shelf. The query returns
+                every discounted product; this is the merchant deciding how
+                much of that belongs on the front page. */}
+            <div>
+              <Label htmlFor='discounted-limit'>Products shown on homepage</Label>
+              <Input
+                id='discounted-limit'
+                type='number'
+                min={DISCOUNTED_LIMIT_MIN}
+                max={DISCOUNTED_LIMIT_MAX}
+                className='max-w-[8rem]'
+                value={
+                  content.discountedProducts?.limit ?? DEFAULT_DISCOUNTED_LIMIT
+                }
+                onChange={(e) =>
+                  setContent((prev) => ({
+                    ...prev,
+                    discountedProducts: {
+                      ...(prev.discountedProducts ?? {
+                        enabled: true,
+                        title: "",
+                        viewAllText: "",
+                        viewAllLink: "/shop",
+                      }),
+                      limit: Math.min(
+                        DISCOUNTED_LIMIT_MAX,
+                        Math.max(
+                          DISCOUNTED_LIMIT_MIN,
+                          Number.parseInt(e.target.value, 10) ||
+                            DEFAULT_DISCOUNTED_LIMIT,
+                        ),
+                      ),
+                    },
+                  }))
+                }
+                disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
+              />
+              <p className='text-sm text-muted-foreground mt-1'>
+                Between {DISCOUNTED_LIMIT_MIN} and {DISCOUNTED_LIMIT_MAX}. The
+                rest stay on the offers page behind &ldquo;view all&rdquo;.
+              </p>
+            </div>
+
           </CardContent>
         </Card>
 
-        {/* Featured Products Section */}
+        {/* Featured Products Section — "Best Sellers" on the Mach storefront.
+            Same slot, same storage; only the label the client sees differs, so
+            they can find the card that drives the row they are looking at. */}
         <Card>
           <CardHeader>
             <div className='flex items-center justify-between'>
-              <CardTitle>Featured Products Section</CardTitle>
+              <CardTitle>
+                {isMach ? "Best Sellers" : "Featured Products Section"}
+              </CardTitle>
               <div className='flex items-center gap-2'>
                 <Label htmlFor='featured-enabled'>Enabled</Label>
                 <Switch
@@ -2656,6 +2781,28 @@ export default function HomepageAdminPage() {
               )}
             </div>
 
+            {/* The row's destination. Stored all along, but there was no
+                field for it, so the link label was editable and the link it
+                pointed at was not. */}
+            <div>
+              <Label htmlFor='featured-view-all-link'>View All Link</Label>
+              <Input
+                id='featured-view-all-link'
+                value={content.featuredProducts.viewAllLink ?? ""}
+                onChange={(e) =>
+                  setContent((prev) => ({
+                    ...prev,
+                    featuredProducts: {
+                      ...prev.featuredProducts,
+                      viewAllLink: e.target.value,
+                    },
+                  }))
+                }
+                placeholder='/shop'
+                disabled={!content.featuredProducts.enabled && !isMach}
+              />
+            </div>
+
             <div className='bg-muted p-3 rounded-md'>
               <p className='text-sm text-muted-foreground'>
                 <strong>Note:</strong> Use the product picker below to manually
@@ -2677,6 +2824,35 @@ export default function HomepageAdminPage() {
             />
           </CardContent>
         </Card>
+
+        {/* ── Mach storefront: merchandising + trust ── */}
+        {isMach && (
+          <>
+            {/* The discovery band under the hero. Which broad groups get a
+                tile, and in what order, is this card — the tile artwork and
+                names come from Dashboard → Categories. */}
+            <MachCategorySelectionCard content={content} setContent={setContent} />
+            <MachProductGroupCard
+              sectionKey='stacks'
+              title='Stacks & Bundles'
+              description='Products sold as stacks or bundles. Pulled live from the broad group you pick, or from a hand-picked selection.'
+              content={content}
+              setContent={setContent}
+            />
+            <MachProductGroupCard
+              sectionKey='gymGear'
+              title='Gym Gear'
+              description='Non-supplement gear. Same controls as Stacks & Bundles — pick the broad group, or hand-pick the products.'
+              content={content}
+              setContent={setContent}
+            />
+            <MachCampaignBannersCard content={content} setContent={setContent} />
+            <MachWhyCard content={content} setContent={setContent} />
+            <MachCertificatesCard content={content} setContent={setContent} />
+            <MachNewsletterCard content={content} setContent={setContent} />
+            <MachClosingCtaCard content={content} setContent={setContent} />
+          </>
+        )}
 
         {/* New Arrivals Section */}
         <Card>

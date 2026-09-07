@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { trpc } from "#root/shared/trpc/client";
+import { mapSearchProducts } from "#root/lib/utils/product-media";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import type { SearchResultProduct } from "#root/components/template-system";
@@ -43,23 +44,20 @@ export default function SearchPage() {
         });
 
         if (res.success && res.result) {
-          const mapped: SearchResultProduct[] = (res.result.items ?? []).map(
-            (p: any) => ({
-              id: p.id,
-              slug: p.slug,
-              name: p.name,
-              price: typeof p.price === "string" ? Number.parseFloat(p.price) : p.price,
-              discountPrice: p.discountPrice
-                ? typeof p.discountPrice === "string"
-                  ? Number.parseFloat(p.discountPrice)
-                  : p.discountPrice
-                : undefined,
-              stock: p.stock ?? 0,
-              imageUrl: p.imageUrl ?? p.images?.[0] ?? undefined,
-              categoryName: p.categoryName ?? p.categories?.[0]?.name ?? undefined,
-              available: p.available ?? (p.stock ?? 0) > 0,
-            }),
-          );
+          // Shared boundary mapper — normalises product.search's bare disk
+          // filenames to /uploads/ URLs and picks the primary image properly.
+          // The previous `p.images?.[0]` read an object, which stringified to
+          // "[object Object]" as an <img src> whenever imageUrl was absent.
+          const mapped: SearchResultProduct[] = mapSearchProducts(
+            res.result.items ?? [],
+          ).map((p, i) => ({
+            ...p,
+            discountPrice: p.discountPrice ?? undefined,
+            categoryName:
+              p.categoryName ??
+              (res.result?.items?.[i] as any)?.categories?.[0]?.name ??
+              undefined,
+          }));
           setProducts(mapped);
           setTotalResults(res.result.total ?? 0);
         }

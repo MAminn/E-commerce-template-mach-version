@@ -12,6 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { v7 } from "uuid";
+import type { SupplementInfo } from "#root/shared/types/supplement-info";
 
 export const userRole = pgEnum("user_role", ["admin", "vendor", "user", "superadmin"]);
 
@@ -360,6 +361,15 @@ export const product = pgTable("product", {
   bestLayeredWithIds: jsonb("best_layered_with_ids")
     .default([])
     .$type<string[]>(),
+  /** Stock-keeping unit. Optional, no uniqueness constraint yet — first-class
+   * catalogue data rather than a JSON attribute so it can be indexed, searched
+   * and constrained later without a data move. */
+  sku: text("sku"),
+  /** Supplement label data shown on the product page: serving information,
+   * ingredients, directions, warnings and the Supplement Facts panel.
+   * Nullable — legacy (perfume-era) products simply have none, so no backfill
+   * is required. Arabic keys can be added here later without a migration. */
+  supplementInfo: jsonb("supplement_info").$type<SupplementInfo>(),
 }, (table) => ({
   slugUnique: uniqueIndex("product_slug_idx").on(table.slug),
 }));

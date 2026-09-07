@@ -7,6 +7,7 @@ import { Badge } from "#root/components/ui/badge";
 import { Separator } from "#root/components/ui/separator";
 import { HomeFeaturedProducts } from "../home/HomeFeaturedProducts";
 import type { FeaturedProduct } from "../home/HomeFeaturedProducts";
+import type { SupplementInfo } from "#root/shared/types/supplement-info";
 import {
   ShoppingCart,
   Heart,
@@ -94,6 +95,8 @@ export interface ProductPageProduct extends FeaturedProduct {
   fragranceInfo?: ProductFragranceInfo | null;
   /** Admin-picked products for the "Best Layered With" section; empty/absent falls back to automatic category suggestions. */
   bestLayeredWith?: FeaturedProduct[];
+  /** Supplement label data. Absent on non-supplement/legacy products. */
+  supplementInfo?: SupplementInfo | null;
 }
 
 /**

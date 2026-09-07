@@ -3,9 +3,9 @@ import { layoutSettings } from "#root/shared/database/drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import type { LayoutSettings } from "#root/shared/types/layout-settings";
 import {
-  DEFAULT_LAYOUT_SETTINGS,
   DEFAULT_LOGO_SIZE,
   DEFAULT_FOOTER_LOGO_SIZE,
+  getDefaultLayoutSettings,
 } from "#root/shared/types/layout-settings";
 
 /**
@@ -16,6 +16,10 @@ export async function getLayoutSettings(
   merchantId: string,
   templateId?: string,
 ): Promise<LayoutSettings> {
+  // Template-scoped base: a template that ships its own chrome (editorial,
+  // minimal) gets it by default, while a stored row still overrides everything.
+  const defaults = getDefaultLayoutSettings(templateId);
+
   try {
     const database = db();
     const resolvedTemplateId = templateId || "default";
@@ -34,7 +38,7 @@ export async function getLayoutSettings(
 
     if (result.length > 0 && result[0]?.content) {
       const stored = result[0].content as unknown as LayoutSettings;
-      return mergeWithDefaults(stored);
+      return mergeWithDefaults(stored, defaults);
     }
 
     // 2. Fallback to legacy "default" row for backward compatibility
@@ -52,15 +56,15 @@ export async function getLayoutSettings(
 
       if (fallback.length > 0 && fallback[0]?.content) {
         const stored = fallback[0].content as unknown as LayoutSettings;
-        return mergeWithDefaults(stored);
+        return mergeWithDefaults(stored, defaults);
       }
     }
 
     // 3. Hardcoded defaults
-    return DEFAULT_LAYOUT_SETTINGS;
+    return defaults;
   } catch (error) {
     console.error("Error fetching layout settings:", error);
-    return DEFAULT_LAYOUT_SETTINGS;
+    return defaults;
   }
 }
 
@@ -68,14 +72,17 @@ export async function getLayoutSettings(
  * Merges stored settings with defaults to ensure all required fields exist.
  * Prevents errors if the schema evolves or data is incomplete.
  */
-function mergeWithDefaults(stored: Partial<LayoutSettings>): LayoutSettings {
+function mergeWithDefaults(
+  stored: Partial<LayoutSettings>,
+  base: LayoutSettings,
+): LayoutSettings {
   return {
-    siteTitle: stored.siteTitle ?? DEFAULT_LAYOUT_SETTINGS.siteTitle,
-    faviconUrl: stored.faviconUrl ?? DEFAULT_LAYOUT_SETTINGS.faviconUrl,
-    shareImageUrl: stored.shareImageUrl ?? DEFAULT_LAYOUT_SETTINGS.shareImageUrl,
-    translationOverrides: stored.translationOverrides ?? DEFAULT_LAYOUT_SETTINGS.translationOverrides,
+    siteTitle: stored.siteTitle ?? base.siteTitle,
+    faviconUrl: stored.faviconUrl ?? base.faviconUrl,
+    shareImageUrl: stored.shareImageUrl ?? base.shareImageUrl,
+    translationOverrides: stored.translationOverrides ?? base.translationOverrides,
     header: {
-      ...DEFAULT_LAYOUT_SETTINGS.header,
+      ...base.header,
       ...stored.header,
       logoSize: {
         ...DEFAULT_LOGO_SIZE,
@@ -83,10 +90,10 @@ function mergeWithDefaults(stored: Partial<LayoutSettings>): LayoutSettings {
       },
       navigationLinks:
         stored.header?.navigationLinks ??
-        DEFAULT_LAYOUT_SETTINGS.header.navigationLinks,
+        base.header.navigationLinks,
     },
     footer: {
-      ...DEFAULT_LAYOUT_SETTINGS.footer,
+      ...base.footer,
       ...stored.footer,
       logoSize: {
         ...DEFAULT_FOOTER_LOGO_SIZE,
@@ -94,10 +101,10 @@ function mergeWithDefaults(stored: Partial<LayoutSettings>): LayoutSettings {
       },
       footerLinkGroups:
         stored.footer?.footerLinkGroups ??
-        DEFAULT_LAYOUT_SETTINGS.footer.footerLinkGroups,
+        base.footer.footerLinkGroups,
       socialLinks:
         stored.footer?.socialLinks ??
-        DEFAULT_LAYOUT_SETTINGS.footer.socialLinks,
+        base.footer.socialLinks,
     },
   };
 }

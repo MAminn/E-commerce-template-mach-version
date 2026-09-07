@@ -3,7 +3,11 @@ import { Link } from "#root/components/utils/Link";
 import { ArrowRight } from "lucide-react";
 import { STORE_NAME } from "#root/shared/config/branding";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
-import type { SocialPlatform } from "#root/shared/types/layout-settings";
+import {
+  isPlaceholderLink,
+  PLACEHOLDER_LINK_URL,
+  type SocialPlatform,
+} from "#root/shared/types/layout-settings";
 import { FooterLogo } from "#root/components/globals/FooterLogo";
 
 /* ------------------------------------------------------------------ */
@@ -76,32 +80,81 @@ const DEFAULT_SOCIAL_LINKS = [
   { id: "tiktok", name: "TikTok", url: "#", Icon: TikTokIcon },
 ];
 
-const DEFAULT_FOOTER_COLUMNS = [
+/**
+ * Static fallback used only when the CMS has no footer link groups saved.
+ * Destinations that don't exist yet carry the placeholder sentinel so they
+ * render as inert "soon" items rather than links that lead nowhere.
+ */
+const DEFAULT_FOOTER_COLUMNS: {
+  title: string;
+  links: { label: string; href: string }[];
+}[] = [
   {
     title: "Shop",
     links: [
-      { label: "All Products", href: "/shop" },
-      { label: "New Arrivals", href: "/shop" },
+      { label: "Shop All", href: "/shop" },
+      { label: "Best Sellers", href: "/shop?section=featured" },
+      { label: "New Arrivals", href: "/shop?section=newarrivals" },
     ],
   },
   {
     title: "Company",
     links: [
-      { label: "About", href: "#" },
-      { label: "Sustainability", href: "#" },
-      { label: "Careers", href: "#" },
+      { label: "About Mach", href: "/#about" },
+      { label: "Contact", href: PLACEHOLDER_LINK_URL },
     ],
   },
   {
     title: "Support",
     links: [
-      { label: "Contact Us", href: "#" },
-      { label: "Shipping & Returns", href: "#" },
-      { label: "FAQ", href: "#" },
-      { label: "Privacy Policy", href: "#" },
+      { label: "Shipping & Returns", href: PLACEHOLDER_LINK_URL },
+      { label: "FAQ", href: PLACEHOLDER_LINK_URL },
     ],
   },
-] as const;
+];
+
+/** Legal pages that haven't been published yet — same placeholder treatment. */
+const LEGAL_LINKS: { label: string; href: string }[] = [
+  { label: "Terms", href: PLACEHOLDER_LINK_URL },
+  { label: "Privacy", href: PLACEHOLDER_LINK_URL },
+];
+
+/**
+ * Renders a footer destination as a real link, or — when the destination
+ * doesn't exist yet — as an inert, visibly-pending label. Keeps us from
+ * shipping hrefs that quietly go nowhere while the pages are still being
+ * built; set a real url in Dashboard → Layout Settings to activate one.
+ */
+function FooterLink({
+  href,
+  label,
+  className,
+  pendingClassName,
+}: {
+  href: string;
+  label: string;
+  className: string;
+  pendingClassName: string;
+}) {
+  if (isPlaceholderLink(href)) {
+    return (
+      <span
+        aria-disabled='true'
+        title={`${label} — coming soon`}
+        className={pendingClassName}>
+        {label}
+        <span className='ml-2 align-middle text-[9px] tracking-[0.18em] uppercase text-white/25'>
+          Soon
+        </span>
+      </span>
+    );
+  }
+  return (
+    <Link href={href} className={className}>
+      {label}
+    </Link>
+  );
+}
 
 const socialIconMap: Record<SocialPlatform, FC> = {
   facebook: FacebookIcon,
@@ -118,14 +171,12 @@ const socialIconMap: Record<SocialPlatform, FC> = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Editorial Footer — Zara / COS calm aesthetic.
+ * Editorial Footer — Mach Supplements chrome.
  *
- * - `bg-stone-950` dark canvas
- * - 4-column desktop: Brand | Shop | Company | Support
- * - Newsletter section at top
- * - Social icons, legal strip at bottom
- * - text-xs tracking-[0.32em] uppercase headings
- * - text-sm text-white/75 links
+ * - Near-black `--mach-ink` canvas with a volt accent rule
+ * - Desktop grid: Brand | Shop | Company | Support (all CMS-driven)
+ * - Newsletter block at top, social icons + legal strip at the bottom
+ * - Destinations that don't exist yet render as inert "soon" labels
  */
 export function EditorialFooter() {
   const [email, setEmail] = useState("");
@@ -134,7 +185,7 @@ export function EditorialFooter() {
   // CMS values with fallbacks
   const effectiveDescription =
     layoutSettings.footer.description ||
-    "Curated fashion, quiet confidence. Crafted with intention for the modern individual.";
+    "Sports nutrition engineered for serious training. Tested, trusted, and built to fuel the next level.";
   const effectiveCopyright = layoutSettings.footer.copyright || STORE_NAME;
   const effectiveShowNewsletter = layoutSettings.footer.showNewsletter;
 
@@ -158,6 +209,12 @@ export function EditorialFooter() {
         }))
       : DEFAULT_FOOTER_COLUMNS;
 
+  // Social entries the merchant hasn't filled in yet shouldn't render as
+  // dead outbound icons.
+  const VISIBLE_SOCIAL_LINKS = SOCIAL_LINKS.filter(
+    (social) => !isPlaceholderLink(social.url),
+  );
+
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim()) {
@@ -167,19 +224,19 @@ export function EditorialFooter() {
   };
 
   return (
-    <footer className='bg-stone-950 text-white/60 selection:bg-white/10'>
+    <footer className='bg-[var(--mach-ink)] text-white/60 selection:bg-[var(--mach-accent)] selection:text-[var(--mach-on-accent)]'>
       {/* ── Newsletter ── */}
       {effectiveShowNewsletter && (
         <div className='border-b border-white/[0.06]'>
           <div className='mx-auto max-w-6xl px-6 md:px-12 lg:px-10 py-16 md:py-20'>
             <div className='max-w-xl mx-auto text-center space-y-6'>
-              <div className='w-8 h-px bg-white/15 mx-auto' />
-              <h3 className='text-xs tracking-[0.32em] uppercase text-white/50 font-light'>
-                Stay in the loop
+              <div className='w-10 h-0.5 bg-[var(--mach-accent)] mx-auto' />
+              <h3 className='text-xs tracking-[0.3em] uppercase text-white/80 font-bold'>
+                Join the Mach crew
               </h3>
               <p className='text-sm text-white/40 font-light leading-relaxed max-w-sm mx-auto'>
-                New arrivals, exclusive offers &amp; editorial moments —
-                delivered quietly.
+                Drop dates, restocks &amp; training-day offers — straight to
+                your inbox.
               </p>
               <form
                 onSubmit={handleSubscribe}
@@ -190,11 +247,11 @@ export function EditorialFooter() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder='your@email.com'
                   required
-                  className='flex-1 bg-transparent border-0 border-b border-white/10 px-0 pb-3 pt-1 text-sm text-white/80 placeholder:text-white/20 font-light tracking-wide focus:outline-none focus:border-white/40 transition-colors duration-500'
+                  className='flex-1 bg-transparent border-0 border-b border-white/15 px-0 pb-3 pt-1 text-sm text-white/85 placeholder:text-white/25 font-light tracking-wide focus:outline-none focus:border-[var(--mach-accent)] transition-colors duration-500'
                 />
                 <button
                   type='submit'
-                  className='pb-3 text-white/30 hover:text-white/70 transition-colors duration-500'
+                  className='pb-3 text-white/40 hover:text-[var(--mach-accent)] transition-colors duration-500'
                   aria-label='Subscribe'>
                   <ArrowRight className='w-[18px] h-[18px]' strokeWidth={1.2} />
                 </button>
@@ -208,20 +265,20 @@ export function EditorialFooter() {
       <div className='mx-auto max-w-6xl px-6 md:px-12 lg:px-10 py-14 md:py-16'>
         <div className='grid grid-cols-1 md:grid-cols-12 gap-12 md:gap-8 lg:gap-10'>
           {/* Brand column */}
-          <div className='md:col-span-4 lg:col-span-4 space-y-5'>
-            <FooterLogo textClassName='inline-block text-xl md:text-2xl font-extralight tracking-[0.18em] text-white/90 uppercase hover:text-white transition-colors duration-500' />
-            <div className='w-8 h-px bg-white/10' />
+          <div className='md:col-span-12 lg:col-span-5 space-y-5'>
+            <FooterLogo textClassName='inline-block text-xl md:text-2xl font-black tracking-[0.2em] text-white uppercase hover:text-[var(--mach-accent)] transition-colors duration-500' />
+            <div className='w-10 h-0.5 bg-[var(--mach-accent)]' />
             <p className='text-xs text-white/35 font-light leading-relaxed max-w-[260px]'>
               {effectiveDescription}
             </p>
             <div className='flex items-center gap-5 pt-2'>
-              {SOCIAL_LINKS.map((social) => (
+              {VISIBLE_SOCIAL_LINKS.map((social) => (
                 <a
                   key={social.id}
                   href={social.url}
                   target='_blank'
                   rel='noopener noreferrer'
-                  className='text-white/25 hover:text-white/60 transition-colors duration-500'
+                  className='text-white/30 hover:text-[var(--mach-accent)] transition-colors duration-500'
                   aria-label={`Visit our ${social.name} page`}>
                   <social.Icon />
                 </a>
@@ -229,28 +286,29 @@ export function EditorialFooter() {
             </div>
           </div>
 
-          {/* Spacer */}
-          <div className='hidden lg:block lg:col-span-2' />
-
-          {/* Link columns */}
+          {/* Link columns — their own track so column widths don't depend on
+              how many groups the CMS happens to define. */}
+          <div className='grid grid-cols-2 gap-8 sm:grid-cols-3 md:col-span-12 lg:col-span-7'>
           {FOOTER_COLUMNS.map((column) => (
-            <div key={column.title} className='md:col-span-2 lg:col-span-2'>
-              <h4 className='text-[10px] tracking-[0.32em] uppercase text-white/40 font-normal mb-6'>
+            <div key={column.title} className='min-w-0'>
+              <h4 className='text-[10px] tracking-[0.28em] uppercase text-white/70 font-bold mb-6'>
                 {column.title}
               </h4>
               <ul className='space-y-4'>
                 {column.links.map((link) => (
                   <li key={link.label}>
-                    <Link
+                    <FooterLink
                       href={link.href}
-                      className='text-sm text-white/45 hover:text-white/80 font-light tracking-wide transition-colors duration-500'>
-                      {link.label}
-                    </Link>
+                      label={link.label}
+                      className='text-[12px] uppercase leading-snug tracking-[0.05em] text-white/55 hover:text-white transition-colors duration-500'
+                      pendingClassName='inline-flex items-baseline text-[12px] uppercase leading-snug tracking-[0.05em] text-white/25 cursor-default'
+                    />
                   </li>
                 ))}
               </ul>
             </div>
           ))}
+          </div>
         </div>
       </div>
 
@@ -261,21 +319,15 @@ export function EditorialFooter() {
             &copy; {new Date().getFullYear()} {effectiveCopyright}
           </p>
           <div className='flex items-center gap-6'>
-            <Link
-              href='#'
-              className='text-[10px] text-white/20 hover:text-white/40 font-light tracking-[0.08em] transition-colors duration-500'>
-              Terms
-            </Link>
-            <Link
-              href='#'
-              className='text-[10px] text-white/20 hover:text-white/40 font-light tracking-[0.08em] transition-colors duration-500'>
-              Privacy
-            </Link>
-            <Link
-              href='#'
-              className='text-[10px] text-white/20 hover:text-white/40 font-light tracking-[0.08em] transition-colors duration-500'>
-              Cookies
-            </Link>
+            {LEGAL_LINKS.map((link) => (
+              <FooterLink
+                key={link.label}
+                href={link.href}
+                label={link.label}
+                className='text-[10px] text-white/25 hover:text-white/60 font-light tracking-[0.08em] transition-colors duration-500'
+                pendingClassName='inline-flex items-baseline text-[10px] text-white/20 font-light tracking-[0.08em] cursor-default'
+              />
+            ))}
           </div>
         </div>
       </div>

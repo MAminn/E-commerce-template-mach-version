@@ -542,7 +542,7 @@ export default function LayoutSettingsPage() {
               onChange={(e) =>
                 setSettings((prev) => ({ ...prev, siteTitle: e.target.value }))
               }
-              placeholder='e.g. MATCH Perfumes — Official Store'
+              placeholder='e.g. Mach Supplements — Official Store'
               className='mt-1'
             />
             <p className='text-xs text-muted-foreground mt-1'>
@@ -697,9 +697,14 @@ export default function LayoutSettingsPage() {
                       desc: "Clean pill-style links, smooth scroll transitions",
                     },
                     {
+                      // The stored value stays "editorial": it is persisted in
+                      // layout_settings and keyed to this storefront's saved
+                      // rows, so renaming it would mean rewriting client data
+                      // for no user-visible gain. Only the label changed — this
+                      // value now renders the Mach navbar.
                       value: "editorial" as NavbarStyle,
-                      label: "Editorial (Luxury)",
-                      desc: "Uppercase tracking, Framer Motion transitions",
+                      label: "Mach (Performance)",
+                      desc: "Centred wordmark, full-width drawer, transparent over the hero",
                     },
                     {
                       value: "minimal" as NavbarStyle,
@@ -910,7 +915,7 @@ export default function LayoutSettingsPage() {
                   id='header-tagline'
                   value={settings.header.tagline}
                   onChange={(e) => updateHeader("tagline", e.target.value)}
-                  placeholder='e.g. Curated fashion, quiet confidence'
+                  placeholder='e.g. Sports nutrition engineered for serious training'
                   className='mt-1'
                 />
               </div>
@@ -1293,7 +1298,7 @@ export default function LayoutSettingsPage() {
                 id='footer-description'
                 value={settings.footer.description}
                 onChange={(e) => updateFooter("description", e.target.value)}
-                placeholder='e.g. Curated fashion, quiet confidence.'
+                placeholder='e.g. Sports nutrition engineered for serious training.'
                 rows={3}
                 className='mt-1'
               />
@@ -1487,8 +1492,12 @@ export default function LayoutSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Footer Contact Info (minimal only) */}
-          {settings.header.navbarStyle === "minimal" && (
+          {/* Footer Contact Info — rendered by the minimal footer and by the
+              Mach footer (navbarStyle "editorial"). The default footer has no
+              contact column, so it stays hidden there rather than offering a
+              field that goes nowhere. */}
+          {(settings.header.navbarStyle === "minimal" ||
+            settings.header.navbarStyle === "editorial") && (
             <Card>
               <CardHeader>
                 <CardTitle className='text-base'>Footer Contact Info</CardTitle>

@@ -43,6 +43,8 @@ export type { LandingTemplateClassicProps } from "./landing/LandingTemplateClass
 
 export { LandingTemplateEditorial } from "./landing/LandingTemplateEditorial";
 export type { LandingTemplateEditorialProps } from "./landing/LandingTemplateEditorial";
+export { LandingTemplateMach } from "./landing/LandingTemplateMach";
+export type { LandingTemplateMachProps } from "./landing/LandingTemplateMach";
 
 export { LandingTemplateMinimal } from "./landing/LandingTemplateMinimal";
 export type { LandingTemplateMinimalProps } from "./landing/LandingTemplateMinimal";

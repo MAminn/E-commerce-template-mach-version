@@ -9,7 +9,12 @@ import {
 import { ServerError } from "#root/shared/error/server";
 import { Effect } from "effect";
 import { z } from "zod";
-import { validateProductRules, fragranceInfoSchema } from "../shared";
+import {
+  validateProductRules,
+  fragranceInfoSchema,
+  supplementInfoSchema,
+  skuSchema,
+} from "../shared";
 import { getStoreOwnerId } from "#root/shared/config/store";
 import { generateUniqueProductSlug } from "../slug";
 import { eq } from "drizzle-orm";
@@ -54,6 +59,8 @@ export const createProductSchema = z.object({
   sortOrder: z.number().int().min(0).optional(),
   hidden: z.boolean().optional().default(false),
   fragranceInfo: fragranceInfoSchema,
+  sku: skuSchema,
+  supplementInfo: supplementInfoSchema,
   bestLayeredWithIds: z.array(z.string().uuid()).optional(),
 });
 
@@ -97,6 +104,8 @@ export const createProduct = (
               sortOrder: data.sortOrder ?? 0,
               hidden: data.hidden ?? false,
               fragranceInfo: data.fragranceInfo ?? null,
+              sku: data.sku ?? null,
+              supplementInfo: data.supplementInfo ?? null,
               bestLayeredWithIds: data.bestLayeredWithIds ?? [],
             })
             .returning()

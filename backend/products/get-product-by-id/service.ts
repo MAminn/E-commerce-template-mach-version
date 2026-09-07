@@ -12,6 +12,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { ServerError } from "#root/shared/error/server";
+import type { SupplementInfo } from "#root/shared/types/supplement-info";
 
 // Accepts either the product's slug (new URLs) or its raw UUID (old
 // bookmarked/shared links) — the single query below matches either.
@@ -107,35 +108,54 @@ export const getProductById = (input: z.infer<typeof getProductByIdSchema>) =>
           .from(productVariant)
           .where(eq(productVariant.productId, foundProduct.id));
 
-        // Fetch the admin-picked "Best Layered With" products, if any.
-        // Falls back to [] when unset — the frontend uses its own
-        // category-based suggestions in that case.
-        const bestLayeredWithIds = (foundProduct.bestLayeredWithIds ??
-          []) as string[];
-        const bestLayeredWith =
-          bestLayeredWithIds.length > 0
-            ? await db
-                .select({
-                  id: product.id,
-                  slug: product.slug,
-                  name: product.name,
-                  price: product.price,
-                  discountPrice: product.discountPrice,
-                  stock: product.stock,
-                  imageUrl: file.diskname,
-                  categoryName: category.name,
-                })
-                .from(product)
-                .leftJoin(file, eq(product.imageId, file.id))
-                .innerJoin(category, eq(product.categoryId, category.id))
-                .where(
-                  and(
-                    inArray(product.id, bestLayeredWithIds),
-                    eq(product.deleted, false),
-                    eq(product.hidden, false),
-                  ),
-                )
-            : [];
+        // ── Curated product relationships ────────────────────────────────
+        // Both lists store product IDs only; name/price/image/stock are always
+        // resolved live here so the relationship can never hold stale copies of
+        // another product's data. Deleted and hidden products are dropped, and
+        // the admin's manual ordering is restored after the query (SQL IN does
+        // not preserve the order of the id list).
+        const resolveProductRefs = async (ids: string[]) => {
+          const wanted = ids.filter((id) => id !== foundProduct.id);
+          if (wanted.length === 0) return [];
+          const rows = await db
+            .select({
+              id: product.id,
+              slug: product.slug,
+              name: product.name,
+              price: product.price,
+              discountPrice: product.discountPrice,
+              stock: product.stock,
+              imageUrl: file.diskname,
+              categoryName: category.name,
+            })
+            .from(product)
+            .leftJoin(file, eq(product.imageId, file.id))
+            .innerJoin(category, eq(product.categoryId, category.id))
+            .where(
+              and(
+                inArray(product.id, wanted),
+                eq(product.deleted, false),
+                eq(product.hidden, false),
+              ),
+            );
+          const byId = new Map(rows.map((r) => [r.id, r]));
+          return wanted
+            .map((id) => byId.get(id))
+            .filter((r): r is (typeof rows)[number] => Boolean(r));
+        };
+
+        // Add-ons / Frequently Bought Together. Column name is the legacy
+        // "best_layered_with_ids" — kept for data compatibility; the concept is
+        // a neutral curated cross-sell list.
+        const bestLayeredWith = await resolveProductRefs(
+          (foundProduct.bestLayeredWithIds ?? []) as string[],
+        );
+
+        // Manually curated related products. Empty/unset lets the caller fall
+        // back to same-category suggestions.
+        const curatedRelated = await resolveProductRefs(
+          foundProduct.supplementInfo?.relatedProductIds ?? [],
+        );
 
         // Format the final product object
         const formattedProduct = {
@@ -180,6 +200,20 @@ export const getProductById = (input: z.infer<typeof getProductByIdSchema>) =>
           rating: 0,
           reviewCount: 0,
           bestLayeredWith: bestLayeredWith.map((p) => ({
+            id: p.id,
+            slug: p.slug,
+            name: p.name,
+            price: Number(p.price),
+            discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+            stock: p.stock,
+            available: p.stock > 0,
+            imageUrl: p.imageUrl ? `/uploads/${p.imageUrl}` : undefined,
+            images: p.imageUrl
+              ? [{ url: `/uploads/${p.imageUrl}`, isPrimary: true }]
+              : [],
+            categoryName: formatCategoryName(p.categoryName),
+          })),
+          curatedRelatedProducts: curatedRelated.map((p) => ({
             id: p.id,
             slug: p.slug,
             name: p.name,
@@ -238,6 +272,8 @@ export type ProductByIdResult = {
   variants: { name: string; values: string[] }[];
   rating: number;
   reviewCount: number;
+  sku?: string | null;
+  supplementInfo?: SupplementInfo | null;
   fragranceInfo?: {
     tagline?: string;
     taglineAr?: string;

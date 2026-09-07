@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { usePageContext } from "vike-react/usePageContext";
 import { trpc } from "#root/shared/trpc/client";
+import { mapSearchProducts } from "#root/lib/utils/product-media";
+import { MachShopView } from "#root/components/template-system/mach/shop/MachShopView";
+import { useData } from "vike-react/useData";
+import type { Data } from "./+data";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
@@ -19,7 +23,46 @@ import {
  * When the store uses the minimal navbar, renders the dedicated MinimalCategoryPage
  * with paginated grid (3 rows × 4 cols) and translated breadcrumbs / controls.
  */
+/**
+ * Chooses the browsing implementation before any data-loading hook runs, so the
+ * inherited client-side category fetching in `LegacyCategoryPage` is never
+ * mounted while the Mach template is active. One product search per load.
+ *
+ * `isMinimal` is checked first, matching the precedence the legacy route had.
+ */
 export default function CategoryPage() {
+  const pageContext = usePageContext();
+  const slug = pageContext.routeParams?.slug as string;
+  const { getTemplateId } = useTemplate();
+  const layoutSettings = useLayoutSettings();
+  const { shopContent, category } = useData<Data>();
+
+  const isMinimalNavbar = layoutSettings.header.navbarStyle === "minimal";
+  const activeTemplateId = getTemplateId("sorting") ?? "sorting-minimal";
+
+  if (!isMinimalNavbar && activeTemplateId === "sorting-mach") {
+    return (
+      <MachShopView
+        categorySlug={slug}
+        ssrCategory={
+          category
+            ? {
+                id: category.id,
+                name: category.displayName,
+                slug: category.slug,
+                imageUrl: category.imageUrl,
+              }
+            : null
+        }
+        content={shopContent}
+      />
+    );
+  }
+
+  return <LegacyCategoryPage />;
+}
+
+function LegacyCategoryPage() {
   const pageContext = usePageContext();
   const slug = pageContext.routeParams?.slug as string;
   const { getTemplateId } = useTemplate();
@@ -108,18 +151,11 @@ export default function CategoryPage() {
         if (cancelled) return;
 
         if (result.success && result.result) {
-          const mapped: SortingPageProduct[] = result.result.items.map((p) => ({
-            id: p.id,
-            slug: p.slug,
-            name: p.name,
-            price: Number(p.price),
-            discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-            stock: p.stock,
-            imageUrl: p.imageUrl ?? undefined,
-            images: p.images,
-            categoryName: p.categoryName || null,
-            available: p.stock > 0,
-          }));
+          // Shared boundary mapper — normalises bare disk filenames from
+          // product.search into /uploads/ URLs. See lib/utils/product-media.ts.
+          const mapped: SortingPageProduct[] = mapSearchProducts(
+            result.result.items,
+          );
           setProducts(mapped);
           setTotalProducts(result.result.total ?? mapped.length);
         }
