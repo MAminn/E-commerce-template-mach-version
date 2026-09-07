@@ -18,6 +18,12 @@ import { MachQuickAdd } from "./MachQuickAdd";
  * the card has to read as a discrete, clickable object on a white shelf where
  * there is no colour available to separate it from the page.
  *
+ * `variant="shop"` is the browsing-grid treatment, used only by the shop and
+ * category grid. It is opt-in for exactly this reason: the frame, the stage
+ * inset, the meta scale and the quick-add placement all differ there, and the
+ * homepage shelves must not move when the shop does. Nothing below reads it
+ * except through `isShop`, so the shelf path is byte-identical to what it was.
+ *
  * `size="lg"` is used by the page's main shelf (Best Sellers). It is not a
  * bigger card — it is a *cleaner* one: the resting hairline comes off so the
  * product sits on an open stage with no container drawn around it, and the
@@ -82,19 +88,51 @@ function resolveSecondaryImage(product: MachProduct): string | null {
  */
 const STAGE_PAD = "p-[4%]";
 
+/**
+ * Media-stage inset for the browsing grid.
+ *
+ * The shop shows an unfiltered mix — tubs, multi-tub bundles, flat-lay straps
+ * — whose source files carry between 4% and 27% of their own baked whitespace,
+ * and CSS cannot take that back out of a JPEG. What it *can* do is give every
+ * product the same stage and the same safe area, so the variation reads as
+ * photography rather than as a broken grid.
+ *
+ * A little more room than the shelves get, because these stages are white
+ * tiles on a paper ground: the inset is what stops a wide bundle from running
+ * into the tile edge, and `object-contain` keeps it doing that without ever
+ * cropping. There is no per-product sizing here and there must not be — one
+ * inset, every SKU, or the grid stops being a grid.
+ */
+const STAGE_PAD_SHOP = "p-[6%] sm:p-[7%]";
+
 export interface MachProductCardProps {
   product: MachProduct;
   /** Card sits on a dark section ground. */
   onDark?: boolean;
   /** Larger type and meta, for wide grids and the primary product shelf. */
   size?: "default" | "lg";
+  /**
+   * Presentation treatment.
+   *
+   * `"shelf"` is the homepage/product-page card and the default — no existing
+   * caller changes behaviour. `"shop"` is the browsing-grid card: a white
+   * media tile with no frame at rest on the shop's paper ground, a larger safe
+   * area, quieter hover, and meta typography sized to be read in a four-up
+   * grid rather than glanced at in a shelf.
+   *
+   * It is a variant rather than a change to `size="lg"` precisely because
+   * `size="lg"` is what the homepage shelves run on.
+   */
+  variant?: "shelf" | "shop";
 }
 
 export const MachProductCard = memo(function MachProductCard({
   product,
   onDark = false,
   size = "default",
+  variant = "shelf",
 }: MachProductCardProps) {
+  const isShop = variant === "shop";
   const isLarge = size === "lg";
   const img = resolveImage(product);
   const secondaryImg = resolveSecondaryImage(product);
@@ -132,11 +170,26 @@ export const MachProductCard = memo(function MachProductCard({
     : onDark
       ? "ring-white/10"
       : "ring-[var(--mach-ink)]/12";
-  const frameCls = darkDenseStage
-    ? `bg-white ring-1 ring-inset ${restingRing} group-hover:ring-[var(--mach-ink)]/25`
-    : onDark
-      ? `bg-[var(--mach-ink-raised)] ring-1 ring-inset ${restingRing} group-hover:ring-white/40`
-      : `bg-white ring-1 ring-inset ${restingRing} group-hover:ring-[var(--mach-ink)]`;
+  // The shop grid draws no frame at all, at rest or on hover. Its stage is a
+  // white tile on a paper page, so the tonal step already separates the card
+  // from the ground — adding a rule on hover would put the hard rectangle back
+  // around the photo's own white background that the shelves have to live
+  // with. Hover is carried by the photo and the quick-add bar instead.
+  const frameCls = isShop
+    ? "bg-white"
+    : darkDenseStage
+      ? `bg-white ring-1 ring-inset ${restingRing} group-hover:ring-[var(--mach-ink)]/25`
+      : onDark
+        ? `bg-[var(--mach-ink-raised)] ring-1 ring-inset ${restingRing} group-hover:ring-white/40`
+        : `bg-white ring-1 ring-inset ${restingRing} group-hover:ring-[var(--mach-ink)]`;
+
+  const stagePad = isShop ? STAGE_PAD_SHOP : STAGE_PAD;
+  // Restrained on the shop grid: at 1.05 a contained product visibly grows
+  // past its own safe area on hover, which reads as a wobble across sixteen
+  // tiles at once.
+  const hoverZoom = isShop
+    ? "group-hover:scale-[1.025]"
+    : "group-hover:scale-[1.05]";
   const ringCls = onDark
     ? "focus-visible:ring-white focus-visible:ring-offset-[var(--mach-ink)]"
     : "focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-white";
@@ -158,7 +211,7 @@ export const MachProductCard = memo(function MachProductCard({
               alt={product.name}
               loading="lazy"
               decoding="async"
-              className={`absolute inset-0 h-full w-full object-contain ${STAGE_PAD} transition-[opacity,transform] duration-500 ease-out group-hover:scale-[1.05] ${
+              className={`absolute inset-0 h-full w-full object-contain ${stagePad} transition-[opacity,transform] duration-500 ease-out ${hoverZoom} ${
                 secondaryImg ? "group-hover:opacity-0" : ""
               }`}
             />
@@ -169,7 +222,7 @@ export const MachProductCard = memo(function MachProductCard({
                 aria-hidden="true"
                 loading="lazy"
                 decoding="async"
-                className={`absolute inset-0 h-full w-full object-contain ${STAGE_PAD} opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-100`}
+                className={`absolute inset-0 h-full w-full object-contain ${stagePad} opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-100`}
               />
             )}
           </>
@@ -183,7 +236,12 @@ export const MachProductCard = memo(function MachProductCard({
 
         {/* Discount flag — hard-edged block, no colour */}
         {hasDiscount && !isSoldOut && (
-          <span className="absolute left-0 top-0 z-20 bg-[var(--mach-ink)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
+          <span
+            className={`absolute left-0 top-0 z-20 bg-[var(--mach-ink)] font-bold uppercase text-white ${
+              isShop
+                ? "px-2.5 py-1 text-[9px] tracking-[0.14em]"
+                : "px-3 py-1.5 text-[10px] tracking-[0.18em]"
+            }`}>
             -{discountPct}%
           </span>
         )}
@@ -210,14 +268,24 @@ export const MachProductCard = memo(function MachProductCard({
           href={href}
           imageUrl={img}
           onCharcoal={onCharcoalStage}
+          placement={isShop ? "bar" : "corner"}
         />
       </div>
 
-      {/* ── Meta ── */}
-      <div className={isLarge ? "pt-4" : "pt-5"}>
+      {/* ── Meta ──
+          The shop grid runs its own scale. A shelf's meta is read in passing,
+          under a card the shopper is swiping past; a browsing grid's is the
+          thing being compared, sixteen at a time, and the shelf sizes are a
+          step too small and a step too tight for that. Everything here is
+          still the product's own data — only the type changes. */}
+      <div className={isShop ? "pt-5 sm:pt-6" : isLarge ? "pt-4" : "pt-5"}>
         {product.categoryName && (
           <p
-            className={`text-[10px] font-semibold uppercase tracking-[0.24em] ${metaCls}`}>
+            className={`font-semibold uppercase ${metaCls} ${
+              isShop
+                ? "text-[10px] tracking-[0.2em] sm:text-[11px]"
+                : "text-[10px] tracking-[0.24em]"
+            }`}>
             {product.categoryName}
           </p>
         )}
@@ -225,31 +293,46 @@ export const MachProductCard = memo(function MachProductCard({
             enough to push a four-up grid out of alignment, and a name that
             needs a third line is not going to be read on a shelf anyway. */}
         <h3
-          className={`font-bold uppercase leading-[1.25] tracking-[0.03em] ${nameCls} ${
-            isLarge
-              ? "mt-1.5 line-clamp-2 text-[13px] sm:text-[14px]"
-              : "mt-2 text-[13px] sm:text-[15px]"
+          className={`font-bold uppercase tracking-[0.03em] ${nameCls} ${
+            isShop
+              ? "mt-2.5 line-clamp-2 text-[13px] leading-[1.4] sm:text-[15px]"
+              : isLarge
+                ? "mt-1.5 line-clamp-2 text-[13px] leading-[1.25] sm:text-[14px]"
+                : "mt-2 text-[13px] leading-[1.25] sm:text-[15px]"
           }`}>
           {product.name}
         </h3>
         <div
-          className={`flex items-baseline gap-3 ${isLarge ? "mt-2" : "mt-3"}`}>
+          className={`flex items-baseline ${
+            isShop ? "mt-3 gap-2.5" : isLarge ? "mt-2 gap-3" : "mt-3 gap-3"
+          }`}>
           {hasDiscount ? (
             <>
               <span
                 className={`font-bold ${priceCls} ${
-                  isLarge ? "text-[14px] sm:text-[15px]" : "text-[14px]"
+                  isShop
+                    ? "text-[14px] sm:text-[16px]"
+                    : isLarge
+                      ? "text-[14px] sm:text-[15px]"
+                      : "text-[14px]"
                 }`}>
                 {formatPrice(discount)}
               </span>
-              <span className={`text-[12px] line-through ${metaCls}`}>
+              <span
+                className={`line-through ${metaCls} ${
+                  isShop ? "text-[12px] sm:text-[13px]" : "text-[12px]"
+                }`}>
                 {formatPrice(price)}
               </span>
             </>
           ) : (
             <span
               className={`font-bold ${priceCls} ${
-                isLarge ? "text-[14px] sm:text-[15px]" : "text-[14px]"
+                isShop
+                  ? "text-[14px] sm:text-[16px]"
+                  : isLarge
+                    ? "text-[14px] sm:text-[15px]"
+                    : "text-[14px]"
               }`}>
               {formatPrice(price)}
             </span>

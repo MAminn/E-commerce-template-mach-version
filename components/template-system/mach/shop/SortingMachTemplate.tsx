@@ -6,7 +6,7 @@ import { MachChrome } from "../MachChrome";
 import { MachProductCard } from "../MachProductCard";
 import { MachShopHero } from "./MachShopHero";
 import { MachShopToolbar } from "./MachShopToolbar";
-import { GUTTER, HEADING, SHELL } from "../machTokens";
+import { GUTTER, HEADING_SHOP, SHELL } from "../machTokens";
 import {
   DEFAULT_SHOP_CONTENT,
   formatProductCount,
@@ -97,11 +97,11 @@ function Breadcrumb({
   return (
     <nav
       aria-label="Breadcrumb"
-      className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--mach-mute)]">
+      className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mach-mute)]">
       <a href="/" className="transition-colors hover:text-[var(--mach-ink)]">
         Home
       </a>
-      <ChevronRight aria-hidden="true" className="h-3 w-3" />
+      <ChevronRight aria-hidden="true" className="h-2.5 w-2.5 opacity-60" />
       {category ? (
         <>
           <a
@@ -109,7 +109,7 @@ function Breadcrumb({
             className="transition-colors hover:text-[var(--mach-ink)]">
             Shop
           </a>
-          <ChevronRight aria-hidden="true" className="h-3 w-3" />
+          <ChevronRight aria-hidden="true" className="h-2.5 w-2.5 opacity-60" />
           <span className="text-[var(--mach-ink)]">{category.name}</span>
         </>
       ) : (
@@ -120,49 +120,68 @@ function Breadcrumb({
 }
 
 /**
- * Top-level broad-group switcher.
+ * Top-level broad-group switcher — the shop's primary navigation.
  *
- * Deliberately heavy: on a product-first storefront this row is the primary
- * navigation of the shop, not a secondary refinement, so it reads as a set of
- * hard-edged tabs rather than small pills. "All" is a real option and the
- * default.
+ * It is navigation, so it is drawn as navigation: a rail of labels sharing one
+ * hairline, the active one carried by a hard black underline and full-weight
+ * ink, the rest dropped to mute until hovered. The previous treatment gave
+ * every group a filled or outlined button, which put four pieces of form
+ * chrome across the top of a merchandised page and made the current group read
+ * as a pressed control rather than as the page you are on.
+ *
+ * The underline is the masthead rule: each label carries a 2px bottom border
+ * pulled a pixel down over the row's own hairline, so the active tab looks
+ * like a thickening of the rule instead of a mark floating above it.
+ *
+ * "All" is a real option and the default. The rail scrolls horizontally on
+ * phones — bleeding past the gutter so it visibly continues off-screen —
+ * rather than squeezing four labels into 350px, and every label is a 44px
+ * touch target.
+ *
+ * Behaviour is unchanged: these are the same two calls into the same handler.
  */
 function GroupNav({
   categories,
   activeCategoryId,
   onCategoryChange,
+  className = "",
 }: {
   categories: MachShopCategoryOption[];
   activeCategoryId?: string | null;
   onCategoryChange: (id: string | null) => void;
+  className?: string;
 }) {
   const tab = (active: boolean) =>
-    `whitespace-nowrap border px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] transition-colors sm:px-7 sm:py-3.5 sm:text-[12px] ${
+    `-mb-px whitespace-nowrap border-b-2 pb-4 pt-3.5 text-[11px] font-bold uppercase tracking-[0.16em] transition-colors duration-200 sm:text-[12px] sm:tracking-[0.2em] ${
       active
-        ? "border-[var(--mach-ink)] bg-[var(--mach-ink)] text-white"
-        : "border-[var(--mach-ink)]/20 bg-white text-[var(--mach-ink)] hover:border-[var(--mach-ink)]"
+        ? "border-[var(--mach-ink)] text-[var(--mach-ink)]"
+        : "border-transparent text-[var(--mach-mute)] hover:text-[var(--mach-ink)]"
     }`;
 
   return (
-    <div className="-mx-5 overflow-x-auto px-5 pb-1 sm:-mx-8 sm:px-8 lg:mx-0 lg:px-0">
-      <div className="flex min-w-max items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onCategoryChange(null)}
-          className={tab(!activeCategoryId)}>
-          All
-        </button>
-        {categories.map((c) => (
+    <nav aria-label="Product groups" className={className}>
+      <div className="scrollbar-hide -mx-5 overflow-x-auto px-5 sm:-mx-8 sm:px-8 lg:mx-0 lg:px-0">
+        <div className="flex w-max min-w-full items-end gap-7 border-b border-[var(--mach-ink)]/15 sm:gap-9 lg:gap-10">
           <button
-            key={c.id}
             type="button"
-            onClick={() => onCategoryChange(c.id)}
-            className={tab(activeCategoryId === c.id)}>
-            {c.name}
+            onClick={() => onCategoryChange(null)}
+            aria-current={!activeCategoryId ? "true" : undefined}
+            className={tab(!activeCategoryId)}>
+            All
           </button>
-        ))}
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onCategoryChange(c.id)}
+              aria-current={activeCategoryId === c.id ? "true" : undefined}
+              className={tab(activeCategoryId === c.id)}>
+              {c.name}
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -178,9 +197,9 @@ function FilterPanel({
   onDiscountedOnlyChange: (v: boolean) => void;
 }) {
   const box =
-    "flex cursor-pointer items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--mach-ink)]";
+    "flex cursor-pointer items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--mach-ink)] sm:text-[12px]";
   return (
-    <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[var(--mach-ink)]/12 py-4">
+    <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-[var(--mach-ink)]/12 pt-5">
       <label className={box}>
         <input
           type="checkbox"
@@ -213,12 +232,13 @@ function Pagination({
   onPageChange: (p: number) => void;
 }) {
   if (totalPages <= 1) return null;
+  // Same restraint as the toolbar: hairline-only, quiet until worked.
   const btn =
-    "inline-flex h-11 min-w-11 items-center justify-center border border-[var(--mach-ink)]/20 bg-white px-4 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-ink)] transition-colors hover:border-[var(--mach-ink)] disabled:pointer-events-none disabled:opacity-35";
+    "inline-flex h-11 min-w-11 items-center justify-center border-b border-[var(--mach-ink)]/25 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-ink)] transition-colors duration-200 hover:border-[var(--mach-ink)] disabled:pointer-events-none disabled:opacity-30";
   return (
     <nav
       aria-label="Pagination"
-      className="mt-16 flex items-center justify-center gap-2 border-t border-[var(--mach-ink)]/10 pt-10">
+      className="mt-20 flex items-center justify-center gap-8 border-t border-[var(--mach-ink)]/10 pt-12 sm:gap-10">
       <button
         type="button"
         onClick={() => onPageChange(page - 1)}
@@ -244,9 +264,15 @@ function Pagination({
  * The grid. Two-up on phones, three-up from tablet and four-up only on the
  * widest screens — one step less dense than the previous four-up-at-1024 rule,
  * so a supplement tub reads at real scale instead of as a thumbnail.
+ *
+ * The rhythm is deliberately anisotropic: rows are spaced roughly twice as far
+ * apart as columns at every breakpoint. Equal gutters are what make a product
+ * grid read as a spreadsheet — the eye has no reason to group a row — and the
+ * cards carry no frame, so the vertical air is the only thing separating one
+ * row of products from the next.
  */
 const GRID =
-  "grid grid-cols-2 gap-x-4 gap-y-12 sm:gap-x-6 md:grid-cols-3 lg:gap-y-16 xl:grid-cols-4 xl:gap-x-8";
+  "grid grid-cols-2 gap-x-5 gap-y-12 sm:gap-x-6 sm:gap-y-14 md:grid-cols-3 lg:gap-x-7 lg:gap-y-16 xl:grid-cols-4 xl:gap-x-8 xl:gap-y-20";
 
 /* ------------------------------------------------------------------ */
 
@@ -295,85 +321,115 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
     // so the storefront does not change footer between the homepage and
     // everywhere else.
     <MachChrome>
-      <div className={`mach-shop bg-white text-[var(--mach-ink)] ${className}`}>
+      {/* One continuous paper ground under the whole page, with the product
+          stages drawn on it in white.
+
+          The shop used to run white with a paper masthead, which left the
+          cards nothing to stand on: the pack shots are photographed on white
+          and are not cut out, so on a white page every product dissolved into
+          the ground and the grid read as a flat sheet of pictures. Inverting
+          it — paper page, white stage — makes each tile a piece of
+          merchandising without drawing a single border, and the photo's own
+          white background lands exactly on the stage instead of showing up as
+          a rectangle inside a frame. It is also why the stage cannot be tinted
+          off-white: that would put the rectangle back. */}
+      <div
+        className={`mach-shop bg-[var(--mach-paper)] text-[var(--mach-ink)] ${className}`}>
         {/* Hero renders nothing at all when disabled — no reserved space. */}
         {!categoryContext && <MachShopHero hero={content.hero} />}
 
-        {/* ── Masthead: what this page is, and how much of it there is ── */}
-        <header
-          className={`${GUTTER} border-b border-[var(--mach-ink)]/10 bg-[var(--mach-paper)] pt-8 pb-9 sm:pt-10 sm:pb-11`}>
+        {/* ── Masthead: what this page is, how much of it there is, and the
+            groups it is divided into. The group rail belongs here rather than
+            with the search row — it is navigation, and the rule it stands on
+            is what closes the masthead. ── */}
+        <header className={`${GUTTER} pt-7 sm:pt-10 lg:pt-12`}>
           <div className={SHELL}>
             <Breadcrumb category={categoryContext} />
 
             {heading && (
-              <div className="mt-5 flex flex-wrap items-end gap-x-6 gap-y-2">
-                <h1 className={HEADING}>{heading}</h1>
-                {/* The live count sits on the heading baseline rather than in
-                  the toolbar: on a product-first page the size of the catalog
-                  is part of the headline, not a filter readout. */}
+              // The live count sits with the heading rather than in the
+              // toolbar: on a product-first page the size of the catalog is
+              // part of the headline, not a filter readout. It is subordinate
+              // by weight, not by distance — micro type at the far end of a
+              // hairline that runs off the heading's baseline. On phones the
+              // rule is dropped and the count takes the line underneath, which
+              // keeps the masthead three tight lines deep.
+              <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-1.5 sm:mt-5">
+                <h1 className={HEADING_SHOP}>{heading}</h1>
                 {!isLoading && totalProducts > 0 && (
-                  <span className="pb-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--mach-mute)]">
-                    {countLabel}
-                  </span>
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="hidden h-px min-w-8 flex-1 -translate-y-[0.6rem] bg-[var(--mach-ink)]/15 sm:block"
+                    />
+                    <span className="w-full pb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--mach-mute)] sm:w-auto sm:pb-[0.35rem]">
+                      {countLabel}
+                    </span>
+                  </>
                 )}
               </div>
             )}
 
             {intro && (
-              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--mach-mute)] sm:text-base">
+              <p className="mt-4 max-w-[52ch] text-[13px] leading-relaxed text-[var(--mach-mute)] sm:text-[15px]">
                 {intro}
               </p>
             )}
-          </div>
-        </header>
 
-        {/* ── Controls ── */}
-        <section className={`${GUTTER} pt-7`}>
-          <div className={SHELL}>
-            {showGroups && (
+            {showGroups ? (
               <GroupNav
+                className="mt-7 sm:mt-9"
                 categories={categories}
                 activeCategoryId={activeCategoryId}
                 onCategoryChange={
                   onCategoryChange as (id: string | null) => void
                 }
               />
+            ) : (
+              // Without groups the masthead still needs its closing rule, or
+              // the search row floats under the heading with nothing under it.
+              <div className="mt-7 border-b border-[var(--mach-ink)]/15 sm:mt-9" />
             )}
+          </div>
+        </header>
 
-            <div className={showGroups ? "mt-5" : ""}>
-              <MachShopToolbar
-                searchValue={searchValue}
-                onSearchChange={onSearchChange}
-                sortValue={sortValue}
-                onSortChange={onSortChange}
-                filtersOpen={filtersOpen}
-                onToggleFilters={onToggleFilters}
-                activeFilterCount={activeFilterCount}
+        {/* ── Utility row ── */}
+        <section className={`${GUTTER} pt-6 sm:pt-7`}>
+          <div className={SHELL}>
+            <MachShopToolbar
+              searchValue={searchValue}
+              onSearchChange={onSearchChange}
+              sortValue={sortValue}
+              onSortChange={onSortChange}
+              filtersOpen={filtersOpen}
+              onToggleFilters={onToggleFilters}
+              activeFilterCount={activeFilterCount}
+            />
+            {filtersOpen && (
+              <FilterPanel
+                inStockOnly={inStockOnly}
+                onInStockOnlyChange={onInStockOnlyChange}
+                discountedOnly={discountedOnly}
+                onDiscountedOnlyChange={onDiscountedOnlyChange}
               />
-              {filtersOpen && (
-                <FilterPanel
-                  inStockOnly={inStockOnly}
-                  onInStockOnlyChange={onInStockOnlyChange}
-                  discountedOnly={discountedOnly}
-                  onDiscountedOnlyChange={onDiscountedOnlyChange}
-                />
-              )}
-            </div>
+            )}
           </div>
         </section>
 
         {/* ── Grid ── */}
-        <section className={`${GUTTER} pb-24 pt-12 sm:pt-14`}>
+        <section className={`${GUTTER} pb-24 pt-10 sm:pt-12 lg:pt-14`}>
           <div className={SHELL}>
             {isLoading ? (
               <div className={GRID}>
                 {Array.from({ length: 8 }).map((_, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton
                   <div key={i}>
-                    <Skeleton className="aspect-square w-full" />
-                    <Skeleton className="mt-5 h-3 w-1/3" />
-                    <Skeleton className="mt-2.5 h-4 w-4/5" />
-                    <Skeleton className="mt-2.5 h-4 w-1/4" />
+                    {/* Square, hard-edged and white — the skeleton stands in
+                        for the media stage, so it has to be the same shape. */}
+                    <Skeleton className="aspect-square w-full rounded-none" />
+                    <Skeleton className="mt-5 h-2.5 w-1/3 rounded-none sm:mt-6" />
+                    <Skeleton className="mt-3 h-3.5 w-4/5 rounded-none" />
+                    <Skeleton className="mt-3 h-3.5 w-1/4 rounded-none" />
                   </div>
                 ))}
               </div>
@@ -385,7 +441,9 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
               <>
                 <div className={GRID}>
                   {products.map((p) => (
-                    <MachProductCard key={p.id} product={p} size="lg" />
+                    // `variant="shop"` and not `size="lg"`: the shelf sizes
+                    // stay where the homepage put them.
+                    <MachProductCard key={p.id} product={p} variant="shop" />
                   ))}
                 </div>
                 <Pagination

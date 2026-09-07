@@ -32,8 +32,9 @@ import { useMachAddToCart } from "./useMachAddToCart";
  *
  * ── Host requirements ─────────────────────────────────────────────────────
  *
- * This positions itself at the lower right of its nearest positioned
- * ancestor, which must be the media stage, and paints at `z-20`. Hosts use a
+ * This positions itself against its nearest positioned ancestor, which must
+ * be the media stage, and paints at `z-20` — at the lower right by default, or
+ * across the stage foot when the host asks for `placement="bar"`. Hosts use a
  * *stretched link* — the product anchor absolutely covering the panel at
  * `z-10` — rather than wrapping their card in an `<a>`: a button (or, for the
  * options case, a second anchor) nested inside an anchor is invalid and does
@@ -50,11 +51,66 @@ function safePrice(v: number | string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** 40px minimum height throughout — this is a touch target on the phone
- * shelves, where it is always visible. Type tightens below `sm` so the
- * control stays a corner action on a 218px card instead of spanning it. */
 const BASE =
-  "absolute bottom-2.5 right-2.5 z-20 inline-flex min-h-[40px] items-center justify-center gap-1.5 px-2.5 text-[9px] font-bold uppercase leading-none tracking-[0.1em] transition-[background-color,color,opacity,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 sm:bottom-3 sm:right-3 sm:gap-2 sm:px-3 sm:text-[10px] sm:tracking-[0.16em]";
+  "absolute z-20 inline-flex items-center justify-center font-bold uppercase leading-none transition-[background-color,color,opacity,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
+/**
+ * Corner block — the shelf treatment, and the default everywhere.
+ *
+ * 40px minimum height throughout: this is a touch target on the phone
+ * shelves, where it is always visible. Type tightens below `sm` so the
+ * control stays a corner action on a 218px card instead of spanning it.
+ */
+const PLACE_CORNER =
+  "bottom-2.5 right-2.5 min-h-[40px] gap-1.5 px-2.5 text-[9px] tracking-[0.1em] sm:bottom-3 sm:right-3 sm:gap-2 sm:px-3 sm:text-[10px] sm:tracking-[0.16em]";
+
+/**
+ * Stage-foot bar — the shop-grid treatment.
+ *
+ * A full-width bar seated on the foot of the media stage from `lg` up, where
+ * it rests hidden below the stage edge and slides into view on hover or focus.
+ * Below `lg` there is no hover to reveal it with, so it is a permanently
+ * visible corner block — but a *lighter* one than the shelves use, and this is
+ * why it no longer derives from `PLACE_CORNER`.
+ *
+ * ── Why the phone block is smaller than the shelf block ───────────────────
+ *
+ * A shelf shows four products in a horizontal scroller: the eye meets one
+ * quick-add at a time, so it can afford to be emphatic. A browsing grid stacks
+ * two per row for as far as the shopper scrolls, and at the shelf's weight
+ * that becomes a checkerboard of identical black blocks marching down the
+ * page — the control stops reading as an action and starts reading as part of
+ * the card template. Trimming the height, the padding, the icon and (via the
+ * host) the label takes roughly half the area out of each block, which is what
+ * breaks up the rhythm.
+ *
+ * ── Why the painted block and the touch target are different sizes ────────
+ *
+ * The block paints at 36px but is pressed at 44px: an `::after` overlay with
+ * no fill stretches the hit area 4px above and below it. That is the whole
+ * point of doing it this way — the visual weight is what had to come down, and
+ * the touch target is what must not, so they are decoupled rather than traded
+ * off against each other. The overlay is a child of the button, so a press
+ * anywhere in it is a press on the button; it sits at `z-20` with its host, so
+ * it still wins over the card's stretched product link underneath; and it
+ * stays inside the stage, because the block is inset 8px from an edge it only
+ * overhangs by 4px.
+ *
+ * From `lg` the bar is a 44px band already, so the overlay is switched off
+ * rather than left to duplicate it.
+ *
+ * The bar lives *inside* the stage, so it costs the card no height and needs
+ * no reserved space under the photo — the reason a browsing grid can afford a
+ * larger, more obvious control on the desktop it does have hover on. Its host
+ * clips it: the stage already carries `overflow-hidden`, which is what hides
+ * the resting position.
+ */
+const PLACE_BAR =
+  "bottom-2 right-2 min-h-[36px] gap-1 px-2.5 text-[9px] tracking-[0.08em] " +
+  // Invisible 44px hit area over the 36px block. See the note above.
+  "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] " +
+  "sm:bottom-2.5 sm:right-2.5 sm:min-h-[38px] sm:gap-1.5 sm:px-3 sm:text-[10px] sm:tracking-[0.14em] " +
+  "lg:inset-x-0 lg:bottom-0 lg:right-auto lg:h-11 lg:min-h-0 lg:w-full lg:gap-2 lg:px-4 lg:text-[10px] lg:tracking-[0.18em] lg:after:content-none lg:focus-visible:ring-offset-0";
 
 export interface MachQuickAddProps {
   product: MachProduct;
@@ -68,6 +124,13 @@ export interface MachQuickAddProps {
    * every other case, keep the black block.
    */
   onCharcoal?: boolean;
+  /**
+   * Where the control sits on the stage. `"corner"` is the shelf treatment
+   * and the default — every existing caller keeps it unchanged. `"bar"` is
+   * the shop grid's: same behaviour, seated across the foot of the stage on
+   * pointer-sized screens.
+   */
+  placement?: "corner" | "bar";
 }
 
 export function MachQuickAdd({
@@ -75,6 +138,7 @@ export function MachQuickAdd({
   href,
   imageUrl,
   onCharcoal = false,
+  placement = "corner",
 }: MachQuickAddProps) {
   const { add, confirmed } = useMachAddToCart();
 
@@ -125,14 +189,21 @@ export function MachQuickAdd({
     ? "bg-white text-[var(--mach-ink)] hover:bg-white/85 focus-visible:ring-white focus-visible:ring-offset-[var(--mach-ink-raised)]"
     : "bg-[var(--mach-ink)] text-white hover:bg-[var(--mach-ink-soft)] focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-white";
 
+  const isBar = placement === "bar";
+  const place = isBar ? PLACE_BAR : PLACE_CORNER;
+
   // Always on where there is no hover to reveal it; on pointer devices the
   // shelf stays clean until the panel is hovered or something inside it takes
   // focus. A just-confirmed button stays put so the shopper sees the result.
+  //
+  // The corner block lifts a pixel into place; the bar travels its own height,
+  // which is what seats it on the stage foot rather than floating it there.
+  const restShift = isBar ? "lg:translate-y-full" : "lg:translate-y-1";
   const reveal = confirmed
     ? "opacity-100 translate-y-0"
     : [
         "opacity-100 translate-y-0",
-        "lg:opacity-0 lg:translate-y-1 lg:pointer-events-none",
+        `lg:opacity-0 ${restShift} lg:pointer-events-none`,
         "lg:group-hover:opacity-100 lg:group-hover:translate-y-0 lg:group-hover:pointer-events-auto",
         "lg:group-focus-within:opacity-100 lg:group-focus-within:translate-y-0 lg:group-focus-within:pointer-events-auto",
       ].join(" ");
@@ -142,27 +213,44 @@ export function MachQuickAdd({
       <a
         href={href}
         aria-label={`Choose options for ${product.name}`}
-        className={`${BASE} ${skin} ${reveal}`}>
+        className={`${BASE} ${place} ${skin} ${reveal}`}>
         Choose options
       </a>
     );
   }
+
+  // 12px on the phone bar, 14px everywhere else — the glyph is half the
+  // block's ink at this size, so it has to come down with the rest of it.
+  const iconCls = isBar ? "h-3 w-3 lg:h-3.5 lg:w-3.5" : "h-3.5 w-3.5";
 
   return (
     <button
       type="button"
       onClick={handleClick}
       aria-label={`Add ${product.name} to bag`}
-      className={`${BASE} ${skin} ${reveal}`}>
+      className={`${BASE} ${place} ${skin} ${reveal}`}>
       {confirmed ? (
         <>
-          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+          <Check className={iconCls} strokeWidth={3} />
           Added
         </>
       ) : (
         <>
-          <Plus className="h-3.5 w-3.5" strokeWidth={3} />
-          Add to cart
+          <Plus className={iconCls} strokeWidth={3} />
+          {/* The shop's phone block says ADD; its desktop bar, which has the
+              width for it, still says ADD TO CART. Same action, same handler,
+              same accessible name — `aria-label` above carries the full
+              "Add <product> to bag" at every width, so the short label is
+              never the only thing describing the control. Shelves and the
+              product page keep the full label at every width. */}
+          {isBar ? (
+            <>
+              <span className="lg:hidden">Add</span>
+              <span className="hidden lg:inline">Add to cart</span>
+            </>
+          ) : (
+            "Add to cart"
+          )}
         </>
       )}
     </button>

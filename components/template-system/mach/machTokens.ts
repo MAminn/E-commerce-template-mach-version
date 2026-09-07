@@ -86,6 +86,22 @@ export const HEADING_SHELF =
 export const HEADING_FEATURE =
   "font-black uppercase leading-[0.95] tracking-[-0.028em] text-[clamp(1.75rem,3.8vw,2.625rem)]";
 
+/**
+ * Browsing-page heading — the shop and category mastheads.
+ *
+ * A collection page is not a campaign: the heading names the page and then
+ * hands the room to the products. At `HEADING` the shop title ran 80px on a
+ * desktop and dominated a masthead whose only other content is a breadcrumb
+ * and a count, which is what made the page read as a dashboard header rather
+ * than as the top of a shop. Capped at 52px it stays the loudest thing in the
+ * masthead without out-shouting the grid two rows below it.
+ *
+ * Its own token rather than a change to `HEADING`, which the homepage sections
+ * share.
+ */
+export const HEADING_SHOP =
+  "font-black uppercase leading-[0.9] tracking-[-0.03em] text-[clamp(2rem,4.2vw,3.25rem)]";
+
 /** Slightly smaller heading for sections that sit beside content. */
 export const HEADING_SM =
   "font-black uppercase leading-[0.92] tracking-[-0.025em] text-[clamp(1.75rem,4vw,3.25rem)]";
