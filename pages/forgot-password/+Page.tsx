@@ -9,6 +9,8 @@ import { Mail, ArrowLeft, CheckCircle } from "lucide-react";
 import { Link } from "#root/components/utils/Link";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
 import { MinimalForgotPasswordPage } from "#root/components/template-system/minimal/MinimalForgotPasswordPage";
+import { MachForgotPasswordPage } from "#root/components/template-system/mach/MachForgotPasswordPage";
+import { isSupplementStore } from "#root/shared/config/branding";
 import { authClient } from "#root/lib/auth-client.js";
 
 const formSchema = z.object({
@@ -17,6 +19,13 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+/**
+ * Chooses the reset-request screen for the active storefront.
+ *
+ * Same dispatcher shape as `pages/login/+Page.tsx`: `isMinimal` first to
+ * preserve the route's existing precedence, then the store's compile-time
+ * vertical for Mach, else the inherited screen.
+ */
 export default function Page() {
   const layoutSettings = useLayoutSettings();
   const isMinimal = layoutSettings.header.navbarStyle === "minimal";
@@ -25,6 +34,19 @@ export default function Page() {
     return <MinimalForgotPasswordPage />;
   }
 
+  if (isSupplementStore()) {
+    return <MachForgotPasswordPage />;
+  }
+
+  return <LegacyForgotPasswordPage />;
+}
+
+/**
+ * The inherited "Atelier" reset-request screen, unchanged.
+ *
+ * Retained for non-supplement forks of this template, which still render it.
+ */
+function LegacyForgotPasswordPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 

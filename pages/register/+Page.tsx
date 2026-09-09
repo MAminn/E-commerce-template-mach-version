@@ -9,6 +9,8 @@ import { ArrowLeft, CheckCircle, Eye, EyeOff } from "lucide-react";
 import { Link } from "#root/components/utils/Link";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
 import { MinimalRegisterPage } from "#root/components/template-system/minimal/MinimalRegisterPage";
+import { MachRegisterPage } from "#root/components/template-system/mach/MachRegisterPage";
+import { isSupplementStore } from "#root/shared/config/branding";
 import { authClient } from "#root/lib/auth-client.js";
 
 const formSchema = z
@@ -28,6 +30,15 @@ const formSchema = z
 
 type FormValues = z.infer<typeof formSchema>;
 
+/**
+ * Chooses the account-creation screen for the active storefront.
+ *
+ * A pure dispatcher holding no state of its own, so each branch mounts only its
+ * own hooks — the same shape `pages/login/+Page.tsx` and `pages/shop/+Page.tsx`
+ * use. `isMinimal` is tested first, preserving the precedence the route already
+ * had; the Mach branch then keys off the store's compile-time vertical, so no
+ * admin template switch can hand another storefront the Mach screen.
+ */
 export default function Page() {
   const layoutSettings = useLayoutSettings();
   const isMinimal = layoutSettings.header.navbarStyle === "minimal";
@@ -36,6 +47,19 @@ export default function Page() {
     return <MinimalRegisterPage />;
   }
 
+  if (isSupplementStore()) {
+    return <MachRegisterPage />;
+  }
+
+  return <LegacyRegisterPage />;
+}
+
+/**
+ * The inherited "Atelier" registration screen, unchanged.
+ *
+ * Retained for non-supplement forks of this template, which still render it.
+ */
+function LegacyRegisterPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
   const [showPassword, setShowPassword] = useState(false);

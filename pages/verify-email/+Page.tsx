@@ -4,18 +4,46 @@ import { useState, useEffect } from "react";
 import { authClient } from "#root/lib/auth-client";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { useSearchParams } from "#root/hooks/useSearchParams";
+import { MachVerifyEmailPage } from "#root/components/template-system/mach/MachVerifyEmailPage";
+import { isSupplementStore } from "#root/shared/config/branding";
 
+/**
+ * Chooses the email-verification screen for the active storefront.
+ *
+ * Like `pages/reset-password/+Page.tsx`, this route has never had a minimal
+ * variant, so there is nothing to defer to and the branch keys off the store's
+ * compile-time vertical alone.
+ */
 export default function Page() {
+  if (isSupplementStore()) {
+    return <MachVerifyEmailPage />;
+  }
+
+  return <LegacyVerifyEmailPage />;
+}
+
+/**
+ * The inherited verification screen, unchanged.
+ *
+ * Retained for non-supplement forks of this template, which still render it.
+ */
+function LegacyVerifyEmailPage() {
   const [verificationStatus, setVerificationStatus] = useState<
     "loading" | "success" | "error"
   >("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const params = useSearchParams();
+  // Depend on the token *string*, not on the params object: useSearchParams
+  // builds a fresh URLSearchParams every render, so `[params]` re-ran this
+  // effect after each status update and fired a second verifyEmail with an
+  // already-consumed token — which could report a genuine success as a
+  // failure. The token value is stable across those re-renders, and still
+  // changes if the URL's token does.
+  const token = params.get("token");
 
   useEffect(() => {
     const verifyEmail = async () => {
       try {
-        const token = params.get("token");
         if (!token) {
           setVerificationStatus("error");
           setErrorMessage("Missing verification token");
@@ -40,7 +68,7 @@ export default function Page() {
     };
 
     verifyEmail();
-  }, [params]);
+  }, [token]);
 
   return (
     <section className='w-full min-h-[90vh] flex justify-center items-center'>

@@ -8,6 +8,8 @@ import z from "zod";
 import { Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react";
 import { Link } from "#root/components/utils/Link";
 import { authClient } from "#root/lib/auth-client.js";
+import { MachResetPasswordPage } from "#root/components/template-system/mach/MachResetPasswordPage";
+import { isSupplementStore } from "#root/shared/config/branding";
 
 function useSearchParams() {
   if (typeof window === "undefined") return new URLSearchParams();
@@ -29,7 +31,28 @@ const formSchema = z
 
 type FormValues = z.infer<typeof formSchema>;
 
+/**
+ * Chooses the new-password screen for the active storefront.
+ *
+ * Unlike login/register/forgot, this route has never had a minimal variant, so
+ * there is nothing to defer to and the branch keys off the store's
+ * compile-time vertical alone. A supplement store therefore gets the Mach
+ * screen on every navbar style rather than falling back to the inherited one.
+ */
 export default function Page() {
+  if (isSupplementStore()) {
+    return <MachResetPasswordPage />;
+  }
+
+  return <LegacyResetPasswordPage />;
+}
+
+/**
+ * The inherited "Atelier" new-password screen, unchanged.
+ *
+ * Retained for non-supplement forks of this template, which still render it.
+ */
+function LegacyResetPasswordPage() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 

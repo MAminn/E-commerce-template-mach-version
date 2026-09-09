@@ -1,4 +1,3 @@
-import AnimatedContent from "#root/components/utils/AnimatedContent";
 import { Button } from "#root/components/ui/button";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -10,6 +9,8 @@ import { Input } from "#root/components/ui/input";
 import { Link } from "#root/components/utils/Link";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
 import { MinimalLoginPage } from "#root/components/template-system/minimal/MinimalLoginPage";
+import { MachLoginPage } from "#root/components/template-system/mach/MachLoginPage";
+import { isSupplementStore } from "#root/shared/config/branding";
 import { authClient } from "#root/lib/auth-client.js";
 
 const formSchema = z.object({
@@ -19,6 +20,23 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+/**
+ * Chooses the sign-in screen for the active storefront.
+ *
+ * A pure dispatcher: it holds no state of its own, so each branch below mounts
+ * its own hooks and the ones it does not need are never created. That is the
+ * same shape `pages/shop/+Page.tsx` uses, and it is what makes it safe to have
+ * more than one early return here — the inherited version called `useState`
+ * *after* its `isMinimal` return, which only held because the branch never
+ * flipped between renders.
+ *
+ * `isMinimal` is tested first, preserving the precedence the route already had.
+ * The Mach branch then uses the same gate as the rest of the storefront
+ * (`isSupplementStore() && !isMinimal`, cf. layouts/LayoutDefault.tsx): the
+ * vertical is a compile-time constant, so no admin template switch can hand
+ * another storefront the Mach screen, and a fork re-targeted at another
+ * vertical falls through to `LegacyLoginPage` untouched.
+ */
 export default function Page() {
   const layoutSettings = useLayoutSettings();
   const isMinimal = layoutSettings.header.navbarStyle === "minimal";
@@ -27,6 +45,19 @@ export default function Page() {
     return <MinimalLoginPage />;
   }
 
+  if (isSupplementStore()) {
+    return <MachLoginPage />;
+  }
+
+  return <LegacyLoginPage />;
+}
+
+/**
+ * The inherited "Atelier" sign-in, unchanged.
+ *
+ * Retained for non-supplement forks of this template, which still render it.
+ */
+function LegacyLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
