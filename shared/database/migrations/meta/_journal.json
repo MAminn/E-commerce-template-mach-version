@@ -365,6 +365,13 @@
       "when": 1788461765528,
       "tag": "0051_strange_overlord",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789028098127,
+      "tag": "0052_social_proof_config",
+      "breakpoints": true
     }
   ]
 }

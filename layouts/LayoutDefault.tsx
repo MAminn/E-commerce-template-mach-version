@@ -13,6 +13,7 @@ import { CartToastContainer } from "#root/components/ui/cart-toast";
 import { EntryPopup } from "#root/components/EntryPopup";
 import { StickyCartBar } from "#root/components/ui/StickyCartBar";
 import { MachCartToastContainer } from "#root/components/template-system/mach/MachCartFeedback";
+import { MachSocialProofToast } from "#root/components/template-system/mach/MachSocialProofToast";
 import type { ClientSession } from "#root/backend/auth/shared/entities.js";
 import { usePageContext } from "vike-react/usePageContext";
 import { AuthContext } from "#root/context/AuthContext.js";
@@ -287,6 +288,13 @@ function LayoutShell({
             {/* Mach's own add-to-cart confirmation. Replaces StickyCartBar for
                 this storefront — see the suppression note below. */}
             {!isDashboardRoute && isMachStorefront && <MachCartToastContainer />}
+            {/* CMS-controlled recent-order toast. Same `isMachStorefront`
+                gate as the cart confirmation above — it is built against the
+                Mach card language and the Mach product page's sticky purchase
+                bar, so no other template inherits it. The component keeps its
+                own route exclusion list (checkout, cart, auth, account…), so
+                mounting it here does not mean showing it everywhere. */}
+            {!isDashboardRoute && isMachStorefront && <MachSocialProofToast />}
             {/* Minimal template: mobile relies on the bottom nav's "Offers" tab
                 instead, but desktop still gets this pill — CTA uses the
                 component's own default (/shop, "SHOP MORE") so users chasing
