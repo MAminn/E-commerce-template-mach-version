@@ -1,13 +1,12 @@
 import { Button } from "#root/components/ui/button";
 import { Badge } from "#root/components/ui/badge";
-import { ChevronUp, ChevronDown, GripVertical } from "lucide-react";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import type { HomepageContent } from "#root/shared/types/homepage-content";
+import { resolveSectionOrder } from "#root/shared/types/homepage-content";
 import {
-  CAMPAIGN_SECTION_PREFIX,
-  SECTION_LABELS,
-  resolveSectionOrder,
-  type OrderableSectionKey,
-} from "#root/shared/types/homepage-content";
+  SECTION_STATUS_LABELS,
+  describeSectionRows,
+} from "#root/shared/types/homepage-section-rows";
 
 /**
  * Reorders the homepage sections below the hero.
@@ -16,55 +15,15 @@ import {
  * no deploy. The hero is not listed because it is pinned to the top: the
  * navbar's transparent-over-hero behaviour depends on it opening the page.
  *
- * Rows show whether each section is currently switched on, so it is obvious
- * why a section that has been moved still isn't visible on the site.
+ * Each row is named after the heading that is actually on the storefront, so a
+ * section renamed in the CMS is recognisable here, and carries the status the
+ * storefront would give it rather than a plain on/off switch reading — see
+ * `describeSectionRows`.
+ *
+ * Reordering is arrow-driven on purpose. There is no sortable library in this
+ * repository, and a drag handle that does not drag is worse than no handle at
+ * all.
  */
-
-/** Human label for one entry in the order, campaign banners included. */
-function labelFor(key: string, content: HomepageContent): string {
-  if (key.startsWith(CAMPAIGN_SECTION_PREFIX)) {
-    const id = key.slice(CAMPAIGN_SECTION_PREFIX.length);
-    const banner = content.campaignBanners?.find((b) => b.id === id);
-    const title = banner?.title?.trim();
-    return title ? `Campaign — ${title}` : "Campaign banner";
-  }
-  return SECTION_LABELS[key as OrderableSectionKey] ?? key;
-}
-
-/** Whether the section is currently enabled, for the on/off chip. */
-function isEnabled(key: string, content: HomepageContent): boolean {
-  if (key.startsWith(CAMPAIGN_SECTION_PREFIX)) {
-    const id = key.slice(CAMPAIGN_SECTION_PREFIX.length);
-    return Boolean(content.campaignBanners?.find((b) => b.id === id)?.enabled);
-  }
-  switch (key as OrderableSectionKey) {
-    case "heroMarquee":
-      return Boolean(content.heroMarquee?.enabled);
-    case "stacks":
-      return Boolean(content.stacks?.enabled);
-    case "gymGear":
-      return Boolean(content.gymGear?.enabled);
-    case "featuredProducts":
-      return content.featuredProducts.enabled;
-    case "discountedProducts":
-      return Boolean(content.discountedProducts?.enabled);
-    case "newArrivals":
-      return Boolean(content.newArrivals?.enabled);
-    case "whyMach":
-      return Boolean(content.whyMach?.enabled);
-    case "certificates":
-      return Boolean(content.certificates?.enabled);
-    case "ugc":
-      return Boolean(content.ugc?.enabled);
-    case "newsletter":
-      return content.newsletter.enabled;
-    case "footerCta":
-      return content.footerCta.enabled;
-    default:
-      return false;
-  }
-}
-
 export function HomepageSectionOrder({
   content,
   onChange,
@@ -81,6 +40,7 @@ export function HomepageSectionOrder({
     content.sectionOrder,
     (content.campaignBanners ?? []).map((b) => b.id),
   );
+  const rows = describeSectionRows(order, content);
 
   const move = (index: number, delta: number) => {
     const next = [...order];
@@ -93,53 +53,68 @@ export function HomepageSectionOrder({
 
   return (
     <div className='space-y-3'>
+      <p className='text-xs text-muted-foreground'>
+        Use the arrows to reorder, then Save.
+      </p>
       <ul className='divide-y rounded-md border'>
-        {order.map((key, index) => {
-          const enabled = isEnabled(key, content);
-          return (
-            <li key={key} className='flex items-center gap-3 px-3 py-2.5'>
-              <GripVertical className='h-4 w-4 shrink-0 text-muted-foreground/40' />
-              <span className='w-5 shrink-0 text-xs tabular-nums text-muted-foreground'>
-                {index + 1}
+        {rows.map((row, index) => (
+          <li key={row.key} className='flex items-center gap-3 px-3 py-2.5'>
+            <span className='w-5 shrink-0 text-xs tabular-nums text-muted-foreground'>
+              {index + 1}
+            </span>
+            <span className='min-w-0 flex-1'>
+              <span className='block truncate text-sm font-medium'>
+                {row.label}
               </span>
-              <span className='flex-1 truncate text-sm font-medium'>
-                {labelFor(key, content)}
-              </span>
-              <Badge
-                variant={enabled ? "secondary" : "outline"}
-                className='shrink-0 text-[10px]'>
-                {enabled ? "On" : "Off"}
-              </Badge>
-              <div className='flex shrink-0 items-center gap-0.5'>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='icon'
-                  className='h-7 w-7'
-                  disabled={disabled || index === 0}
-                  onClick={() => move(index, -1)}
-                  aria-label={`Move ${labelFor(key, content)} up`}>
-                  <ChevronUp className='h-3.5 w-3.5' />
-                </Button>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='icon'
-                  className='h-7 w-7'
-                  disabled={disabled || index === order.length - 1}
-                  onClick={() => move(index, 1)}
-                  aria-label={`Move ${labelFor(key, content)} down`}>
-                  <ChevronDown className='h-3.5 w-3.5' />
-                </Button>
-              </div>
-            </li>
-          );
-        })}
+              {row.meta && (
+                <span className='block truncate text-xs text-muted-foreground'>
+                  {row.meta}
+                </span>
+              )}
+            </span>
+            <Badge
+              variant={
+                row.status === "visible" || row.status === "enabled"
+                  ? "secondary"
+                  : "outline"
+              }
+              className='shrink-0 text-[10px] font-normal'
+              title={row.hint}>
+              {SECTION_STATUS_LABELS[row.status]}
+            </Badge>
+            <div className='flex shrink-0 items-center gap-1'>
+              <Button
+                type='button'
+                variant='outline'
+                size='icon'
+                className='h-7 w-7'
+                disabled={disabled || index === 0}
+                onClick={() => move(index, -1)}
+                aria-label={`Move ${row.label} up`}>
+                <ChevronUp className='h-4 w-4' />
+              </Button>
+              <Button
+                type='button'
+                variant='outline'
+                size='icon'
+                className='h-7 w-7'
+                disabled={disabled || index === rows.length - 1}
+                onClick={() => move(index, 1)}
+                aria-label={`Move ${row.label} down`}>
+                <ChevronDown className='h-4 w-4' />
+              </Button>
+            </div>
+          </li>
+        ))}
       </ul>
       <p className='text-xs text-muted-foreground'>
-        The hero always stays at the top of the page. Sections switched
-        &ldquo;Off&rdquo;, and merchandising sections with no products yet, keep
-        their position here but do not render on the site.
+        The hero always stays at the top of the page, and a row keeps its
+        position here whatever its status.{" "}
+        <span className='font-medium'>Visible</span> means the section renders.{" "}
+        <span className='font-medium'>Enabled</span> means it is switched on,
+        but it fills itself from the catalogue when the page loads, so it still
+        shows nothing if no products or categories come back. Hover any status
+        for what it means.
       </p>
     </div>
   );

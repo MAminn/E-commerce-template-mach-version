@@ -20,6 +20,10 @@ import { MachWhy } from "../mach/sections/MachWhy";
 import { MachCertificates } from "../mach/sections/MachCertificates";
 import { MachNewsletter } from "../mach/sections/MachNewsletter";
 import { MachClosingCta } from "../mach/sections/MachClosingCta";
+import {
+  resolveRowGrounds,
+  type MachRowRenderState,
+} from "./mach-row-grounds";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -161,6 +165,48 @@ export function LandingTemplateMach({
   ]);
 
   /**
+   * Whether each merchandising row will actually put something on the page.
+   *
+   * One predicate per row, read by both the ground alternation below and the
+   * row's own branch in `renderSection`. The row components already return
+   * `null` while loading or with an empty product list, so this is not a new
+   * rule — it is the existing rule stated once, where the layout can see it,
+   * instead of only inside each component where the page composition could
+   * not.
+   */
+  const rowRenders = useMemo<MachRowRenderState>(
+    () => ({
+      stacks:
+        Boolean(content.stacks?.enabled) &&
+        !stacksLoading &&
+        stacksProducts.length > 0,
+      newArrivals:
+        Boolean(content.newArrivals?.enabled) &&
+        !newArrivalsLoading &&
+        newArrivals.length > 0,
+      featuredProducts:
+        Boolean(content.featuredProducts.enabled) && featuredProducts.length > 0,
+      gymGear:
+        Boolean(content.gymGear?.enabled) &&
+        !gymGearLoading &&
+        gymGearProducts.length > 0,
+    }),
+    [
+      content.stacks?.enabled,
+      content.newArrivals?.enabled,
+      content.featuredProducts.enabled,
+      content.gymGear?.enabled,
+      stacksLoading,
+      stacksProducts.length,
+      newArrivalsLoading,
+      newArrivals.length,
+      featuredProducts.length,
+      gymGearLoading,
+      gymGearProducts.length,
+    ],
+  );
+
+  /**
    * Grounds for the merchandising rows, assigned by position rather than
    * pinned per section.
    *
@@ -169,18 +215,14 @@ export function LandingTemplateMach({
    * identical grounds side by side the moment one of them moves. So the group
    * and product rows simply alternate paper / white in whatever order they end
    * up in, and Offers stays on ink as the page's dark merchandising anchor.
+   *
+   * Only rows that render take a turn: a hidden one used to consume an
+   * alternation slot and hand two visible neighbours the same ground.
    */
-  const rowGrounds = useMemo(() => {
-    const alternating = ["stacks", "newArrivals", "featuredProducts", "gymGear"];
-    const grounds = new Map<string, "paper" | "white">();
-    let i = 0;
-    for (const key of order) {
-      if (!alternating.includes(key)) continue;
-      grounds.set(key, i % 2 === 0 ? "paper" : "white");
-      i += 1;
-    }
-    return grounds;
-  }, [order]);
+  const rowGrounds = useMemo(
+    () => resolveRowGrounds(order, rowRenders),
+    [order, rowRenders],
+  );
 
   /**
    * How many offers the homepage shelf carries — the merchant's setting, read
@@ -225,42 +267,46 @@ export function LandingTemplateMach({
           />
         ) : null;
 
-      case "stacks":
+      case "stacks": {
         // Not a product row. The store carries two or three bundles on
         // purpose, so this one composes for the count it is given instead of
         // dropping them into a four-up shelf with two holes in it.
-        return content.stacks?.enabled ? (
+        const stacks = content.stacks;
+        return rowRenders.stacks && stacks ? (
           <MachStackShowcase
             key={key}
             id="stacks"
-            title={content.stacks.title}
-            subtitle={content.stacks.subtitle}
-            actionLabel={content.stacks.viewAllText}
-            actionHref={content.stacks.viewAllLink}
+            title={stacks.title}
+            subtitle={stacks.subtitle}
+            actionLabel={stacks.viewAllText}
+            actionHref={stacks.viewAllLink}
             products={stacksProducts}
             isLoading={stacksLoading}
             ground={rowGrounds.get("stacks")}
           />
         ) : null;
+      }
 
-      case "gymGear":
-        return content.gymGear?.enabled ? (
+      case "gymGear": {
+        const gymGear = content.gymGear;
+        return rowRenders.gymGear && gymGear ? (
           <MachProductRow
             key={key}
             id="gym-gear"
-            title={content.gymGear.title}
-            subtitle={content.gymGear.subtitle}
-            actionLabel={content.gymGear.viewAllText}
-            actionHref={content.gymGear.viewAllLink}
+            title={gymGear.title}
+            subtitle={gymGear.subtitle}
+            actionLabel={gymGear.viewAllText}
+            actionHref={gymGear.viewAllLink}
             products={gymGearProducts}
             isLoading={gymGearLoading}
             ground={rowGrounds.get("gymGear")}
             dense
           />
         ) : null;
+      }
 
       case "featuredProducts":
-        return content.featuredProducts.enabled ? (
+        return rowRenders.featuredProducts ? (
           <MachProductRow
             key={key}
             id="products"
@@ -288,20 +334,22 @@ export function LandingTemplateMach({
           />
         ) : null;
 
-      case "newArrivals":
-        return content.newArrivals?.enabled ? (
+      case "newArrivals": {
+        const newDrops = content.newArrivals;
+        return rowRenders.newArrivals && newDrops ? (
           <MachProductRow
             key={key}
             id="new-drops"
-            title={content.newArrivals.title}
-            actionLabel={content.newArrivals.viewAllText}
-            actionHref={content.newArrivals.viewAllLink}
+            title={newDrops.title}
+            actionLabel={newDrops.viewAllText}
+            actionHref={newDrops.viewAllLink}
             products={newArrivals}
             isLoading={newArrivalsLoading}
             ground={rowGrounds.get("newArrivals")}
             dense
           />
         ) : null;
+      }
 
       case "whyMach":
         return content.whyMach?.enabled ? (
