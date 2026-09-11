@@ -55,7 +55,8 @@ import { HomepageProductPicker } from "#root/components/admin/HomepageProductPic
 import {
   MachHeroCampaignCard,
   MachMarqueeCard,
-  MachProductGroupCard,
+  MachGroupSectionsCard,
+  MachFeaturedShelfCard,
   MachCategorySelectionCard,
   MachCampaignBannersCard,
   MachWhyCard,
@@ -2832,20 +2833,13 @@ export default function HomepageAdminPage() {
                 tile, and in what order, is this card — the tile artwork and
                 names come from Dashboard → Categories. */}
             <MachCategorySelectionCard content={content} setContent={setContent} />
-            <MachProductGroupCard
-              sectionKey='stacks'
-              title='Stacks & Bundles'
-              description='Products sold as stacks or bundles. Pulled live from the broad group you pick, or from a hand-picked selection.'
-              content={content}
-              setContent={setContent}
-            />
-            <MachProductGroupCard
-              sectionKey='gymGear'
-              title='Gym Gear'
-              description='Non-supplement gear. Same controls as Stacks & Bundles — pick the broad group, or hand-pick the products.'
-              content={content}
-              setContent={setContent}
-            />
+            {/* One section per broad group, discovered from the category
+                system. Adding a group in Dashboard → Categories adds a card
+                here; nothing is hard-coded per group. */}
+            <MachGroupSectionsCard content={content} setContent={setContent} />
+            {/* Featured is its own merchandising section, not a renamed one —
+                it sits alongside the Best Sellers card above. */}
+            <MachFeaturedShelfCard content={content} setContent={setContent} />
             <MachCampaignBannersCard content={content} setContent={setContent} />
             <MachWhyCard content={content} setContent={setContent} />
             <MachCertificatesCard content={content} setContent={setContent} />

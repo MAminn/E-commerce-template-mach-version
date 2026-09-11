@@ -5,6 +5,11 @@ import {
   type HomepageContent,
   type OrderableSectionKey,
 } from "./homepage-content";
+import {
+  indexGroupSections,
+  isGroupSectionKey,
+  type ResolvedGroupSection,
+} from "./homepage-group-sections";
 
 /**
  * What Homepage Admin shows for one row of Section Order.
@@ -22,9 +27,19 @@ import {
  *     source selected and the whole Community section all return `null` on the
  *     storefront while reporting "On" here.
  *
- * So a row now carries the *storefront* heading, a quiet reminder of which
- * internal block it is when that heading has been renamed, and a status that
- * is derived from the same conditions the storefront renders on.
+ * So a row carries the section's own name, the storefront heading underneath
+ * when the client has renamed it, and a status derived from the same
+ * conditions the storefront renders on.
+ *
+ * The naming runs identity-first, and that direction matters. Leading with the
+ * *heading* was an improvement on an internal-only list, but it made Section
+ * Order rename itself: a list where "Best Sellers" can read "Bundles & Stacks"
+ * today and "Featured" tomorrow describes the page's copy, not its structure,
+ * and structure is the only thing a reorder screen is for. Each broad group is
+ * its own section now and Featured is its own section, so every row has a
+ * stable name worth leading with — the category's name for a group, the
+ * section's name for the rest — and a renamed heading is reported as what it
+ * is: a copy override, on the second line.
  *
  * Everything in this module is a pure function of saved CMS content. It never
  * claims to know a live product count: Homepage Admin does not load the
@@ -68,9 +83,9 @@ export const SECTION_STATUS_LABELS: Record<SectionStatus, string> = {
 export interface SectionRow {
   /** The `sectionOrder` entry this row stands for. */
   key: string;
-  /** The heading the shopper sees, so the list matches the storefront. */
+  /** The section's canonical name — a group's category, or the block itself. */
   label: string;
-  /** Which internal block this is — set only when the heading was renamed. */
+  /** The storefront heading, set only when it differs from the name. */
   meta?: string;
   status: SectionStatus;
   /** Plain sentence explaining what the status means. Absent for "Visible". */
@@ -85,14 +100,12 @@ function storefrontHeading(
   switch (key) {
     case "categories":
       return content.categories?.title;
-    case "stacks":
-      return content.stacks?.title;
     case "newArrivals":
       return content.newArrivals?.title;
     case "featuredProducts":
       return content.featuredProducts?.title;
-    case "gymGear":
-      return content.gymGear?.title;
+    case "featuredShelf":
+      return content.featuredShelf?.title;
     case "discountedProducts":
       return content.discountedProducts?.title;
     case "whyMach":
@@ -165,24 +178,22 @@ function statusForSection(
       // see the catalogue.
       return "enabled";
 
-    case "stacks":
-    case "gymGear": {
-      const group = key === "stacks" ? content.stacks : content.gymGear;
-      if (!group?.enabled) return "off";
-      const hasProducts = (group.productIds ?? []).length > 0;
-      const hasCategories = (group.categoryIds ?? []).length > 0;
-      // A selected source is only a source: the products behind it can be
-      // unpublished or out of stock, and the row renders nothing then.
-      return hasProducts || hasCategories ? "enabled" : "no-source";
-    }
-
-    // The three merchandising shelves are filled by a runtime product query.
+    // The merchandising shelves are filled by a runtime product query.
     // Switched on is all the CMS can honestly report about them.
     case "featuredProducts":
       return content.featuredProducts?.enabled ? "enabled" : "off";
 
     case "newArrivals":
       return content.newArrivals?.enabled ? "enabled" : "off";
+
+    case "featuredShelf":
+      // The one merchandising shelf whose emptiness *is* knowable here: it is
+      // hand-picked by definition, so with nothing picked there is no query
+      // that could fill it and the storefront renders nothing.
+      if (!content.featuredShelf?.enabled) return "off";
+      return (content.featuredShelf.productIds ?? []).length > 0
+        ? "enabled"
+        : "no-source";
 
     case "discountedProducts":
       return content.discountedProducts?.enabled ? "enabled" : "off";
@@ -224,7 +235,9 @@ function hintFor(key: string, status: SectionStatus): string | undefined {
     case "off":
       return "Switched off, so it keeps its place here but does not render.";
     case "no-source":
-      return "No products or groups selected yet, so there is nothing to show.";
+      return key === "featuredShelf"
+        ? "No products picked yet. Featured only shows what you choose for it, so it stays hidden until you do."
+        : "No products or groups selected yet, so there is nothing to show.";
     case "missing-media":
       return "Enabled, but no image or video has been uploaded for it.";
     case "empty":
@@ -248,11 +261,42 @@ function hintFor(key: string, status: SectionStatus): string | undefined {
 export function describeSectionRows(
   order: string[],
   content: HomepageContent,
+  groupSections: readonly ResolvedGroupSection[] = [],
 ): SectionRow[] {
   const banners = content.campaignBanners ?? [];
   const bannerNumbers = new Map(banners.map((b, i) => [b.id, i + 1]));
+  const groups = indexGroupSections(groupSections);
 
   return order.map((key): SectionRow => {
+    if (isGroupSectionKey(key)) {
+      const group = groups.get(key);
+      // A key whose category is no longer a broad group. `resolveSectionOrder`
+      // drops these, so reaching here means the caller passed an unresolved
+      // order; name it honestly rather than inventing a category.
+      if (!group) {
+        return {
+          key,
+          label: "Group section",
+          status: "unavailable",
+          hint: "This group is no longer part of the store's broad groups.",
+        };
+      }
+      // Never "Visible": a group fills itself from a catalogue query, so a
+      // perfectly valid configuration can still put nothing on the page.
+      const status: SectionStatus = group.enabled ? "enabled" : "off";
+      return {
+        key,
+        // The category's name, not the heading. A renamed heading is a copy
+        // change; the section is still that group.
+        label: group.category.name,
+        meta: group.headingOverride
+          ? `Storefront heading: ${group.headingOverride}`
+          : undefined,
+        status,
+        hint: hintFor(key, status),
+      };
+    }
+
     if (key.startsWith(CAMPAIGN_SECTION_PREFIX)) {
       const id = key.slice(CAMPAIGN_SECTION_PREFIX.length);
       const banner = banners.find((b) => b.id === id);
@@ -277,20 +321,19 @@ export function describeSectionRows(
     const sectionKey = key as OrderableSectionKey;
     const canonical = SECTION_LABELS[sectionKey] ?? key;
     const heading = storefrontHeading(sectionKey, content)?.trim();
-    const label = heading || canonical;
     const status = statusForSection(sectionKey, content);
 
     return {
       key,
-      label,
+      label: canonical,
       // Only worth the line when the client renamed the heading: otherwise it
-      // would read "Best Sellers / Best Sellers section".
+      // would read "Best Sellers / Best Sellers".
       meta:
         sectionKey === "heroMarquee"
           ? preview(content.heroMarquee?.text)
-          : sameHeading(label, canonical)
+          : !heading || sameHeading(heading, canonical)
             ? undefined
-            : `${canonical} section`,
+            : `Storefront heading: ${heading}`,
       status,
       hint: hintFor(key, status),
     };

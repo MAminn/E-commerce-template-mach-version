@@ -11,6 +11,8 @@ import { uploadHomepageMedia } from "./upload-media";
 import {
   DISCOUNTED_LIMIT_MAX,
   DISCOUNTED_LIMIT_MIN,
+  GROUP_SECTION_LIMIT_MAX,
+  GROUP_SECTION_LIMIT_MIN,
   ValuePropIconType,
   type HomepageContent,
 } from "#root/shared/types/homepage-content";
@@ -34,7 +36,40 @@ const TextAlignSchema = z.enum(["left", "center", "right"]);
 const TextVerticalAlignSchema = z.enum(["top", "middle", "bottom"]);
 const TextThemeSchema = z.enum(["light", "dark"]);
 
-/** Matches `HomepageProductGroupContent` — one broad merchandising row. */
+/**
+ * Matches `HomepageGroupSectionContent` — one broad group's own section.
+ *
+ * `categoryId` is the identity and the only required field beside the switch:
+ * everything else overrides copy or presentation the category already
+ * supplies. The array is not constrained to the store's current broad groups
+ * here — reconciliation against the live category list happens on read, so a
+ * client saving while a category is mid-rename cannot lose a section.
+ */
+const GroupSectionSchema = z.object({
+  categoryId: z.string().uuid(),
+  enabled: z.boolean(),
+  title: z.string().nullish(),
+  titleAr: z.string().nullish(),
+  subtitle: z.string().nullish(),
+  subtitleAr: z.string().nullish(),
+  viewAllText: z.string().nullish(),
+  viewAllTextAr: z.string().nullish(),
+  viewAllLink: z.string().nullish(),
+  productIds: z.array(z.string().uuid()).nullish(),
+  limit: z
+    .number()
+    .int()
+    .min(GROUP_SECTION_LIMIT_MIN)
+    .max(GROUP_SECTION_LIMIT_MAX)
+    .nullish(),
+  presentation: z.enum(["shelf", "feature"]).nullish(),
+});
+
+/**
+ * Matches `HomepageProductGroupContent` — one hard-coded merchandising row.
+ *
+ * @deprecated Accepted so older clients and stored blobs still validate.
+ */
 const ProductGroupSchema = z
   .object({
     enabled: z.boolean(),
@@ -174,8 +209,26 @@ const HomepageContentSchema = z.object({
       productIds: z.array(z.string().uuid()).nullish(),
     })
     .nullish(),
-  // Broad merchandising groups (Stacks & Bundles, Gym Gear). Same shape for
-  // both — the section identity is the key, not a separate schema.
+  // One merchandising section per broad product group, keyed by category id.
+  // The store's groups are catalogue data, so this is a list rather than a
+  // field per group — a fourth group needs no schema change.
+  groupSections: z.array(GroupSectionSchema).nullish(),
+  // Featured — hand-picked, and its own section rather than a renamed one.
+  featuredShelf: z
+    .object({
+      enabled: z.boolean(),
+      title: z.string(),
+      titleAr: z.string().nullish(),
+      subtitle: z.string().nullish(),
+      subtitleAr: z.string().nullish(),
+      viewAllText: z.string(),
+      viewAllTextAr: z.string().nullish(),
+      viewAllLink: z.string(),
+      productIds: z.array(z.string().uuid()).nullish(),
+    })
+    .nullish(),
+  // Deprecated hard-coded group rows, still accepted so a client running older
+  // code, or a stored blob nobody has re-saved, keeps validating.
   stacks: ProductGroupSchema,
   gymGear: ProductGroupSchema,
   marquee: z

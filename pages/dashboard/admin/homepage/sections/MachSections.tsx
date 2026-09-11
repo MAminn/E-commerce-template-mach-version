@@ -29,9 +29,11 @@ import { HomepageSectionOrder } from "#root/components/admin/HomepageSectionOrde
 import type {
   CampaignBannerContent,
   CertificateItem,
+  GroupSectionPresentation,
   HeroMediaLayout,
   HomepageContent,
-  HomepageProductGroupContent,
+  HomepageFeaturedShelfContent,
+  HomepageGroupSectionContent,
   MediaSlot,
   TextAlign,
   TextTheme,
@@ -39,9 +41,19 @@ import type {
   WhyMachItem,
 } from "#root/shared/types/homepage-content";
 import {
+  DEFAULT_GROUP_SECTION_LIMIT,
+  DEFAULT_GROUP_VIEW_ALL_TEXT,
   EMPTY_MEDIA_SLOT,
+  GROUP_SECTION_LIMIT_MAX,
+  GROUP_SECTION_LIMIT_MIN,
   ValuePropIconType,
 } from "#root/shared/types/homepage-content";
+import {
+  normalizeGroupSections,
+  resolveGroupSections,
+  type ResolvedGroupSection,
+} from "#root/shared/types/homepage-group-sections";
+import { useBroadGroups } from "#root/components/admin/useBroadGroups";
 
 /**
  * Homepage Admin editors for the Mach storefront sections.
@@ -356,111 +368,232 @@ export function MachMarqueeCard({
 }
 
 /* ================================================================== */
-/*  Broad product group (Stacks & Bundles, Gym Gear)                  */
+/*  Broad group sections                                              */
 /* ================================================================== */
 
 /**
- * Editor for one broad merchandising row.
+ * Editors for the store's broad group merchandising sections.
  *
- * Both group sections use this card — the only difference is which key of
- * `content` it writes to — so Stacks & Bundles and Gym Gear can never drift
- * apart in what the client is able to control.
+ * One card per broad group, and the list of groups comes from the category
+ * system rather than from this file. That is the whole point of the change it
+ * replaces: there used to be a hard-coded card for Stacks & Bundles and
+ * another for Gym Gear, so the store's third group — Supplements — had no
+ * section at all, and a fourth would have needed a deploy. Now opening a broad
+ * group in Dashboard → Categories is enough.
  *
- * The two ways to fill a row are presented in the order the storefront applies
- * them: pick the broad group, or override it with an explicit product
- * selection. With neither set the row shows nothing on the storefront, which is
- * stated on the card rather than left for the client to discover.
+ * The group *is* the category, so there is no source picker here. Changing
+ * which category a section sells from would be changing which section it is,
+ * and the two ways that could be expressed — renaming the card, or repointing
+ * it — are exactly the confusion this architecture removes. What the client
+ * can still do is override the copy, hand-pick the products, and choose how
+ * the section presents itself.
+ *
+ * A group nobody has configured yet is off. Opening a catalogue group should
+ * never change the live homepage by itself.
  */
-export function MachProductGroupCard({
-  sectionKey,
-  title,
-  description,
+export function MachGroupSectionsCard({
   content,
   setContent,
 }: {
-  sectionKey: "stacks" | "gymGear";
-  title: string;
-  description: string;
   content: HomepageContent;
   setContent: SetContent;
 }) {
-  const group = content[sectionKey] as HomepageProductGroupContent | undefined;
+  const { groups, loading } = useBroadGroups(content);
+  const sections = resolveGroupSections(content, groups);
 
-  const patch = (next: Partial<HomepageProductGroupContent>) =>
+  /**
+   * Writes one group's configuration.
+   *
+   * Normalised first, so a store still carrying the two legacy group rows gets
+   * them converted on the client's first edit rather than keeping two
+   * representations of the same section in the saved blob.
+   */
+  const patch = (
+    categoryId: string,
+    next: Partial<HomepageGroupSectionContent>,
+  ) =>
     setContent((prev) => {
-      const base = (prev[sectionKey] ?? {}) as HomepageProductGroupContent;
-      return {
-        ...prev,
-        // The required fields are re-asserted after the spread so a group
-        // saved before one of them existed still produces a valid section.
-        [sectionKey]: {
-          ...base,
-          ...next,
-          enabled: next.enabled ?? base.enabled ?? true,
-          title: next.title ?? base.title ?? "",
-          viewAllText: next.viewAllText ?? base.viewAllText ?? "",
-          viewAllLink: next.viewAllLink ?? base.viewAllLink ?? "/shop",
-        },
-      };
+      const current = normalizeGroupSections(prev);
+      const index = current.findIndex((s) => s.categoryId === categoryId);
+      const base: HomepageGroupSectionContent =
+        index >= 0
+          ? current[index]!
+          : { categoryId, enabled: false, presentation: "shelf" };
+      const updated = { ...base, ...next, categoryId };
+      const groupSections =
+        index >= 0
+          ? current.map((s, i) => (i === index ? updated : s))
+          : [...current, updated];
+      return { ...prev, groupSections };
     });
-
-  const enabled = group?.enabled ?? true;
-  const selectedProductIds = group?.productIds ?? [];
-  const selectedCategoryIds = group?.categoryIds ?? [];
-  const hasSource =
-    selectedProductIds.length > 0 || selectedCategoryIds.length > 0;
 
   return (
     <Card>
-      <SectionCardHeader
-        title={title}
-        description={description}
-        enabled={enabled}
-        onToggle={(v) => patch({ enabled: v })}
-      />
-      <CardContent className='space-y-5'>
+      <CardHeader>
+        <CardTitle>Group Sections</CardTitle>
+        <CardDescription>
+          A product section for each of your broad groups. The groups come from
+          Dashboard → Categories — add one there and it appears here, switched
+          off until you are ready for it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-6'>
+        {loading && (
+          <p className='text-sm text-muted-foreground'>Loading groups…</p>
+        )}
+
+        {!loading && sections.length === 0 && (
+          <div className='rounded-md bg-muted p-3'>
+            <p className='text-sm text-muted-foreground'>
+              No broad groups yet. Add a category in Dashboard → Categories, or
+              pick the groups for this homepage in the Shop by group card
+              below, and each one gets its own section here.
+            </p>
+          </div>
+        )}
+
+        {sections.map((section) => (
+          <MachGroupSectionEditor
+            key={section.key}
+            section={section}
+            onPatch={(next) => patch(section.category.id, next)}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** One group's card. The category is fixed; everything here is an override. */
+function MachGroupSectionEditor({
+  section,
+  onPatch,
+}: {
+  section: ResolvedGroupSection;
+  onPatch: (next: Partial<HomepageGroupSectionContent>) => void;
+}) {
+  const config = section.config;
+  const curated = section.productIds.length > 0;
+
+  return (
+    <div className='rounded-lg border p-4'>
+      <div className='flex items-start justify-between gap-4'>
+        <div className='min-w-0'>
+          {/* The category's name, not the heading. This card is that group. */}
+          <p className='truncate text-sm font-medium'>{section.category.name}</p>
+          <p className='mt-0.5 text-xs text-muted-foreground'>
+            Sells from the {section.category.name} group. Products are pulled
+            live, so adding a product to the group adds it here.
+          </p>
+        </div>
+        <div className='flex shrink-0 items-center gap-2'>
+          <Label
+            className='text-xs text-muted-foreground'
+            title={
+              section.enabled
+                ? "This section is live on the storefront."
+                : "Hidden from the storefront. You can still edit and prepare it here."
+            }>
+            {section.enabled ? "Visible" : "Hidden"}
+          </Label>
+          <Switch
+            checked={section.enabled}
+            onCheckedChange={(v) => onPatch({ enabled: v })}
+          />
+        </div>
+      </div>
+
+      <div className='mt-4 space-y-5'>
         <div className='grid gap-4 sm:grid-cols-2'>
           <div className='space-y-1.5'>
-            <Label className='text-xs'>Heading</Label>
+            <Label className='text-xs'>Storefront heading</Label>
             <Input
-              value={group?.title ?? ""}
-              onChange={(e) => patch({ title: e.target.value })}
+              value={config?.title ?? ""}
+              onChange={(e) => onPatch({ title: e.target.value })}
+              placeholder={section.category.name}
             />
+            <p className='text-xs text-muted-foreground'>
+              Leave blank to use the group's own name. Renaming it changes only
+              what shoppers read — the section keeps its place and its name in
+              Section Order.
+            </p>
           </div>
           <div className='space-y-1.5'>
             <Label className='text-xs'>Sub-heading</Label>
             <Input
-              value={group?.subtitle ?? ""}
-              onChange={(e) => patch({ subtitle: e.target.value })}
+              value={config?.subtitle ?? ""}
+              onChange={(e) => onPatch({ subtitle: e.target.value })}
             />
           </div>
           <div className='space-y-1.5'>
             <Label className='text-xs'>Link label</Label>
             <Input
-              value={group?.viewAllText ?? ""}
-              onChange={(e) => patch({ viewAllText: e.target.value })}
+              value={config?.viewAllText ?? ""}
+              onChange={(e) => onPatch({ viewAllText: e.target.value })}
+              placeholder={DEFAULT_GROUP_VIEW_ALL_TEXT}
             />
           </div>
           <div className='space-y-1.5'>
             <Label className='text-xs'>Link destination</Label>
             <Input
-              value={group?.viewAllLink ?? ""}
-              onChange={(e) => patch({ viewAllLink: e.target.value })}
-              placeholder='/shop'
+              value={config?.viewAllLink ?? ""}
+              onChange={(e) => onPatch({ viewAllLink: e.target.value })}
+              placeholder={`/categories/${section.category.slug}`}
             />
+            <p className='text-xs text-muted-foreground'>
+              Leave blank to send shoppers to the group's own page.
+            </p>
           </div>
         </div>
 
-        <div className='space-y-2'>
-          <Label className='text-xs'>Broad group</Label>
-          <p className='text-xs text-muted-foreground'>
-            The group this row sells from. Products are pulled live, so adding a
-            product to the group adds it here.
-          </p>
-          <HomepageCategoryPicker
-            selectedIds={selectedCategoryIds}
-            onChange={(ids) => patch({ categoryIds: ids })}
-          />
+        <div className='grid gap-4 sm:grid-cols-2'>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Presentation</Label>
+            <Select
+              value={section.presentation}
+              onValueChange={(v) =>
+                onPatch({ presentation: v as GroupSectionPresentation })
+              }>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='shelf'>Product shelf</SelectItem>
+                <SelectItem value='feature'>Feature panels</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className='text-xs text-muted-foreground'>
+              Product shelf is the standard row. Feature panels compose for a
+              group that carries two or three items on purpose, like bundles.
+            </p>
+          </div>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Products shown</Label>
+            <Input
+              type='number'
+              min={GROUP_SECTION_LIMIT_MIN}
+              max={GROUP_SECTION_LIMIT_MAX}
+              className='max-w-[8rem]'
+              value={section.limit}
+              onChange={(e) =>
+                onPatch({
+                  limit: Math.min(
+                    GROUP_SECTION_LIMIT_MAX,
+                    Math.max(
+                      GROUP_SECTION_LIMIT_MIN,
+                      Number.parseInt(e.target.value, 10) ||
+                        DEFAULT_GROUP_SECTION_LIMIT,
+                    ),
+                  ),
+                })
+              }
+              disabled={curated}
+            />
+            <p className='text-xs text-muted-foreground'>
+              Applies when the section is filled from the group. A hand-picked
+              selection always shows every product you picked.
+            </p>
+          </div>
         </div>
 
         <div className='space-y-2'>
@@ -470,41 +603,118 @@ export function MachProductGroupCard({
             here.
           </p>
           <HomepageProductPicker
+            selectedIds={section.productIds}
+            onChange={(ids) => onPatch({ productIds: ids })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  Featured — hand-picked merchandising shelf                        */
+/* ================================================================== */
+
+/**
+ * The Featured section's editor.
+ *
+ * Featured used to be produced by renaming the Best Sellers heading, which
+ * meant the store could have one or the other and Section Order described a
+ * block pretending to be a different one. This card drives a section of its
+ * own, with its own switch, copy and selection, sitting alongside Best
+ * Sellers, New Drops and Offers rather than in place of any of them.
+ *
+ * There is no automatic ranking behind it and there should not be: featured
+ * means somebody chose these. With nothing chosen the section stays off the
+ * storefront rather than quietly repeating whatever Best Sellers already
+ * shows, which is stated on the card rather than left to be discovered.
+ */
+export function MachFeaturedShelfCard({
+  content,
+  setContent,
+}: {
+  content: HomepageContent;
+  setContent: SetContent;
+}) {
+  const featured = content.featuredShelf;
+
+  const patch = (next: Partial<HomepageFeaturedShelfContent>) =>
+    setContent((prev) => {
+      const base = (prev.featuredShelf ?? {}) as HomepageFeaturedShelfContent;
+      return {
+        ...prev,
+        featuredShelf: {
+          ...base,
+          ...next,
+          enabled: next.enabled ?? base.enabled ?? false,
+          title: next.title ?? base.title ?? "FEATURED",
+          viewAllText: next.viewAllText ?? base.viewAllText ?? "VIEW ALL",
+          viewAllLink: next.viewAllLink ?? base.viewAllLink ?? "/shop",
+        },
+      };
+    });
+
+  const enabled = featured?.enabled ?? false;
+  const selectedProductIds = featured?.productIds ?? [];
+
+  return (
+    <Card>
+      <SectionCardHeader
+        title='Featured'
+        description='A shelf of products you choose by hand. Its own section — separate from Best Sellers, New Drops and Offers.'
+        enabled={enabled}
+        onToggle={(v) => patch({ enabled: v })}
+      />
+      <CardContent className='space-y-5'>
+        <div className='grid gap-4 sm:grid-cols-2'>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Heading</Label>
+            <Input
+              value={featured?.title ?? ""}
+              onChange={(e) => patch({ title: e.target.value })}
+            />
+          </div>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Sub-heading</Label>
+            <Input
+              value={featured?.subtitle ?? ""}
+              onChange={(e) => patch({ subtitle: e.target.value })}
+            />
+          </div>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Link label</Label>
+            <Input
+              value={featured?.viewAllText ?? ""}
+              onChange={(e) => patch({ viewAllText: e.target.value })}
+            />
+          </div>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Link destination</Label>
+            <Input
+              value={featured?.viewAllLink ?? ""}
+              onChange={(e) => patch({ viewAllLink: e.target.value })}
+              placeholder='/shop'
+            />
+          </div>
+        </div>
+
+        <div className='space-y-2'>
+          <Label className='text-xs'>Featured products</Label>
+          <p className='text-xs text-muted-foreground'>
+            Shown in the order you set here.
+          </p>
+          <HomepageProductPicker
             selectedIds={selectedProductIds}
             onChange={(ids) => patch({ productIds: ids })}
           />
         </div>
 
-        <div className='space-y-1.5'>
-          <Label className='text-xs'>Products shown</Label>
-          <Input
-            type='number'
-            min={1}
-            max={24}
-            className='max-w-[8rem]'
-            value={group?.limit ?? 4}
-            onChange={(e) =>
-              patch({
-                limit: Math.min(
-                  24,
-                  Math.max(1, Number.parseInt(e.target.value, 10) || 4),
-                ),
-              })
-            }
-            disabled={selectedProductIds.length > 0}
-          />
-          <p className='text-xs text-muted-foreground'>
-            Applies when the row is filled from a broad group. A hand-picked
-            selection always shows every product you picked.
-          </p>
-        </div>
-
-        {enabled && !hasSource && (
+        {enabled && selectedProductIds.length === 0 && (
           <div className='rounded-md bg-muted p-3'>
             <p className='text-sm text-muted-foreground'>
-              This section has no products to show yet, so it is hidden on the
-              storefront. Pick a broad group or some products above to publish
-              it.
+              Nothing picked yet, so this section is hidden on the storefront.
+              Featured only shows what you choose for it.
             </p>
           </div>
         )}

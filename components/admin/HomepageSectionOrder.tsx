@@ -7,6 +7,11 @@ import {
   SECTION_STATUS_LABELS,
   describeSectionRows,
 } from "#root/shared/types/homepage-section-rows";
+import {
+  groupCategoryIds,
+  resolveGroupSections,
+} from "#root/shared/types/homepage-group-sections";
+import { useBroadGroups } from "./useBroadGroups";
 
 /**
  * Reorders the homepage sections below the hero.
@@ -15,10 +20,15 @@ import {
  * no deploy. The hero is not listed because it is pinned to the top: the
  * navbar's transparent-over-hero behaviour depends on it opening the page.
  *
- * Each row is named after the heading that is actually on the storefront, so a
- * section renamed in the CMS is recognisable here, and carries the status the
- * storefront would give it rather than a plain on/off switch reading — see
+ * Each row is named after what the section *is* — the category's name for a
+ * broad group, the section's own name for everything else — with a renamed
+ * storefront heading shown underneath, and carries the status the storefront
+ * would give it rather than a plain on/off switch reading. See
  * `describeSectionRows`.
+ *
+ * The list is not a fixed set of rows. Every broad group has its own section
+ * here, discovered from the category system, so a group the client opens turns
+ * up as a row on the next load with no deploy and nothing to create by hand.
  *
  * Reordering is arrow-driven on purpose. There is no sortable library in this
  * repository, and a drag handle that does not drag is worse than no handle at
@@ -33,14 +43,23 @@ export function HomepageSectionOrder({
   onChange: (order: string[]) => void;
   disabled?: boolean;
 }) {
+  const { groups, loading } = useBroadGroups(content);
+
   // Always render the resolved order, not the raw saved array — that way a
   // section added after the client last saved appears in the list instead of
   // being invisible until they happen to re-save.
+  //
+  // Resolving before the categories land would drop every group row, and this
+  // list saves what it renders — so it waits rather than offering the client a
+  // list that would delete their group placements the moment they pressed
+  // Save.
+  const groupSections = resolveGroupSections(content, groups);
   const order = resolveSectionOrder(
     content.sectionOrder,
     (content.campaignBanners ?? []).map((b) => b.id),
+    groupCategoryIds(groups),
   );
-  const rows = describeSectionRows(order, content);
+  const rows = describeSectionRows(order, content, groupSections);
 
   const move = (index: number, delta: number) => {
     const next = [...order];
@@ -50,6 +69,12 @@ export function HomepageSectionOrder({
     next.splice(target, 0, item as string);
     onChange(next);
   };
+
+  if (loading) {
+    return (
+      <p className='text-xs text-muted-foreground'>Loading page sections…</p>
+    );
+  }
 
   return (
     <div className='space-y-3'>
@@ -108,8 +133,10 @@ export function HomepageSectionOrder({
         ))}
       </ul>
       <p className='text-xs text-muted-foreground'>
-        The hero always stays at the top of the page, and a row keeps its
-        position here whatever its status.{" "}
+        Each row is named after the section itself — a product group is named
+        after its category — so the list stays recognisable when a heading is
+        renamed on the storefront. The hero always stays at the top of the
+        page, and a row keeps its position here whatever its status.{" "}
         <span className='font-medium'>Visible</span> means the section renders.{" "}
         <span className='font-medium'>Enabled</span> means it is switched on,
         but it fills itself from the catalogue when the page loads, so it still

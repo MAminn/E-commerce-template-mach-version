@@ -4,6 +4,10 @@ import type {
   HomepageContent,
 } from "#root/shared/types/homepage-content";
 import { DEFAULT_HOMEPAGE_CONTENT } from "#root/shared/types/homepage-content";
+import {
+  migrateLegacySectionOrder,
+  normalizeGroupSections,
+} from "#root/shared/types/homepage-group-sections";
 
 /**
  * Single source of truth for turning a stored `homepage_content.content` blob
@@ -131,8 +135,20 @@ export function mergeHomepageContentWithDefaults(
       ...DEFAULT_HOMEPAGE_CONTENT.heroMarquee!,
       ...clean.heroMarquee,
     },
+    // Deprecated group slots. Still merged so nothing that reads them breaks,
+    // but the storefront and the admin work from `groupSections` below.
     stacks: { ...DEFAULT_HOMEPAGE_CONTENT.stacks!, ...clean.stacks },
     gymGear: { ...DEFAULT_HOMEPAGE_CONTENT.gymGear!, ...clean.gymGear },
+    // The one place legacy group content becomes generic group content, so
+    // SSR, the client read path and Homepage Admin all see the same shape and
+    // no stored blob needs editing by hand. Idempotent: a legacy row only
+    // seeds a category that has no section yet, so the client's first save
+    // takes over permanently.
+    groupSections: normalizeGroupSections(clean),
+    featuredShelf: {
+      ...DEFAULT_HOMEPAGE_CONTENT.featuredShelf!,
+      ...clean.featuredShelf,
+    },
     campaignBanners: mergeCampaignBanners(clean.campaignBanners),
     whyMach: {
       ...DEFAULT_HOMEPAGE_CONTENT.whyMach!,
@@ -142,7 +158,10 @@ export function mergeHomepageContentWithDefaults(
     certificates: mergeCertificates(clean.certificates),
     ugc: { ...DEFAULT_HOMEPAGE_CONTENT.ugc!, ...clean.ugc },
     // Left undefined when unsaved so `resolveSectionOrder` falls through to the
-    // default composition rather than locking in an empty order.
-    sectionOrder: clean.sectionOrder,
+    // default composition rather than locking in an empty order. The two
+    // legacy group keys are rewritten to their `group:<categoryId>` keys in
+    // place, so a client's saved arrangement survives the move to dynamic
+    // groups instead of Stacks jumping to wherever the new key gets inserted.
+    sectionOrder: migrateLegacySectionOrder(clean.sectionOrder, clean),
   };
 }

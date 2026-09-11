@@ -5,6 +5,12 @@ import {
   DEFAULT_DISCOUNTED_LIMIT,
   resolveSectionOrder,
 } from "#root/shared/types/homepage-content";
+import {
+  groupCategoryIds,
+  indexGroupSections,
+  isGroupSectionKey,
+  type ResolvedGroupSection,
+} from "#root/shared/types/homepage-group-sections";
 import type { FeaturedProduct } from "../home/HomeFeaturedProducts";
 import type { CategoryStripItem } from "#root/components/shop/CategoryStrip";
 import type { NewArrivalProduct } from "#root/components/shop/NewArrivals";
@@ -24,6 +30,10 @@ import {
   resolveRowGrounds,
   type MachRowRenderState,
 } from "./mach-row-grounds";
+import {
+  groupSectionComponent,
+  groupSectionRenders,
+} from "./mach-group-rendering";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -38,12 +48,18 @@ export interface LandingTemplateMachProps {
   categoriesLoading?: boolean;
   newArrivals?: NewArrivalProduct[];
   newArrivalsLoading?: boolean;
-  /** "Stacks & Bundles" — resolved by the route from CMS selection. */
-  stacksProducts?: FeaturedProduct[];
-  stacksLoading?: boolean;
-  /** "Gym Gear" — resolved by the route from CMS selection. */
-  gymGearProducts?: FeaturedProduct[];
-  gymGearLoading?: boolean;
+  /** Hand-picked "Featured" shelf. */
+  featuredShelf?: FeaturedProduct[];
+  /**
+   * The store's broad group sections, reconciled by the route against the live
+   * category list. One per broad group, in broad-group order.
+   */
+  groupSections?: ResolvedGroupSection[];
+  /** Products for each group section, keyed by category id. */
+  groupProducts?: Record<
+    string,
+    { products: FeaturedProduct[]; isLoading: boolean }
+  >;
   className?: string;
   onCtaClick?: (link: string) => void;
 }
@@ -59,25 +75,33 @@ export interface LandingTemplateMachProps {
  * not the editorial fashion template with new words in it.
  *
  * The page opens the way the reference supplement stores open: hero, a
- * promotional strip, then **one band of broad-group discovery** — three
- * full-bleed campaign tiles that send a shopper into Supplements, Stacks &
- * Bundles or Gym Gear. That band is navigation, not merchandising; the
- * merchandising rows of real products start underneath it.
+ * promotional strip, then **one band of broad-group discovery** — full-bleed
+ * campaign tiles that send a shopper into Supplements, Stacks & Bundles, Gym
+ * Gear or whatever the store's groups are. That band is navigation, not
+ * merchandising; the merchandising rows of real products start underneath it.
  *
- * The store is still not a deep category tree. Three doors is the whole
- * taxonomy the homepage admits to, and New Drops, Offers and Featured below
- * remain merchandising slots rather than categories.
+ * Below it the page keeps two kinds of section apart, which is the distinction
+ * the whole composition rests on:
  *
- * Order below the hero: promotional strip, group discovery, the product rows
- * broken up by full-bleed lifestyle campaigns, then trust (why / certificates
- * / manufacturing) and capture.
+ *  - **Group sections** merchandise one broad group each, addressed as
+ *    `group:<categoryId>`. How many there are is the client's business, not
+ *    this file's — they are reconciled against the category system on every
+ *    load, so opening a fourth group produces a fourth section.
+ *  - **Merchandising sections** — Best Sellers, New Drops, Featured, Offers —
+ *    cut across the catalogue and are not groups. Each is independent; none is
+ *    a renamed stand-in for another.
+ *
+ * Order below the hero: promotional strip, group discovery, the group
+ * sections, then the merchandising rows broken up by full-bleed lifestyle
+ * campaigns, then trust (why / certificates / manufacturing) and capture.
  *
  * Two rules hold the whole file together:
  *
  *  1. **No storefront copy lives here.** Every heading, label, destination and
- *     image is read from `content` (homepage CMS) or Layout Settings. This
- *     component decides how things look and in what order, never what they
- *     say.
+ *     image is read from `content` (homepage CMS), from the category system,
+ *     or from Layout Settings. This component decides how things look and in
+ *     what order, never what they say — there is no product, group or category
+ *     name written anywhere in this file.
  *
  *  2. **Sections below the hero render in the client's order.** The sequence
  *     comes from `content.sectionOrder`, so reordering the page is a CMS
@@ -96,10 +120,9 @@ export function LandingTemplateMach({
   categories = [],
   newArrivals = [],
   newArrivalsLoading = false,
-  stacksProducts = [],
-  stacksLoading = false,
-  gymGearProducts = [],
-  gymGearLoading = false,
+  featuredShelf = [],
+  groupSections = [],
+  groupProducts = {},
   className = "",
   onCtaClick,
 }: LandingTemplateMachProps) {
@@ -108,13 +131,19 @@ export function LandingTemplateMach({
     [content.campaignBanners],
   );
 
+  const groupsByKey = useMemo(
+    () => indexGroupSections(groupSections),
+    [groupSections],
+  );
+
   const order = useMemo(
     () =>
       resolveSectionOrder(
         content.sectionOrder,
         banners.map((b) => b.id),
+        groupCategoryIds(groupSections.map((s) => s.category)),
       ),
-    [content.sectionOrder, banners],
+    [content.sectionOrder, banners, groupSections],
   );
 
   const bannersById = useMemo(
@@ -137,9 +166,11 @@ export function LandingTemplateMach({
   const groupFallbackImages = useMemo(() => {
     const byCategory = new Map<string, string>();
     const pools = [
-      stacksProducts,
-      gymGearProducts,
+      ...groupSections.map(
+        (section) => groupProducts[section.category.id]?.products ?? [],
+      ),
       featuredProducts,
+      featuredShelf,
       newArrivals,
       discountedProducts,
     ];
@@ -157,9 +188,10 @@ export function LandingTemplateMach({
     }
     return byCategory;
   }, [
-    stacksProducts,
-    gymGearProducts,
+    groupSections,
+    groupProducts,
     featuredProducts,
+    featuredShelf,
     newArrivals,
     discountedProducts,
   ]);
@@ -174,37 +206,38 @@ export function LandingTemplateMach({
    * instead of only inside each component where the page composition could
    * not.
    */
-  const rowRenders = useMemo<MachRowRenderState>(
-    () => ({
-      stacks:
-        Boolean(content.stacks?.enabled) &&
-        !stacksLoading &&
-        stacksProducts.length > 0,
+  const rowRenders = useMemo<MachRowRenderState>(() => {
+    const renders: MachRowRenderState = {
       newArrivals:
         Boolean(content.newArrivals?.enabled) &&
         !newArrivalsLoading &&
         newArrivals.length > 0,
       featuredProducts:
         Boolean(content.featuredProducts.enabled) && featuredProducts.length > 0,
-      gymGear:
-        Boolean(content.gymGear?.enabled) &&
-        !gymGearLoading &&
-        gymGearProducts.length > 0,
-    }),
-    [
-      content.stacks?.enabled,
-      content.newArrivals?.enabled,
-      content.featuredProducts.enabled,
-      content.gymGear?.enabled,
-      stacksLoading,
-      stacksProducts.length,
-      newArrivalsLoading,
-      newArrivals.length,
-      featuredProducts.length,
-      gymGearLoading,
-      gymGearProducts.length,
-    ],
-  );
+      featuredShelf:
+        Boolean(content.featuredShelf?.enabled) && featuredShelf.length > 0,
+    };
+    // Group rows join the same map under their own order keys, so a group the
+    // client added is part of the page's rhythm without this component knowing
+    // how many groups there are.
+    for (const section of groupSections) {
+      renders[section.key] = groupSectionRenders(
+        section,
+        groupProducts[section.category.id],
+      );
+    }
+    return renders;
+  }, [
+    content.newArrivals?.enabled,
+    content.featuredProducts.enabled,
+    content.featuredShelf?.enabled,
+    newArrivalsLoading,
+    newArrivals.length,
+    featuredProducts.length,
+    featuredShelf.length,
+    groupSections,
+    groupProducts,
+  ]);
 
   /**
    * Grounds for the merchandising rows, assigned by position rather than
@@ -248,6 +281,38 @@ export function LandingTemplateMach({
       return <MachCampaignBanner key={key} banner={banner} />;
     }
 
+    // Broad group sections, addressed by category id. Every heading, label and
+    // destination below comes from the group's CMS config or from the category
+    // itself — no group name or slug is written into this component, which is
+    // what lets a fourth group render without a deploy.
+    if (isGroupSectionKey(key)) {
+      const section = groupsByKey.get(key);
+      if (!section || !rowRenders[key]) return null;
+
+      const resolved = groupProducts[section.category.id];
+      const products = resolved?.products ?? [];
+      const shared = {
+        id: `group-${section.category.slug}`,
+        title: section.heading,
+        subtitle: section.subtitle,
+        actionLabel: section.viewAllText,
+        actionHref: section.viewAllLink,
+        products,
+        isLoading: resolved?.isLoading ?? false,
+        ground: rowGrounds.get(key),
+      };
+
+      // The presentation the client picked. Feature panels compose for the two
+      // or three items a bundles group carries; the dense shelf is the normal
+      // merchandising row everything else uses.
+      const Treatment = groupSectionComponent(section.presentation);
+      return Treatment === MachStackShowcase ? (
+        <MachStackShowcase key={key} {...shared} />
+      ) : (
+        <MachProductRow key={key} {...shared} dense />
+      );
+    }
+
     switch (key) {
       case "heroMarquee":
         return content.heroMarquee?.enabled ? (
@@ -267,44 +332,6 @@ export function LandingTemplateMach({
           />
         ) : null;
 
-      case "stacks": {
-        // Not a product row. The store carries two or three bundles on
-        // purpose, so this one composes for the count it is given instead of
-        // dropping them into a four-up shelf with two holes in it.
-        const stacks = content.stacks;
-        return rowRenders.stacks && stacks ? (
-          <MachStackShowcase
-            key={key}
-            id="stacks"
-            title={stacks.title}
-            subtitle={stacks.subtitle}
-            actionLabel={stacks.viewAllText}
-            actionHref={stacks.viewAllLink}
-            products={stacksProducts}
-            isLoading={stacksLoading}
-            ground={rowGrounds.get("stacks")}
-          />
-        ) : null;
-      }
-
-      case "gymGear": {
-        const gymGear = content.gymGear;
-        return rowRenders.gymGear && gymGear ? (
-          <MachProductRow
-            key={key}
-            id="gym-gear"
-            title={gymGear.title}
-            subtitle={gymGear.subtitle}
-            actionLabel={gymGear.viewAllText}
-            actionHref={gymGear.viewAllLink}
-            products={gymGearProducts}
-            isLoading={gymGearLoading}
-            ground={rowGrounds.get("gymGear")}
-            dense
-          />
-        ) : null;
-      }
-
       case "featuredProducts":
         return rowRenders.featuredProducts ? (
           <MachProductRow
@@ -319,6 +346,25 @@ export function LandingTemplateMach({
             dense
           />
         ) : null;
+
+      case "featuredShelf": {
+        // A real section, not a renamed one. It sits alongside Best Sellers
+        // rather than instead of it, and shows exactly what the client picked.
+        const featured = content.featuredShelf;
+        return rowRenders.featuredShelf && featured ? (
+          <MachProductRow
+            key={key}
+            id="featured"
+            title={featured.title}
+            subtitle={featured.subtitle}
+            actionLabel={featured.viewAllText}
+            actionHref={featured.viewAllLink}
+            products={featuredShelf}
+            ground={rowGrounds.get("featuredShelf")}
+            dense
+          />
+        ) : null;
+      }
 
       case "discountedProducts":
         return content.discountedProducts?.enabled ? (

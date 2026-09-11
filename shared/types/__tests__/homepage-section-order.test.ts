@@ -3,6 +3,7 @@ import {
   CAMPAIGN_SECTION_PREFIX,
   DEFAULT_SECTION_ORDER,
   ORDERABLE_SECTION_KEYS,
+  groupSectionKey,
   resolveSectionOrder,
 } from "../homepage-content";
 
@@ -17,18 +18,29 @@ const CAMPAIGN_A = `${CAMPAIGN_SECTION_PREFIX}campaign-primary`;
 const CAMPAIGN_B = `${CAMPAIGN_SECTION_PREFIX}campaign-secondary`;
 const SEEDED_BANNERS = ["campaign-primary", "campaign-secondary"];
 
+// The store's three broad groups, in the order the client selected them.
+const SUPPLEMENTS = "01a06245-5bed-73ea-b81d-eebe1c7721a4";
+const STACKS = "01a06cc1-36ba-75cb-8353-5968a3889e70";
+const GYM_GEAR = "01a06cc1-55a5-759e-a04b-f25cdc6ad5ff";
+const GROUPS = [SUPPLEMENTS, STACKS, GYM_GEAR];
+const GROUP_SUPPLEMENTS = groupSectionKey(SUPPLEMENTS);
+const GROUP_STACKS = groupSectionKey(STACKS);
+const GROUP_GYM_GEAR = groupSectionKey(GYM_GEAR);
+
 describe("resolveSectionOrder", () => {
   it("preserves a complete custom order exactly", () => {
     const custom = [
       "heroMarquee",
       "whyMach",
       "featuredProducts",
-      "gymGear",
+      GROUP_GYM_GEAR,
       "newsletter",
       "categories",
-      "stacks",
+      GROUP_STACKS,
       "newArrivals",
       CAMPAIGN_A,
+      "featuredShelf",
+      GROUP_SUPPLEMENTS,
       "discountedProducts",
       CAMPAIGN_B,
       "certificates",
@@ -36,7 +48,7 @@ describe("resolveSectionOrder", () => {
       "footerCta",
     ];
 
-    expect(resolveSectionOrder(custom, SEEDED_BANNERS)).toEqual(custom);
+    expect(resolveSectionOrder(custom, SEEDED_BANNERS, GROUPS)).toEqual(custom);
   });
 
   it("de-duplicates repeated keys, keeping the first position", () => {
@@ -118,6 +130,129 @@ describe("resolveSectionOrder", () => {
     expect(resolveSectionOrder(undefined, SEEDED_BANNERS)).toEqual(
       DEFAULT_SECTION_ORDER,
     );
+  });
+
+  it("carries no group keys when the store has no broad groups", () => {
+    // The shipped default cannot name category ids, so the group band is
+    // simply absent until the catalogue supplies one.
+    expect(DEFAULT_SECTION_ORDER.some((k) => k.startsWith("group:"))).toBe(
+      false,
+    );
+  });
+});
+
+/**
+ * Broad group sections are addressed dynamically, the way campaign banners
+ * already were. These pin the part that is easy to get wrong: a client's saved
+ * arrangement is theirs, and a group that appears later has to find a sensible
+ * home in it without pushing anything else around.
+ */
+describe("resolveSectionOrder — dynamic group sections", () => {
+  it("interleaves group keys with the static sections as saved", () => {
+    const saved = [
+      "heroMarquee",
+      "categories",
+      GROUP_SUPPLEMENTS,
+      "featuredProducts",
+      GROUP_STACKS,
+      "newArrivals",
+      "featuredShelf",
+      GROUP_GYM_GEAR,
+      "discountedProducts",
+      "whyMach",
+      "certificates",
+      "ugc",
+      "newsletter",
+      "footerCta",
+    ];
+
+    expect(resolveSectionOrder(saved, [], GROUPS)).toEqual(saved);
+  });
+
+  it("places a newly added group beside the groups already on the page", () => {
+    const saved = [
+      "heroMarquee",
+      "categories",
+      GROUP_STACKS,
+      "featuredProducts",
+      GROUP_GYM_GEAR,
+      "footerCta",
+    ];
+
+    const resolved = resolveSectionOrder(saved, [], GROUPS);
+
+    // Supplements leads the broad-group selection, so it lands at the head of
+    // the group band rather than at the bottom of the page.
+    expect(resolved).toContain(GROUP_SUPPLEMENTS);
+    expect(resolved.indexOf(GROUP_SUPPLEMENTS)).toBe(
+      resolved.indexOf("categories") + 1,
+    );
+    // The client's own sequence is untouched.
+    expect(resolved.filter((k) => saved.includes(k))).toEqual(saved);
+  });
+
+  it("inserts a new group deterministically", () => {
+    const saved = ["heroMarquee", "categories", GROUP_STACKS, "footerCta"];
+
+    expect(resolveSectionOrder(saved, [], GROUPS)).toEqual(
+      resolveSectionOrder(saved, [], GROUPS),
+    );
+  });
+
+  it("de-duplicates a repeated group key, keeping the first position", () => {
+    const resolved = resolveSectionOrder(
+      ["heroMarquee", GROUP_STACKS, "featuredProducts", GROUP_STACKS],
+      [],
+      GROUPS,
+    );
+
+    expect(resolved.filter((k) => k === GROUP_STACKS)).toHaveLength(1);
+    expect(resolved.indexOf(GROUP_STACKS)).toBeLessThan(
+      resolved.indexOf("featuredProducts"),
+    );
+  });
+
+  it("drops a group key whose category is no longer a broad group", () => {
+    const saved = ["heroMarquee", GROUP_STACKS, GROUP_GYM_GEAR, "footerCta"];
+
+    // Gym Gear has been deleted, or taken out of the homepage selection.
+    const resolved = resolveSectionOrder(saved, [], [SUPPLEMENTS, STACKS]);
+
+    expect(resolved).not.toContain(GROUP_GYM_GEAR);
+    expect(resolved).toContain(GROUP_STACKS);
+    // Everything the client arranged around it keeps its relative order.
+    expect(resolved.indexOf("heroMarquee")).toBeLessThan(
+      resolved.indexOf(GROUP_STACKS),
+    );
+  });
+
+  it("leaves the campaign banner keys working exactly as before", () => {
+    const saved = [
+      "heroMarquee",
+      CAMPAIGN_A,
+      GROUP_STACKS,
+      CAMPAIGN_B,
+      "footerCta",
+    ];
+
+    const resolved = resolveSectionOrder(saved, SEEDED_BANNERS, GROUPS);
+
+    expect(resolved.filter((k) => saved.includes(k))).toEqual(saved);
+  });
+
+  it("keeps the four merchandising sections independent of the groups", () => {
+    // Best Sellers, New Drops, Featured and Offers are not groups and do not
+    // come or go with them.
+    const resolved = resolveSectionOrder(undefined, [], []);
+
+    for (const key of [
+      "featuredProducts",
+      "newArrivals",
+      "featuredShelf",
+      "discountedProducts",
+    ]) {
+      expect(resolved).toContain(key);
+    }
   });
 
   it("never leaves the hero in the reorderable list", () => {

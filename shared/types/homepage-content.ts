@@ -317,20 +317,11 @@ export interface HomepageNewArrivalsContent {
 /**
  * A broad product group merchandised on the homepage.
  *
- * Mach's storefront is product-first, not taxonomy-first: the client sells out
- * of three broad groups (Supplements, Stacks & Bundles, Gym Gear) rather than
- * a deep category tree. A group section is therefore a *merchandising* block
- * that happens to be backed by the category system, not a category landing.
- *
- * Two ways to fill it, checked in this order:
- *
- *  1. `productIds` — an explicit, ordered client selection. Always wins, so a
- *     section can be curated exactly.
- *  2. `categoryIds` — the broad group(s) the section draws from, resolved
- *     through the existing `product.search` procedure.
- *
- * With neither set the section has nothing to show and renders nothing at all.
- * No product name or id is ever hard-coded in a component.
+ * @deprecated Superseded by `HomepageGroupSectionContent`. Kept so content
+ * saved against the two hard-coded group slots (`stacks`, `gymGear`) still
+ * reads, and is normalised into `groupSections` on load — see
+ * `shared/types/homepage-group-sections.ts`. Nothing renders from this shape
+ * any more; do not add fields to it.
  */
 export interface HomepageProductGroupContent {
   enabled: boolean;
@@ -347,6 +338,131 @@ export interface HomepageProductGroupContent {
   productIds?: string[];
   /** How many products the row shows. */
   limit?: number;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Broad group merchandising sections                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How a group section puts its products on the page.
+ *
+ * `shelf` is the dense four-up product row every merchandising section uses.
+ * `feature` is the composed panel treatment built for a group that carries two
+ * or three items on purpose (bundles), which would leave holes in a shelf.
+ */
+export type GroupSectionPresentation = "shelf" | "feature";
+
+/**
+ * One broad product group, merchandised as its own homepage section.
+ *
+ * The store sells out of a handful of broad groups — Supplements, Stacks &
+ * Bundles, Gym Gear, and whatever the client adds next — and each one gets an
+ * independent section it can switch on, configure and place. This shape is
+ * what makes that dynamic: a group section is *identified by its category*,
+ * so the set of sections follows the catalogue instead of a list of hard-coded
+ * keys that needs a deploy every time the client opens a new group.
+ *
+ * The category stays canonical. `categoryId` is the identity, the category's
+ * own name is the section's name, and its slug is the natural destination for
+ * "view all". Everything else here is an override of presentation or copy —
+ * a renamed heading changes what the shopper reads and nothing else, so
+ * Section Order, the saved order key and the admin row all survive a rename.
+ *
+ * Filling order, matching every other merchandising row:
+ *
+ *  1. `productIds` — an explicit, ordered client selection. Always wins.
+ *  2. otherwise the section's own `categoryId`, resolved through the existing
+ *     `product.search` procedure.
+ *
+ * Only categories in the store's *broad group* set get a section — see
+ * `resolveBroadGroups` in `homepage-group-sections.ts`. A deep catalogue
+ * category is not a homepage section.
+ */
+export interface HomepageGroupSectionContent {
+  /** The broad category this section merchandises. The section's identity. */
+  categoryId: string;
+  enabled: boolean;
+  /**
+   * Storefront heading. Empty or absent means "use the category's own name",
+   * which is what a section that has never been renamed stores.
+   */
+  title?: string;
+  titleAr?: string;
+  subtitle?: string;
+  subtitleAr?: string;
+  viewAllText?: string;
+  viewAllTextAr?: string;
+  /** Empty or absent falls back to the category's own page. */
+  viewAllLink?: string;
+  /** Explicit, ordered product selection. Takes precedence over the category. */
+  productIds?: string[];
+  /** How many products the section shows when filled from its category. */
+  limit?: number;
+  presentation?: GroupSectionPresentation;
+}
+
+/** Prefix marking a section-order entry as a broad group section. */
+export const GROUP_SECTION_PREFIX = "group:";
+
+/** The `sectionOrder` entry that addresses one group's section. */
+export function groupSectionKey(categoryId: string): string {
+  return `${GROUP_SECTION_PREFIX}${categoryId}`;
+}
+
+/** The category id inside a group section-order entry, if it is one. */
+export function parseGroupSectionKey(key: string): string | undefined {
+  return key.startsWith(GROUP_SECTION_PREFIX)
+    ? key.slice(GROUP_SECTION_PREFIX.length)
+    : undefined;
+}
+
+/**
+ * How many products a group section shows before the client picks a number.
+ *
+ * Four, because that is the dense shelf's own column count — one full row, no
+ * wrapping. Matches the limit the two original group rows shipped with.
+ */
+export const DEFAULT_GROUP_SECTION_LIMIT = 4;
+
+/** Range the Homepage Admin group limit accepts. */
+export const GROUP_SECTION_LIMIT_MIN = 1;
+export const GROUP_SECTION_LIMIT_MAX = 24;
+
+/**
+ * The "view all" label a group section carries until the client changes it.
+ *
+ * Lives here rather than in the storefront component: the renderer holds no
+ * copy, and a group the client has never opened still needs a label for the
+ * link the shopper sees.
+ */
+export const DEFAULT_GROUP_VIEW_ALL_TEXT = "VIEW ALL";
+
+/**
+ * Featured — a merchandising shelf of hand-picked products.
+ *
+ * Its own section, deliberately. "Featured" used to be achieved by renaming
+ * the Best Sellers heading, which meant the two could never appear on the page
+ * together and Section Order described a block that was pretending to be a
+ * different one. This is a real fourth merchandising slot alongside Best
+ * Sellers, New Drops and Offers, with its own switch, copy and selection.
+ *
+ * There is no automatic "featured" ranking and there should not be: featured
+ * means *someone chose these*. With nothing selected the section has nothing
+ * to say and renders nothing, rather than quietly repeating whatever Best
+ * Sellers is already showing.
+ */
+export interface HomepageFeaturedShelfContent {
+  enabled: boolean;
+  title: string;
+  titleAr?: string;
+  subtitle?: string;
+  subtitleAr?: string;
+  viewAllText: string;
+  viewAllTextAr?: string;
+  viewAllLink: string;
+  /** Hand-picked, ordered. The only way this section is filled. */
+  productIds?: string[];
 }
 
 /**
@@ -605,10 +721,9 @@ export interface HomepageUgcContent {
 export const ORDERABLE_SECTION_KEYS = [
   "heroMarquee",
   "categories",
-  "stacks",
   "newArrivals",
   "featuredProducts",
-  "gymGear",
+  "featuredShelf",
   "discountedProducts",
   "whyMach",
   "certificates",
@@ -622,14 +737,36 @@ export type OrderableSectionKey = (typeof ORDERABLE_SECTION_KEYS)[number];
 /** Prefix marking a section-order entry as a campaign banner reference. */
 export const CAMPAIGN_SECTION_PREFIX = "campaign:";
 
-/** Human labels for the reorder UI in Homepage Admin. */
+/**
+ * The two section-order keys the hard-coded group rows used.
+ *
+ * They are no longer rendered from: a saved order carrying them is rewritten
+ * in place to the matching `group:<categoryId>` key on load, so the client's
+ * arrangement survives the move to dynamic groups. Declared here so the
+ * migration and the tests share one list.
+ */
+export const LEGACY_GROUP_SECTION_KEYS = ["stacks", "gymGear"] as const;
+
+export type LegacyGroupSectionKey = (typeof LEGACY_GROUP_SECTION_KEYS)[number];
+
+/**
+ * Human labels for the reorder UI in Homepage Admin.
+ *
+ * These are the *canonical* names — what the section is, not what its heading
+ * currently reads. A heading the client renamed is shown underneath as
+ * secondary metadata instead, because the identity is what Section Order is
+ * for: a list that renames itself cannot be reasoned about, which is how
+ * "Best Sellers" came to be doing duty as three different sections.
+ *
+ * Broad group sections are not in here. Their name is the category's name,
+ * which is the category system's to own — see `resolveGroupSections`.
+ */
 export const SECTION_LABELS: Record<OrderableSectionKey, string> = {
   heroMarquee: "Promotional strip",
   categories: "Shop by group",
-  stacks: "Stacks & Bundles",
   newArrivals: "New Drops",
   featuredProducts: "Best Sellers",
-  gymGear: "Gym Gear",
+  featuredShelf: "Featured",
   discountedProducts: "Offers",
   whyMach: "Why Mach",
   certificates: "Certificates & manufacturing",
@@ -652,10 +789,12 @@ export const SECTION_LABELS: Record<OrderableSectionKey, string> = {
 export function resolveSectionOrder(
   savedOrder: string[] | undefined,
   campaignBannerIds: string[],
+  groupCategoryIds: string[] = [],
 ): string[] {
   const valid = new Set<string>([
     ...ORDERABLE_SECTION_KEYS,
     ...campaignBannerIds.map((id) => `${CAMPAIGN_SECTION_PREFIX}${id}`),
+    ...groupCategoryIds.map(groupSectionKey),
   ]);
 
   const seen = new Set<string>();
@@ -671,9 +810,12 @@ export function resolveSectionOrder(
   // Sections the saved order predates are inserted immediately after whichever
   // of their default-order predecessors is already on the page, so a new
   // section keeps its intended place in the composition instead of being
-  // dumped below the closing CTA.
+  // dumped below the closing CTA. This is also what gives a broad group the
+  // client opened this morning a deterministic home: the placeholder expands
+  // to the group keys in broad-group order, so the new one lands beside the
+  // groups that are already placed rather than at the end of the page.
   let anchor = -1;
-  for (const key of DEFAULT_SECTION_ORDER) {
+  for (const key of expandDefaultComposition(groupCategoryIds)) {
     if (!valid.has(key)) continue;
     const existing = ordered.indexOf(key);
     if (existing >= 0) {
@@ -700,15 +842,34 @@ export function resolveSectionOrder(
   return ordered;
 }
 
-/** The composition the Mach storefront ships with out of the box. */
-export const DEFAULT_SECTION_ORDER: string[] = [
+/**
+ * Stands in for "the broad group sections, in broad-group order" inside the
+ * default composition.
+ *
+ * The group keys cannot be written into a shipped constant — they are category
+ * ids, which belong to the store's data, not to this file. The placeholder is
+ * expanded at resolve time and is never a real section key, never rendered and
+ * never saved.
+ */
+export const GROUP_SECTIONS_PLACEHOLDER = "groupSections:*";
+
+/**
+ * The composition the Mach storefront ships with out of the box.
+ *
+ * The shape of the page, read top to bottom: the promotional strip, the
+ * navigation band, then the store's broad groups as their own merchandising
+ * band, then the four merchandising shelves that are *not* groups — Best
+ * Sellers, New Drops, Featured, Offers — broken up by the campaign banners,
+ * and finally trust and capture.
+ */
+export const DEFAULT_SECTION_COMPOSITION: string[] = [
   "heroMarquee",
   "categories",
-  "stacks",
-  "newArrivals",
+  GROUP_SECTIONS_PLACEHOLDER,
   `${CAMPAIGN_SECTION_PREFIX}campaign-primary`,
   "featuredProducts",
-  "gymGear",
+  "newArrivals",
+  "featuredShelf",
   "discountedProducts",
   "whyMach",
   `${CAMPAIGN_SECTION_PREFIX}campaign-secondary`,
@@ -717,6 +878,26 @@ export const DEFAULT_SECTION_ORDER: string[] = [
   "newsletter",
   "footerCta",
 ];
+
+/** The default composition with the group placeholder resolved to real keys. */
+export function expandDefaultComposition(
+  groupCategoryIds: string[] = [],
+): string[] {
+  return DEFAULT_SECTION_COMPOSITION.flatMap((key) =>
+    key === GROUP_SECTIONS_PLACEHOLDER
+      ? groupCategoryIds.map(groupSectionKey)
+      : [key],
+  );
+}
+
+/**
+ * The default composition as a concrete, storable order.
+ *
+ * Group sections are absent rather than guessed at: which groups exist is a
+ * question about the store's catalogue, which this constant cannot see. They
+ * are spliced in by `resolveSectionOrder` once the categories are known.
+ */
+export const DEFAULT_SECTION_ORDER: string[] = expandDefaultComposition();
 
 /**
  * Complete homepage content structure
@@ -751,9 +932,22 @@ export interface HomepageContent {
   /* ── Mach storefront sections ── */
   /** Kinetic strip under the hero. */
   heroMarquee?: HomepageHeroMarqueeContent;
-  /** "Stacks & Bundles" merchandising row. */
+  /**
+   * One merchandising section per broad product group, keyed by category id.
+   *
+   * Reconciled against the store's broad groups on every load, so a group the
+   * client opens in the category system gets a section without a deploy, and a
+   * group they delete stops having one.
+   */
+  groupSections?: HomepageGroupSectionContent[];
+  /** Hand-picked "Featured" shelf — its own section, not a renamed one. */
+  featuredShelf?: HomepageFeaturedShelfContent;
+  /**
+   * @deprecated Read-only compatibility. Normalised into `groupSections` on
+   * load; the storefront and the admin both work from that.
+   */
   stacks?: HomepageProductGroupContent;
-  /** "Gym Gear" merchandising row. */
+  /** @deprecated See `stacks`. */
   gymGear?: HomepageProductGroupContent;
   /** Full-bleed campaign banners, placed via `sectionOrder`. */
   campaignBanners?: CampaignBannerContent[];
@@ -1016,10 +1210,24 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
     direction: "left",
     invert: true,
   },
-  // Both group rows ship enabled but unbound: with no category or product
-  // selection they resolve to nothing and render nothing, so the storefront is
-  // never showing an empty block while the catalog is being loaded. The client
-  // points each one at its broad group in Dashboard → Homepage.
+  // No group sections are shipped. Which broad groups the store has is a
+  // question about its catalogue, and seeding this array would mean inventing
+  // category ids — so it starts empty and is reconciled against the real
+  // categories on load. A group the client has never configured defaults to
+  // off, so opening a catalogue group never silently changes the live page.
+  groupSections: [],
+  // Featured ships off and empty. It is a hand-picked shelf: with nothing
+  // picked it has nothing to say, and defaulting it on would put a second copy
+  // of Best Sellers on every existing storefront the moment this deploys.
+  featuredShelf: {
+    enabled: false,
+    title: "FEATURED",
+    viewAllText: "VIEW ALL",
+    viewAllLink: "/shop",
+    productIds: [],
+  },
+  // Deprecated. Retained so content saved against the two hard-coded group
+  // slots still merges cleanly; normalised into `groupSections` on load.
   stacks: {
     enabled: true,
     title: "STACKS & BUNDLES",
