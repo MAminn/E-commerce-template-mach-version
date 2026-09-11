@@ -35,7 +35,7 @@ export async function getHomepageContent(
 
     if (result.length > 0 && result[0]?.content) {
       const storedContent = result[0].content as unknown as HomepageContent;
-      return mergeHomepageContentWithDefaults(storedContent);
+      return mergeHomepageContentWithDefaults(storedContent, resolvedTemplateId);
     }
 
     // If no template-specific content and this isn't already "default",
@@ -54,7 +54,7 @@ export async function getHomepageContent(
 
       if (fallback.length > 0 && fallback[0]?.content) {
         const storedContent = fallback[0].content as unknown as HomepageContent;
-        return mergeHomepageContentWithDefaults(storedContent);
+        return mergeHomepageContentWithDefaults(storedContent, resolvedTemplateId);
       }
     }
 

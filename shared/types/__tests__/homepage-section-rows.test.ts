@@ -251,7 +251,8 @@ describe("describeSectionRows — status", () => {
   });
 
   it("says Enabled, never Visible, for sections filled by a runtime query", () => {
-    // These four resolve their contents from the catalogue at page load, so
+    // These resolve their contents at page load — the category band from the
+    // catalogue, the curated shelves from the products the client picked — so
     // Homepage Admin cannot prove anything renders. Claiming "Visible" here
     // would be the same misdirection as the old "On" badge.
     const on = content({
@@ -259,11 +260,17 @@ describe("describeSectionRows — status", () => {
       featuredProducts: {
         ...DEFAULT_HOMEPAGE_CONTENT.featuredProducts,
         enabled: true,
+        productIds: ["p-1"],
       },
-      newArrivals: { ...DEFAULT_HOMEPAGE_CONTENT.newArrivals!, enabled: true },
+      newArrivals: {
+        ...DEFAULT_HOMEPAGE_CONTENT.newArrivals!,
+        enabled: true,
+        productIds: ["p-2"],
+      },
       discountedProducts: {
         ...DEFAULT_HOMEPAGE_CONTENT.discountedProducts!,
         enabled: true,
+        productIds: ["p-3"],
       },
     });
 
@@ -423,6 +430,81 @@ describe("describeSectionRows — Featured", () => {
     expect(row("featuredProducts", content()).label).toBe("Best Sellers");
   });
 
+  it("reports every curated shelf with nothing picked as No source", () => {
+    // All four are hand-curated now, so "enabled but empty" is knowable here
+    // and means the row renders nothing — it is not a runtime unknown.
+    const c = content({
+      featuredProducts: {
+        ...DEFAULT_HOMEPAGE_CONTENT.featuredProducts,
+        enabled: true,
+        productIds: [],
+      },
+      newArrivals: {
+        ...DEFAULT_HOMEPAGE_CONTENT.newArrivals!,
+        enabled: true,
+        productIds: [],
+      },
+      featuredShelf: {
+        ...DEFAULT_HOMEPAGE_CONTENT.featuredShelf!,
+        enabled: true,
+        productIds: [],
+      },
+      discountedProducts: {
+        ...DEFAULT_HOMEPAGE_CONTENT.discountedProducts!,
+        enabled: true,
+        productIds: [],
+      },
+    });
+
+    for (const key of [
+      "featuredProducts",
+      "newArrivals",
+      "featuredShelf",
+      "discountedProducts",
+    ]) {
+      expect(row(key, c).status).toBe("no-source");
+      expect(row(key, c).hint).toBe(
+        "Enabled, but no products have been selected for this section.",
+      );
+    }
+  });
+
+  it("reports a curated shelf with a selection as Enabled, never Visible", () => {
+    // A selection is still not a guarantee: the products behind it can be
+    // unpublished by the time the page loads.
+    const c = content({
+      newArrivals: {
+        ...DEFAULT_HOMEPAGE_CONTENT.newArrivals!,
+        enabled: true,
+        productIds: ["p-1"],
+      },
+    });
+
+    expect(row("newArrivals", c).status).toBe("enabled");
+  });
+
+  it("still reports a switched-off curated shelf as Off", () => {
+    const c = content({
+      discountedProducts: {
+        ...DEFAULT_HOMEPAGE_CONTENT.discountedProducts!,
+        enabled: false,
+        productIds: ["p-1"],
+      },
+    });
+
+    expect(row("discountedProducts", c).status).toBe("off");
+  });
+
+  it("leaves group statuses alone", () => {
+    // Groups are category-driven, so "no products picked" is not a state they
+    // have. They stay Off / Enabled.
+    const c = content({
+      groupSections: [{ categoryId: STACKS_ID, enabled: true }],
+    });
+
+    expect(row(`group:${STACKS_ID}`, c, GROUPS).status).toBe("enabled");
+  });
+
   it("switches independently of Best Sellers and New Drops", () => {
     const c = content({
       featuredShelf: {
@@ -487,11 +569,19 @@ describe("describeSectionRows — Featured", () => {
       featuredShelf: {
         ...DEFAULT_HOMEPAGE_CONTENT.featuredShelf!,
         enabled: true,
-        productIds: ["p-1"],
+        productIds: ["featured-1"],
+      },
+      discountedProducts: {
+        ...DEFAULT_HOMEPAGE_CONTENT.discountedProducts!,
+        enabled: true,
+        productIds: ["offer-1"],
       },
     });
 
     expect(row("discountedProducts", c).status).toBe("enabled");
     expect(row("discountedProducts", c).label).toBe("Offers");
+    // Neither shelf borrows the other's list.
+    expect(c.discountedProducts!.productIds).toEqual(["offer-1"]);
+    expect(c.featuredShelf!.productIds).toEqual(["featured-1"]);
   });
 });

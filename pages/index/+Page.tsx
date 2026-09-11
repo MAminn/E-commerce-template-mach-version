@@ -6,12 +6,14 @@ import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import type { LandingTemplateModernProps } from "#root/components/template-system";
 import type { LandingTemplateMachProps } from "#root/components/template-system/landing/LandingTemplateMach";
 import type { HomepageContent } from "#root/shared/types/homepage-content";
+import { MACH_LANDING_TEMPLATE_ID } from "#root/shared/types/homepage-content";
 import type { CategoryRecord } from "#root/shared/types/homepage-group-sections";
 import {
   broadGroupsFor,
   resolveGroupSections,
 } from "#root/shared/types/homepage-group-sections";
 import {
+  buildCuratedSectionRequest,
   mapSearchItem,
   orderByCmsSelection,
   useHomepageGroupProducts,
@@ -88,6 +90,18 @@ function Page() {
   // Resolve the active landing template ID early so we can use it for content fetching
   const activeLandingTemplateId = getTemplateId("landing") ?? "landing-modern";
 
+  /**
+   * Whether the Mach storefront is the one being rendered.
+   *
+   * This route serves every landing template, and the four merchandising
+   * shelves below behave differently on Mach: the client curates all four by
+   * hand, so a section they have not filled in shows nothing rather than
+   * falling back to a catalogue query. Every other template keeps the
+   * fallbacks it has always had — a generic product search for Best Sellers,
+   * newest-first for New Arrivals, discounted-only for Offers.
+   */
+  const isMach = activeLandingTemplateId === MACH_LANDING_TEMPLATE_ID;
+
   // Track which template ID the CMS content was fetched for.
   // Starts with the SSR template so we skip the redundant initial fetch.
   const lastFetchedTemplateRef = useRef(ssrData.ssrTemplateId);
@@ -100,14 +114,22 @@ function Page() {
       setIsLoading(true);
       setError(null);
       try {
-        const searchParams: Record<string, any> = {
-          limit: 8,
-          includeOutOfStock: false,
-        };
-        // Use manually selected product IDs from CMS if configured
         const featuredIds = homepageContent.featuredProducts?.productIds;
-        if (featuredIds && featuredIds.length > 0) {
-          searchParams.productIds = featuredIds;
+        // On Mach, Best Sellers is exactly what the client picked — no
+        // selection means no query and an empty shelf, rather than a general
+        // product search standing in for a merchandising decision.
+        const searchParams: Record<string, any> | null = isMach
+          ? buildCuratedSectionRequest(featuredIds, false)
+          : {
+              limit: 8,
+              includeOutOfStock: false,
+              ...(featuredIds && featuredIds.length > 0
+                ? { productIds: featuredIds }
+                : {}),
+            };
+        if (!searchParams) {
+          setFeaturedProducts([]);
+          return;
         }
         const productsResult = await trpc.product.search.query(searchParams);
 
@@ -128,7 +150,7 @@ function Page() {
     };
 
     fetchProducts();
-  }, [homepageContent.featuredProducts?.productIds]);
+  }, [homepageContent.featuredProducts?.productIds, isMach]);
 
   // ───────────────────────────────────────────────────
   // Re-fetch CMS content only when the active template changes
@@ -217,15 +239,23 @@ function Page() {
     const fetchNewArrivals = async () => {
       setNewArrivalsLoading(true);
       try {
-        const searchParams: Record<string, any> = {
-          limit: 8,
-          sortBy: "newest" as const,
-          includeOutOfStock: true,
-        };
-        // Use manually selected product IDs from CMS if configured
         const newArrivalIds = homepageContent.newArrivals?.productIds;
-        if (newArrivalIds && newArrivalIds.length > 0) {
-          searchParams.productIds = newArrivalIds;
+        // On Mach, New Drops is editorial: the client chooses what counts as a
+        // drop. `sortBy: "newest"` would decide it for them from `createdAt`,
+        // which is a fact about the database rather than a launch.
+        const searchParams: Record<string, any> | null = isMach
+          ? buildCuratedSectionRequest(newArrivalIds, true)
+          : {
+              limit: 8,
+              sortBy: "newest" as const,
+              includeOutOfStock: true,
+              ...(newArrivalIds && newArrivalIds.length > 0
+                ? { productIds: newArrivalIds }
+                : {}),
+            };
+        if (!searchParams) {
+          setNewArrivals([]);
+          return;
         }
         const result = await trpc.product.search.query(searchParams);
 
@@ -245,7 +275,7 @@ function Page() {
     };
 
     fetchNewArrivals();
-  }, [homepageContent.newArrivals?.productIds]);
+  }, [homepageContent.newArrivals?.productIds, isMach]);
 
   // ───────────────────────────────────────────────────
   // Fetch the Featured shelf.
@@ -302,15 +332,23 @@ function Page() {
   useEffect(() => {
     const fetchDiscounted = async () => {
       try {
-        const searchParams: Record<string, any> = {
-          limit: 8,
-          discountedOnly: true,
-          includeOutOfStock: false,
-        };
-        // Use manually selected product IDs from CMS if configured
         const discountedIds = homepageContent.discountedProducts?.productIds;
-        if (discountedIds && discountedIds.length > 0) {
-          searchParams.productIds = discountedIds;
+        // On Mach, Offers is a shelf the client fills, not every product that
+        // happens to carry a discount. Nothing picked means nothing shown —
+        // pricing and the shop's own sale logic are untouched either way.
+        const searchParams: Record<string, any> | null = isMach
+          ? buildCuratedSectionRequest(discountedIds, false)
+          : {
+              limit: 8,
+              discountedOnly: true,
+              includeOutOfStock: false,
+              ...(discountedIds && discountedIds.length > 0
+                ? { productIds: discountedIds }
+                : {}),
+            };
+        if (!searchParams) {
+          setDiscountedProducts([]);
+          return;
         }
         const result = await trpc.product.search.query(searchParams);
 
@@ -328,7 +366,7 @@ function Page() {
     };
 
     fetchDiscounted();
-  }, [homepageContent.discountedProducts?.productIds]);
+  }, [homepageContent.discountedProducts?.productIds, isMach]);
 
   // Get the selected landing template
   const templateEntry = getTemplateComponent("landing", activeLandingTemplateId);

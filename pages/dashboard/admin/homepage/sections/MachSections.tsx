@@ -32,7 +32,6 @@ import type {
   GroupSectionPresentation,
   HeroMediaLayout,
   HomepageContent,
-  HomepageFeaturedShelfContent,
   HomepageGroupSectionContent,
   MediaSlot,
   TextAlign,
@@ -43,6 +42,7 @@ import type {
 import {
   DEFAULT_GROUP_SECTION_LIMIT,
   DEFAULT_GROUP_VIEW_ALL_TEXT,
+  DEFAULT_NEW_DROPS_TITLE,
   EMPTY_MEDIA_SLOT,
   GROUP_SECTION_LIMIT_MAX,
   GROUP_SECTION_LIMIT_MIN,
@@ -612,113 +612,256 @@ function MachGroupSectionEditor({
 }
 
 /* ================================================================== */
-/*  Featured — hand-picked merchandising shelf                        */
+/*  Merchandising sections — the four curated shelves                 */
 /* ================================================================== */
 
 /**
- * The Featured section's editor.
+ * The four merchandising shelves, in one place.
  *
- * Featured used to be produced by renaming the Best Sellers heading, which
- * meant the store could have one or the other and Section Order described a
- * block pretending to be a different one. This card drives a section of its
- * own, with its own switch, copy and selection, sitting alongside Best
- * Sellers, New Drops and Offers rather than in place of any of them.
+ * Best Sellers, New Drops, Featured and Offers are not categories. They are
+ * editorial selections cut across the whole catalogue, and on Mach the client
+ * curates all four by hand — which is the distinction the homepage now rests
+ * on: a **group** section shows whatever is in its category, a **merchandising**
+ * section shows whatever the client picked.
  *
- * There is no automatic ranking behind it and there should not be: featured
- * means somebody chose these. With nothing chosen the section stays off the
- * storefront rather than quietly repeating whatever Best Sellers already
- * shows, which is stated on the card rather than left to be discovered.
+ * Two problems this card exists to fix.
+ *
+ * The first is that three of the four used to fall back to a catalogue query
+ * when nothing was picked — a general product search, newest-first, or every
+ * discounted product. That reads as helpful and behaves as a trap: the client
+ * cannot tell a shelf they filled from one the database filled for them, and
+ * clearing a selection puts the fallback back on the page instead of taking
+ * the section off it. All four are now exactly what was chosen, and nothing
+ * when nothing was.
+ *
+ * The second is that their editors were scattered through a five-thousand-line
+ * admin page under their internal names — "Featured Products Section" for Best
+ * Sellers, "New Arrivals" for New Drops, "Discounted Products (Offers)" for
+ * Offers — so the client had to know the storage keys to find the row they were
+ * looking at. Here they appear once each, under the names used everywhere else
+ * in the CMS and on the storefront.
+ *
+ * The storage keys are unchanged: `featuredProducts`, `newArrivals`,
+ * `featuredShelf` and `discountedProducts` still hold exactly what they held.
+ * Renaming them would strand every existing store's content for a wording
+ * problem, and the wording problem is solved by naming things properly here.
  */
-export function MachFeaturedShelfCard({
+export function MachMerchandisingSectionsCard({
   content,
   setContent,
 }: {
   content: HomepageContent;
   setContent: SetContent;
 }) {
-  const featured = content.featuredShelf;
-
-  const patch = (next: Partial<HomepageFeaturedShelfContent>) =>
-    setContent((prev) => {
-      const base = (prev.featuredShelf ?? {}) as HomepageFeaturedShelfContent;
-      return {
-        ...prev,
-        featuredShelf: {
-          ...base,
-          ...next,
-          enabled: next.enabled ?? base.enabled ?? false,
-          title: next.title ?? base.title ?? "FEATURED",
-          viewAllText: next.viewAllText ?? base.viewAllText ?? "VIEW ALL",
-          viewAllLink: next.viewAllLink ?? base.viewAllLink ?? "/shop",
-        },
-      };
-    });
-
-  const enabled = featured?.enabled ?? false;
-  const selectedProductIds = featured?.productIds ?? [];
-
   return (
     <Card>
-      <SectionCardHeader
-        title='Featured'
-        description='A shelf of products you choose by hand. Its own section — separate from Best Sellers, New Drops and Offers.'
-        enabled={enabled}
-        onToggle={(v) => patch({ enabled: v })}
-      />
-      <CardContent className='space-y-5'>
+      <CardHeader>
+        <CardTitle>Merchandising Sections</CardTitle>
+        <CardDescription>
+          Four shelves you fill yourself, separate from the product groups
+          above. Each one shows exactly the products you choose for it, in the
+          order you choose — and stays off the storefront until you pick some.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-6'>
+        <MachCuratedShelfEditor
+          name='Best Sellers'
+          description='Choose the products shown in the Best Sellers shelf.'
+          shelf={content.featuredProducts}
+          onPatch={(next) =>
+            setContent((prev) => ({
+              ...prev,
+              featuredProducts: {
+                ...prev.featuredProducts,
+                ...next,
+              },
+            }))
+          }
+        />
+
+        <MachCuratedShelfEditor
+          name='New Drops'
+          description='Choose the products shown in the New Drops shelf.'
+          shelf={content.newArrivals}
+          onPatch={(next) =>
+            setContent((prev) => ({
+              ...prev,
+              newArrivals: {
+                ...(prev.newArrivals ?? {
+                  enabled: true,
+                  title: DEFAULT_NEW_DROPS_TITLE,
+                  viewAllText: "VIEW ALL",
+                  viewAllLink: "/shop",
+                }),
+                ...next,
+              },
+            }))
+          }
+        />
+
+        <MachCuratedShelfEditor
+          name='Featured'
+          description='Choose the products shown in the Featured shelf.'
+          shelf={content.featuredShelf}
+          onPatch={(next) =>
+            setContent((prev) => ({
+              ...prev,
+              featuredShelf: {
+                ...(prev.featuredShelf ?? {
+                  enabled: false,
+                  title: "FEATURED",
+                  viewAllText: "VIEW ALL",
+                  viewAllLink: "/shop",
+                }),
+                ...next,
+              },
+            }))
+          }
+        />
+
+        <MachCuratedShelfEditor
+          name='Offers'
+          description='Choose the products shown in the Offers shelf.'
+          shelf={content.discountedProducts}
+          onPatch={(next) =>
+            setContent((prev) => ({
+              ...prev,
+              discountedProducts: {
+                ...(prev.discountedProducts ?? {
+                  enabled: true,
+                  title: "OFFERS",
+                  viewAllText: "VIEW ALL",
+                  viewAllLink: "/shop",
+                }),
+                ...next,
+              },
+            }))
+          }
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * What every curated shelf stores, whichever key it lives under.
+ *
+ * The four sections have slightly different content types — only some declare
+ * a subtitle, only Offers declares a limit — but everything this editor
+ * touches is common to all of them, so one editor serves all four and they
+ * cannot drift apart in what the client is able to control.
+ */
+interface CuratedShelfContent {
+  enabled?: boolean;
+  title?: string;
+  subtitle?: string;
+  viewAllText?: string;
+  viewAllLink?: string;
+  productIds?: string[];
+}
+
+/**
+ * What an empty selection means for a curated shelf.
+ *
+ * Shared by all four so the answer cannot drift between them, and worded as
+ * the consequence rather than the state: "no products selected" is something
+ * the client can already see, and what they need to know is that the section
+ * will not be on the site.
+ */
+const EMPTY_CURATED_SHELF_MESSAGE =
+  "No products selected — this section will not appear on the storefront.";
+
+/** One merchandising shelf's controls. */
+function MachCuratedShelfEditor({
+  name,
+  description,
+  shelf,
+  onPatch,
+}: {
+  name: string;
+  description: string;
+  shelf: CuratedShelfContent | undefined;
+  onPatch: (next: Partial<CuratedShelfContent>) => void;
+}) {
+  const enabled = shelf?.enabled ?? false;
+  const selectedProductIds = shelf?.productIds ?? [];
+
+  return (
+    <div className='rounded-lg border p-4'>
+      <div className='flex items-start justify-between gap-4'>
+        <div className='min-w-0'>
+          {/* The canonical name, the same one Section Order and the rest of
+              the CMS use. The storage key is never shown to the client. */}
+          <p className='truncate text-sm font-medium'>{name}</p>
+          <p className='mt-0.5 text-xs text-muted-foreground'>{description}</p>
+        </div>
+        <div className='flex shrink-0 items-center gap-2'>
+          <Label
+            className='text-xs text-muted-foreground'
+            title={
+              enabled
+                ? "This section is live on the storefront."
+                : "Hidden from the storefront. You can still edit and prepare it here."
+            }>
+            {enabled ? "Visible" : "Hidden"}
+          </Label>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(v) => onPatch({ enabled: v })}
+          />
+        </div>
+      </div>
+
+      <div className='mt-4 space-y-5'>
         <div className='grid gap-4 sm:grid-cols-2'>
           <div className='space-y-1.5'>
             <Label className='text-xs'>Heading</Label>
             <Input
-              value={featured?.title ?? ""}
-              onChange={(e) => patch({ title: e.target.value })}
+              value={shelf?.title ?? ""}
+              onChange={(e) => onPatch({ title: e.target.value })}
+              placeholder={name}
             />
           </div>
           <div className='space-y-1.5'>
             <Label className='text-xs'>Sub-heading</Label>
             <Input
-              value={featured?.subtitle ?? ""}
-              onChange={(e) => patch({ subtitle: e.target.value })}
+              value={shelf?.subtitle ?? ""}
+              onChange={(e) => onPatch({ subtitle: e.target.value })}
             />
           </div>
           <div className='space-y-1.5'>
             <Label className='text-xs'>Link label</Label>
             <Input
-              value={featured?.viewAllText ?? ""}
-              onChange={(e) => patch({ viewAllText: e.target.value })}
+              value={shelf?.viewAllText ?? ""}
+              onChange={(e) => onPatch({ viewAllText: e.target.value })}
             />
           </div>
           <div className='space-y-1.5'>
             <Label className='text-xs'>Link destination</Label>
             <Input
-              value={featured?.viewAllLink ?? ""}
-              onChange={(e) => patch({ viewAllLink: e.target.value })}
+              value={shelf?.viewAllLink ?? ""}
+              onChange={(e) => onPatch({ viewAllLink: e.target.value })}
               placeholder='/shop'
             />
           </div>
         </div>
 
         <div className='space-y-2'>
-          <Label className='text-xs'>Featured products</Label>
+          <Label className='text-xs'>Products</Label>
           <p className='text-xs text-muted-foreground'>
             Shown in the order you set here.
           </p>
+          {/* The picker's own empty state carries the consequence, so it is
+              stated once, next to the control that changes it. All four
+              shelves are curated outright — there is no fallback to describe. */}
           <HomepageProductPicker
             selectedIds={selectedProductIds}
-            onChange={(ids) => patch({ productIds: ids })}
+            onChange={(ids) => onPatch({ productIds: ids })}
+            emptyMessage={EMPTY_CURATED_SHELF_MESSAGE}
           />
         </div>
-
-        {enabled && selectedProductIds.length === 0 && (
-          <div className='rounded-md bg-muted p-3'>
-            <p className='text-sm text-muted-foreground'>
-              Nothing picked yet, so this section is hidden on the storefront.
-              Featured only shows what you choose for it.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

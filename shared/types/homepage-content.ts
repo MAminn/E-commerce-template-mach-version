@@ -411,6 +411,48 @@ export interface HomepageGroupSectionContent {
   presentation?: GroupSectionPresentation;
 }
 
+/**
+ * The stored template id of the Mach storefront.
+ *
+ * Still "landing-editorial": Mach was built over the editorial template's slot
+ * and the id is what the merchant's saved content is keyed on, so renaming it
+ * would orphan their homepage. Named here so the places that must behave
+ * differently for Mach compare against one constant instead of re-typing the
+ * string.
+ */
+export const MACH_LANDING_TEMPLATE_ID = "landing-editorial";
+
+/**
+ * The heading New Drops was given before Featured was a real section.
+ *
+ * "Featured" used to be produced by renaming New Drops, because there was
+ * nowhere else to put it. Featured has its own section now, so a store still
+ * carrying that heading shows two sections called FEATURED and no New Drops at
+ * all — a leftover of a workaround rather than a decision anyone made.
+ */
+const LEGACY_NEW_DROPS_ALIAS = "featured";
+
+/** What New Drops is called when nobody has renamed it. */
+export const DEFAULT_NEW_DROPS_TITLE = "NEW DROPS";
+
+/**
+ * Repairs the one obsolete New Drops heading, and only that one.
+ *
+ * Deliberately narrow. A heading is the client's copy, and rewriting it is
+ * something that has to be earned: "JUST IN", "LATEST PRODUCTS" and "SEPTEMBER
+ * DROPS" are all decisions, and only the exact string the old workaround
+ * produced is a leftover. Compared case- and whitespace-insensitively because
+ * the workaround was applied by hand and by different people.
+ */
+export function repairLegacyNewDropsTitle(
+  title: string | undefined,
+): string | undefined {
+  if (typeof title !== "string") return title;
+  return title.replace(/\s+/g, " ").trim().toLowerCase() === LEGACY_NEW_DROPS_ALIAS
+    ? DEFAULT_NEW_DROPS_TITLE
+    : title;
+}
+
 /** Prefix marking a section-order entry as a broad group section. */
 export const GROUP_SECTION_PREFIX = "group:";
 

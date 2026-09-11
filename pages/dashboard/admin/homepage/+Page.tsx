@@ -56,7 +56,7 @@ import {
   MachHeroCampaignCard,
   MachMarqueeCard,
   MachGroupSectionsCard,
-  MachFeaturedShelfCard,
+  MachMerchandisingSectionsCard,
   MachCategorySelectionCard,
   MachCampaignBannersCard,
   MachWhyCard,
@@ -2446,21 +2446,47 @@ export default function HomepageAdminPage() {
         )}
 
         {/* Discounted Products Section */}
-        <Card>
-          <CardHeader>
-            <div className='flex items-center justify-between'>
-              <CardTitle>Discounted Products (Offers)</CardTitle>
-              <div className='flex items-center gap-2'>
-                <Label htmlFor='discounted-enabled'>Enabled</Label>
-                <Switch
-                  id='discounted-enabled'
-                  checked={content.discountedProducts?.enabled ?? true}
-                  onCheckedChange={(checked) =>
+        {/* Mach edits Offers in Merchandising Sections instead, so this generic editor is hidden there — one editing surface per section. */}
+        {!isMach && (
+          <Card>
+            <CardHeader>
+              <div className='flex items-center justify-between'>
+                <CardTitle>Discounted Products (Offers)</CardTitle>
+                <div className='flex items-center gap-2'>
+                  <Label htmlFor='discounted-enabled'>Enabled</Label>
+                  <Switch
+                    id='discounted-enabled'
+                    checked={content.discountedProducts?.enabled ?? true}
+                    onCheckedChange={(checked) =>
+                      setContent((prev) => ({
+                        ...prev,
+                        discountedProducts: {
+                          enabled: checked,
+                          title: prev.discountedProducts?.title ?? "Offers",
+                          viewAllText:
+                            prev.discountedProducts?.viewAllText ?? "View All",
+                          viewAllLink:
+                            prev.discountedProducts?.viewAllLink ?? "/shop",
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div>
+                <Label htmlFor='discounted-title'>Section Title (English)</Label>
+                <Input
+                  id='discounted-title'
+                  value={content.discountedProducts?.title ?? "Offers"}
+                  onChange={(e) =>
                     setContent((prev) => ({
                       ...prev,
                       discountedProducts: {
-                        enabled: checked,
-                        title: prev.discountedProducts?.title ?? "Offers",
+                        ...prev.discountedProducts!,
+                        enabled: prev.discountedProducts?.enabled ?? true,
+                        title: e.target.value,
                         viewAllText:
                           prev.discountedProducts?.viewAllText ?? "View All",
                         viewAllLink:
@@ -2468,363 +2494,341 @@ export default function HomepageAdminPage() {
                       },
                     }))
                   }
+                  placeholder='Offers'
+                  disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
                 />
+                {isMinimal && (
+                  <div className='mt-1'>
+                    <Label className='text-xs text-muted-foreground flex items-center gap-1'>
+                      <Languages className='w-3 h-3' /> Arabic
+                    </Label>
+                    <Input
+                      dir='rtl'
+                      value={content.discountedProducts?.titleAr ?? ""}
+                      onChange={(e) =>
+                        setContent((prev) => ({
+                          ...prev,
+                          discountedProducts: {
+                            ...prev.discountedProducts!,
+                            enabled: prev.discountedProducts?.enabled ?? true,
+                            title: prev.discountedProducts?.title ?? "Offers",
+                            titleAr: e.target.value,
+                            viewAllText:
+                              prev.discountedProducts?.viewAllText ?? "View All",
+                            viewAllLink:
+                              prev.discountedProducts?.viewAllLink ?? "/shop",
+                          },
+                        }))
+                      }
+                      placeholder='عروض'
+                      className='text-sm mt-0.5'
+                      disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
+                    />
+                  </div>
+                )}
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div>
-              <Label htmlFor='discounted-title'>Section Title (English)</Label>
-              <Input
-                id='discounted-title'
-                value={content.discountedProducts?.title ?? "Offers"}
-                onChange={(e) =>
-                  setContent((prev) => ({
-                    ...prev,
-                    discountedProducts: {
-                      ...prev.discountedProducts!,
-                      enabled: prev.discountedProducts?.enabled ?? true,
-                      title: e.target.value,
-                      viewAllText:
-                        prev.discountedProducts?.viewAllText ?? "View All",
-                      viewAllLink:
-                        prev.discountedProducts?.viewAllLink ?? "/shop",
-                    },
-                  }))
-                }
-                placeholder='Offers'
-                disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
-              />
-              {isMinimal && (
-                <div className='mt-1'>
-                  <Label className='text-xs text-muted-foreground flex items-center gap-1'>
-                    <Languages className='w-3 h-3' /> Arabic
-                  </Label>
-                  <Input
-                    dir='rtl'
-                    value={content.discountedProducts?.titleAr ?? ""}
-                    onChange={(e) =>
-                      setContent((prev) => ({
-                        ...prev,
-                        discountedProducts: {
-                          ...prev.discountedProducts!,
-                          enabled: prev.discountedProducts?.enabled ?? true,
-                          title: prev.discountedProducts?.title ?? "Offers",
-                          titleAr: e.target.value,
-                          viewAllText:
-                            prev.discountedProducts?.viewAllText ?? "View All",
-                          viewAllLink:
-                            prev.discountedProducts?.viewAllLink ?? "/shop",
-                        },
-                      }))
-                    }
-                    placeholder='عروض'
-                    className='text-sm mt-0.5'
-                    disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
-                  />
-                </div>
-              )}
-            </div>
-            <div>
-              <Label htmlFor='discounted-view-all'>
-                View All Text (English)
-              </Label>
-              <Input
-                id='discounted-view-all'
-                value={content.discountedProducts?.viewAllText ?? "View All"}
-                onChange={(e) =>
+              <div>
+                <Label htmlFor='discounted-view-all'>
+                  View All Text (English)
+                </Label>
+                <Input
+                  id='discounted-view-all'
+                  value={content.discountedProducts?.viewAllText ?? "View All"}
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      discountedProducts: {
+                        ...prev.discountedProducts!,
+                        enabled: prev.discountedProducts?.enabled ?? true,
+                        title: prev.discountedProducts?.title ?? "Offers",
+                        viewAllText: e.target.value,
+                        viewAllLink:
+                          prev.discountedProducts?.viewAllLink ?? "/shop",
+                      },
+                    }))
+                  }
+                  placeholder='View All'
+                  disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
+                />
+                {isMinimal && (
+                  <div className='mt-1'>
+                    <Label className='text-xs text-muted-foreground flex items-center gap-1'>
+                      <Languages className='w-3 h-3' /> Arabic
+                    </Label>
+                    <Input
+                      dir='rtl'
+                      value={content.discountedProducts?.viewAllTextAr ?? ""}
+                      onChange={(e) =>
+                        setContent((prev) => ({
+                          ...prev,
+                          discountedProducts: {
+                            ...prev.discountedProducts!,
+                            enabled: prev.discountedProducts?.enabled ?? true,
+                            title: prev.discountedProducts?.title ?? "Offers",
+                            viewAllText:
+                              prev.discountedProducts?.viewAllText ?? "View All",
+                            viewAllTextAr: e.target.value,
+                            viewAllLink:
+                              prev.discountedProducts?.viewAllLink ?? "/shop",
+                          },
+                        }))
+                      }
+                      placeholder='عرض الكل'
+                      className='text-sm mt-0.5'
+                      disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className='bg-muted p-3 rounded-md'>
+                <p className='text-sm text-muted-foreground'>
+                  <strong>Note:</strong> Products are automatically fetched — only
+                  items with a discount price are shown.
+                </p>
+              </div>
+              <HomepageProductPicker
+                selectedIds={content.discountedProducts?.productIds ?? []}
+                onChange={(ids) =>
                   setContent((prev) => ({
                     ...prev,
                     discountedProducts: {
                       ...prev.discountedProducts!,
                       enabled: prev.discountedProducts?.enabled ?? true,
                       title: prev.discountedProducts?.title ?? "Offers",
-                      viewAllText: e.target.value,
+                      viewAllText:
+                        prev.discountedProducts?.viewAllText ?? "View All",
                       viewAllLink:
                         prev.discountedProducts?.viewAllLink ?? "/shop",
+                      productIds: ids.length > 0 ? ids : undefined,
                     },
                   }))
                 }
-                placeholder='View All'
                 disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
               />
-              {isMinimal && (
-                <div className='mt-1'>
-                  <Label className='text-xs text-muted-foreground flex items-center gap-1'>
-                    <Languages className='w-3 h-3' /> Arabic
-                  </Label>
-                  <Input
-                    dir='rtl'
-                    value={content.discountedProducts?.viewAllTextAr ?? ""}
-                    onChange={(e) =>
+
+              {/* How many offers reach the homepage shelf. The query returns
+                  every discounted product; this is the merchant deciding how
+                  much of that belongs on the front page. */}
+              <div>
+                <Label htmlFor='discounted-limit'>Products shown on homepage</Label>
+                <Input
+                  id='discounted-limit'
+                  type='number'
+                  min={DISCOUNTED_LIMIT_MIN}
+                  max={DISCOUNTED_LIMIT_MAX}
+                  className='max-w-[8rem]'
+                  value={
+                    content.discountedProducts?.limit ?? DEFAULT_DISCOUNTED_LIMIT
+                  }
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      discountedProducts: {
+                        ...(prev.discountedProducts ?? {
+                          enabled: true,
+                          title: "",
+                          viewAllText: "",
+                          viewAllLink: "/shop",
+                        }),
+                        limit: Math.min(
+                          DISCOUNTED_LIMIT_MAX,
+                          Math.max(
+                            DISCOUNTED_LIMIT_MIN,
+                            Number.parseInt(e.target.value, 10) ||
+                              DEFAULT_DISCOUNTED_LIMIT,
+                          ),
+                        ),
+                      },
+                    }))
+                  }
+                  disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
+                />
+                <p className='text-sm text-muted-foreground mt-1'>
+                  Between {DISCOUNTED_LIMIT_MIN} and {DISCOUNTED_LIMIT_MAX}. The
+                  rest stay on the offers page behind &ldquo;view all&rdquo;.
+                </p>
+              </div>
+
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Featured Products Section. On Mach this same storage is Best
+            Sellers, edited in Merchandising Sections — so this card is for the
+            other templates and can use their name for it plainly. */}
+        {/* Mach edits Best Sellers in Merchandising Sections instead. */}
+        {!isMach && (
+          <Card>
+            <CardHeader>
+              <div className='flex items-center justify-between'>
+                <CardTitle>Featured Products Section</CardTitle>
+                <div className='flex items-center gap-2'>
+                  <Label htmlFor='featured-enabled'>Enabled</Label>
+                  <Switch
+                    id='featured-enabled'
+                    checked={content.featuredProducts.enabled}
+                    onCheckedChange={(checked) =>
                       setContent((prev) => ({
                         ...prev,
-                        discountedProducts: {
-                          ...prev.discountedProducts!,
-                          enabled: prev.discountedProducts?.enabled ?? true,
-                          title: prev.discountedProducts?.title ?? "Offers",
-                          viewAllText:
-                            prev.discountedProducts?.viewAllText ?? "View All",
-                          viewAllTextAr: e.target.value,
-                          viewAllLink:
-                            prev.discountedProducts?.viewAllLink ?? "/shop",
+                        featuredProducts: {
+                          ...prev.featuredProducts,
+                          enabled: checked,
                         },
                       }))
                     }
-                    placeholder='عرض الكل'
-                    className='text-sm mt-0.5'
-                    disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
                   />
                 </div>
-              )}
-            </div>
-            <div className='bg-muted p-3 rounded-md'>
-              <p className='text-sm text-muted-foreground'>
-                <strong>Note:</strong> Products are automatically fetched — only
-                items with a discount price are shown.
-              </p>
-            </div>
-            <HomepageProductPicker
-              selectedIds={content.discountedProducts?.productIds ?? []}
-              onChange={(ids) =>
-                setContent((prev) => ({
-                  ...prev,
-                  discountedProducts: {
-                    ...prev.discountedProducts!,
-                    enabled: prev.discountedProducts?.enabled ?? true,
-                    title: prev.discountedProducts?.title ?? "Offers",
-                    viewAllText:
-                      prev.discountedProducts?.viewAllText ?? "View All",
-                    viewAllLink:
-                      prev.discountedProducts?.viewAllLink ?? "/shop",
-                    productIds: ids.length > 0 ? ids : undefined,
-                  },
-                }))
-              }
-              disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
-            />
-
-            {/* How many offers reach the homepage shelf. The query returns
-                every discounted product; this is the merchant deciding how
-                much of that belongs on the front page. */}
-            <div>
-              <Label htmlFor='discounted-limit'>Products shown on homepage</Label>
-              <Input
-                id='discounted-limit'
-                type='number'
-                min={DISCOUNTED_LIMIT_MIN}
-                max={DISCOUNTED_LIMIT_MAX}
-                className='max-w-[8rem]'
-                value={
-                  content.discountedProducts?.limit ?? DEFAULT_DISCOUNTED_LIMIT
-                }
-                onChange={(e) =>
-                  setContent((prev) => ({
-                    ...prev,
-                    discountedProducts: {
-                      ...(prev.discountedProducts ?? {
-                        enabled: true,
-                        title: "",
-                        viewAllText: "",
-                        viewAllLink: "/shop",
-                      }),
-                      limit: Math.min(
-                        DISCOUNTED_LIMIT_MAX,
-                        Math.max(
-                          DISCOUNTED_LIMIT_MIN,
-                          Number.parseInt(e.target.value, 10) ||
-                            DEFAULT_DISCOUNTED_LIMIT,
-                        ),
-                      ),
-                    },
-                  }))
-                }
-                disabled={!(content.discountedProducts?.enabled ?? true) && !isMach}
-              />
-              <p className='text-sm text-muted-foreground mt-1'>
-                Between {DISCOUNTED_LIMIT_MIN} and {DISCOUNTED_LIMIT_MAX}. The
-                rest stay on the offers page behind &ldquo;view all&rdquo;.
-              </p>
-            </div>
-
-          </CardContent>
-        </Card>
-
-        {/* Featured Products Section — "Best Sellers" on the Mach storefront.
-            Same slot, same storage; only the label the client sees differs, so
-            they can find the card that drives the row they are looking at. */}
-        <Card>
-          <CardHeader>
-            <div className='flex items-center justify-between'>
-              <CardTitle>
-                {isMach ? "Best Sellers" : "Featured Products Section"}
-              </CardTitle>
-              <div className='flex items-center gap-2'>
-                <Label htmlFor='featured-enabled'>Enabled</Label>
-                <Switch
-                  id='featured-enabled'
-                  checked={content.featuredProducts.enabled}
-                  onCheckedChange={(checked) =>
+              </div>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div>
+                <Label htmlFor='featured-title'>Section Title (English)</Label>
+                <Input
+                  id='featured-title'
+                  value={content.featuredProducts.title}
+                  onChange={(e) =>
                     setContent((prev) => ({
                       ...prev,
                       featuredProducts: {
                         ...prev.featuredProducts,
-                        enabled: checked,
+                        title: e.target.value,
                       },
                     }))
                   }
+                  placeholder='Featured Products'
+                  disabled={!content.featuredProducts.enabled}
+                />
+                {isMinimal && (
+                  <div className='mt-1'>
+                    <Label className='text-xs text-muted-foreground flex items-center gap-1'>
+                      <Languages className='w-3 h-3' /> Arabic
+                    </Label>
+                    <Input
+                      dir='rtl'
+                      value={content.featuredProducts.titleAr ?? ""}
+                      onChange={(e) =>
+                        setContent((prev) => ({
+                          ...prev,
+                          featuredProducts: {
+                            ...prev.featuredProducts,
+                            titleAr: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder='منتجات مميزة'
+                      className='text-sm mt-0.5'
+                      disabled={!content.featuredProducts.enabled}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor='featured-subtitle'>Section Subtitle</Label>
+                <Textarea
+                  id='featured-subtitle'
+                  value={content.featuredProducts.subtitle}
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      featuredProducts: {
+                        ...prev.featuredProducts,
+                        subtitle: e.target.value,
+                      },
+                    }))
+                  }
+                  placeholder='Check out our handpicked selection'
+                  disabled={!content.featuredProducts.enabled}
+                  rows={2}
                 />
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div>
-              <Label htmlFor='featured-title'>Section Title (English)</Label>
-              <Input
-                id='featured-title'
-                value={content.featuredProducts.title}
-                onChange={(e) =>
+
+              <div>
+                <Label htmlFor='featured-view-all'>View All Text (English)</Label>
+                <Input
+                  id='featured-view-all'
+                  value={content.featuredProducts.viewAllText}
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      featuredProducts: {
+                        ...prev.featuredProducts,
+                        viewAllText: e.target.value,
+                      },
+                    }))
+                  }
+                  placeholder='View All Products'
+                  disabled={!content.featuredProducts.enabled}
+                />
+                {isMinimal && (
+                  <div className='mt-1'>
+                    <Label className='text-xs text-muted-foreground flex items-center gap-1'>
+                      <Languages className='w-3 h-3' /> Arabic
+                    </Label>
+                    <Input
+                      dir='rtl'
+                      value={content.featuredProducts.viewAllTextAr ?? ""}
+                      onChange={(e) =>
+                        setContent((prev) => ({
+                          ...prev,
+                          featuredProducts: {
+                            ...prev.featuredProducts,
+                            viewAllTextAr: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder='عرض الكل'
+                      className='text-sm mt-0.5'
+                      disabled={!content.featuredProducts.enabled}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* The row's destination. Stored all along, but there was no
+                  field for it, so the link label was editable and the link it
+                  pointed at was not. */}
+              <div>
+                <Label htmlFor='featured-view-all-link'>View All Link</Label>
+                <Input
+                  id='featured-view-all-link'
+                  value={content.featuredProducts.viewAllLink ?? ""}
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      featuredProducts: {
+                        ...prev.featuredProducts,
+                        viewAllLink: e.target.value,
+                      },
+                    }))
+                  }
+                  placeholder='/shop'
+                  disabled={!content.featuredProducts.enabled && !isMach}
+                />
+              </div>
+
+              <div className='bg-muted p-3 rounded-md'>
+                <p className='text-sm text-muted-foreground'>
+                  <strong>Note:</strong> Use the product picker below to manually
+                  select which products appear in this section.
+                </p>
+              </div>
+              <HomepageProductPicker
+                selectedIds={content.featuredProducts?.productIds ?? []}
+                onChange={(ids) =>
                   setContent((prev) => ({
                     ...prev,
                     featuredProducts: {
                       ...prev.featuredProducts,
-                      title: e.target.value,
+                      productIds: ids.length > 0 ? ids : undefined,
                     },
                   }))
                 }
-                placeholder='Featured Products'
                 disabled={!content.featuredProducts.enabled}
               />
-              {isMinimal && (
-                <div className='mt-1'>
-                  <Label className='text-xs text-muted-foreground flex items-center gap-1'>
-                    <Languages className='w-3 h-3' /> Arabic
-                  </Label>
-                  <Input
-                    dir='rtl'
-                    value={content.featuredProducts.titleAr ?? ""}
-                    onChange={(e) =>
-                      setContent((prev) => ({
-                        ...prev,
-                        featuredProducts: {
-                          ...prev.featuredProducts,
-                          titleAr: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder='منتجات مميزة'
-                    className='text-sm mt-0.5'
-                    disabled={!content.featuredProducts.enabled}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor='featured-subtitle'>Section Subtitle</Label>
-              <Textarea
-                id='featured-subtitle'
-                value={content.featuredProducts.subtitle}
-                onChange={(e) =>
-                  setContent((prev) => ({
-                    ...prev,
-                    featuredProducts: {
-                      ...prev.featuredProducts,
-                      subtitle: e.target.value,
-                    },
-                  }))
-                }
-                placeholder='Check out our handpicked selection'
-                disabled={!content.featuredProducts.enabled}
-                rows={2}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor='featured-view-all'>View All Text (English)</Label>
-              <Input
-                id='featured-view-all'
-                value={content.featuredProducts.viewAllText}
-                onChange={(e) =>
-                  setContent((prev) => ({
-                    ...prev,
-                    featuredProducts: {
-                      ...prev.featuredProducts,
-                      viewAllText: e.target.value,
-                    },
-                  }))
-                }
-                placeholder='View All Products'
-                disabled={!content.featuredProducts.enabled}
-              />
-              {isMinimal && (
-                <div className='mt-1'>
-                  <Label className='text-xs text-muted-foreground flex items-center gap-1'>
-                    <Languages className='w-3 h-3' /> Arabic
-                  </Label>
-                  <Input
-                    dir='rtl'
-                    value={content.featuredProducts.viewAllTextAr ?? ""}
-                    onChange={(e) =>
-                      setContent((prev) => ({
-                        ...prev,
-                        featuredProducts: {
-                          ...prev.featuredProducts,
-                          viewAllTextAr: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder='عرض الكل'
-                    className='text-sm mt-0.5'
-                    disabled={!content.featuredProducts.enabled}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* The row's destination. Stored all along, but there was no
-                field for it, so the link label was editable and the link it
-                pointed at was not. */}
-            <div>
-              <Label htmlFor='featured-view-all-link'>View All Link</Label>
-              <Input
-                id='featured-view-all-link'
-                value={content.featuredProducts.viewAllLink ?? ""}
-                onChange={(e) =>
-                  setContent((prev) => ({
-                    ...prev,
-                    featuredProducts: {
-                      ...prev.featuredProducts,
-                      viewAllLink: e.target.value,
-                    },
-                  }))
-                }
-                placeholder='/shop'
-                disabled={!content.featuredProducts.enabled && !isMach}
-              />
-            </div>
-
-            <div className='bg-muted p-3 rounded-md'>
-              <p className='text-sm text-muted-foreground'>
-                <strong>Note:</strong> Use the product picker below to manually
-                select which products appear in this section.
-              </p>
-            </div>
-            <HomepageProductPicker
-              selectedIds={content.featuredProducts?.productIds ?? []}
-              onChange={(ids) =>
-                setContent((prev) => ({
-                  ...prev,
-                  featuredProducts: {
-                    ...prev.featuredProducts,
-                    productIds: ids.length > 0 ? ids : undefined,
-                  },
-                }))
-              }
-              disabled={!content.featuredProducts.enabled}
-            />
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Mach storefront: merchandising + trust ── */}
         {isMach && (
@@ -2837,9 +2841,14 @@ export default function HomepageAdminPage() {
                 system. Adding a group in Dashboard → Categories adds a card
                 here; nothing is hard-coded per group. */}
             <MachGroupSectionsCard content={content} setContent={setContent} />
-            {/* Featured is its own merchandising section, not a renamed one —
-                it sits alongside the Best Sellers card above. */}
-            <MachFeaturedShelfCard content={content} setContent={setContent} />
+            {/* The four curated shelves in one place, under the names the
+                client and the storefront both use. Their generic editors
+                elsewhere on this page are hidden for Mach, so there is exactly
+                one editing surface per section. */}
+            <MachMerchandisingSectionsCard
+              content={content}
+              setContent={setContent}
+            />
             <MachCampaignBannersCard content={content} setContent={setContent} />
             <MachWhyCard content={content} setContent={setContent} />
             <MachCertificatesCard content={content} setContent={setContent} />
@@ -2849,157 +2858,160 @@ export default function HomepageAdminPage() {
         )}
 
         {/* New Arrivals Section */}
-        <Card>
-          <CardHeader>
-            <div className='flex items-center justify-between'>
-              <CardTitle>New Arrivals</CardTitle>
-              <div className='flex items-center gap-2'>
-                <Label htmlFor='newarrivals-enabled'>Enabled</Label>
-                <Switch
-                  id='newarrivals-enabled'
-                  checked={content.newArrivals?.enabled ?? true}
-                  onCheckedChange={(checked) =>
-                    setContent((prev) => ({
-                      ...prev,
-                      newArrivals: {
-                        enabled: checked,
-                        title: prev.newArrivals?.title ?? "New Arrivals",
-                        viewAllText:
-                          prev.newArrivals?.viewAllText ?? "View All",
-                        viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
-                      },
-                    }))
-                  }
-                />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div>
-              <Label htmlFor='newarrivals-title'>Section Title (English)</Label>
-              <Input
-                id='newarrivals-title'
-                value={content.newArrivals?.title ?? "New Arrivals"}
-                onChange={(e) =>
-                  setContent((prev) => ({
-                    ...prev,
-                    newArrivals: {
-                      ...prev.newArrivals!,
-                      enabled: prev.newArrivals?.enabled ?? true,
-                      title: e.target.value,
-                      viewAllText: prev.newArrivals?.viewAllText ?? "View All",
-                      viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
-                    },
-                  }))
-                }
-                placeholder='New Arrivals'
-                disabled={!(content.newArrivals?.enabled ?? true)}
-              />
-              {isMinimal && (
-                <div className='mt-1'>
-                  <Label className='text-xs text-muted-foreground flex items-center gap-1'>
-                    <Languages className='w-3 h-3' /> Arabic
-                  </Label>
-                  <Input
-                    dir='rtl'
-                    value={content.newArrivals?.titleAr ?? ""}
-                    onChange={(e) =>
+        {/* Mach edits New Drops in Merchandising Sections instead. */}
+        {!isMach && (
+          <Card>
+            <CardHeader>
+              <div className='flex items-center justify-between'>
+                <CardTitle>New Arrivals</CardTitle>
+                <div className='flex items-center gap-2'>
+                  <Label htmlFor='newarrivals-enabled'>Enabled</Label>
+                  <Switch
+                    id='newarrivals-enabled'
+                    checked={content.newArrivals?.enabled ?? true}
+                    onCheckedChange={(checked) =>
                       setContent((prev) => ({
                         ...prev,
                         newArrivals: {
-                          ...prev.newArrivals!,
-                          enabled: prev.newArrivals?.enabled ?? true,
+                          enabled: checked,
                           title: prev.newArrivals?.title ?? "New Arrivals",
-                          titleAr: e.target.value,
                           viewAllText:
                             prev.newArrivals?.viewAllText ?? "View All",
                           viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
                         },
                       }))
                     }
-                    placeholder='وصل حديثاً'
-                    className='text-sm mt-0.5'
-                    disabled={!(content.newArrivals?.enabled ?? true)}
                   />
                 </div>
-              )}
-            </div>
-            <div>
-              <Label htmlFor='newarrivals-view-all'>
-                View All Text (English)
-              </Label>
-              <Input
-                id='newarrivals-view-all'
-                value={content.newArrivals?.viewAllText ?? "View All"}
-                onChange={(e) =>
+              </div>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div>
+                <Label htmlFor='newarrivals-title'>Section Title (English)</Label>
+                <Input
+                  id='newarrivals-title'
+                  value={content.newArrivals?.title ?? "New Arrivals"}
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      newArrivals: {
+                        ...prev.newArrivals!,
+                        enabled: prev.newArrivals?.enabled ?? true,
+                        title: e.target.value,
+                        viewAllText: prev.newArrivals?.viewAllText ?? "View All",
+                        viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
+                      },
+                    }))
+                  }
+                  placeholder='New Arrivals'
+                  disabled={!(content.newArrivals?.enabled ?? true)}
+                />
+                {isMinimal && (
+                  <div className='mt-1'>
+                    <Label className='text-xs text-muted-foreground flex items-center gap-1'>
+                      <Languages className='w-3 h-3' /> Arabic
+                    </Label>
+                    <Input
+                      dir='rtl'
+                      value={content.newArrivals?.titleAr ?? ""}
+                      onChange={(e) =>
+                        setContent((prev) => ({
+                          ...prev,
+                          newArrivals: {
+                            ...prev.newArrivals!,
+                            enabled: prev.newArrivals?.enabled ?? true,
+                            title: prev.newArrivals?.title ?? "New Arrivals",
+                            titleAr: e.target.value,
+                            viewAllText:
+                              prev.newArrivals?.viewAllText ?? "View All",
+                            viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
+                          },
+                        }))
+                      }
+                      placeholder='وصل حديثاً'
+                      className='text-sm mt-0.5'
+                      disabled={!(content.newArrivals?.enabled ?? true)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label htmlFor='newarrivals-view-all'>
+                  View All Text (English)
+                </Label>
+                <Input
+                  id='newarrivals-view-all'
+                  value={content.newArrivals?.viewAllText ?? "View All"}
+                  onChange={(e) =>
+                    setContent((prev) => ({
+                      ...prev,
+                      newArrivals: {
+                        ...prev.newArrivals!,
+                        enabled: prev.newArrivals?.enabled ?? true,
+                        title: prev.newArrivals?.title ?? "New Arrivals",
+                        viewAllText: e.target.value,
+                        viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
+                      },
+                    }))
+                  }
+                  placeholder='View All'
+                  disabled={!(content.newArrivals?.enabled ?? true)}
+                />
+                {isMinimal && (
+                  <div className='mt-1'>
+                    <Label className='text-xs text-muted-foreground flex items-center gap-1'>
+                      <Languages className='w-3 h-3' /> Arabic
+                    </Label>
+                    <Input
+                      dir='rtl'
+                      value={content.newArrivals?.viewAllTextAr ?? ""}
+                      onChange={(e) =>
+                        setContent((prev) => ({
+                          ...prev,
+                          newArrivals: {
+                            ...prev.newArrivals!,
+                            enabled: prev.newArrivals?.enabled ?? true,
+                            title: prev.newArrivals?.title ?? "New Arrivals",
+                            viewAllText:
+                              prev.newArrivals?.viewAllText ?? "View All",
+                            viewAllTextAr: e.target.value,
+                            viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
+                          },
+                        }))
+                      }
+                      placeholder='عرض الكل'
+                      className='text-sm mt-0.5'
+                      disabled={!(content.newArrivals?.enabled ?? true)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className='bg-muted p-3 rounded-md'>
+                <p className='text-sm text-muted-foreground'>
+                  <strong>Note:</strong> Products are automatically fetched — only
+                  recently added items are shown.
+                </p>
+              </div>
+              <HomepageProductPicker
+                selectedIds={content.newArrivals?.productIds ?? []}
+                onChange={(ids) =>
                   setContent((prev) => ({
                     ...prev,
                     newArrivals: {
                       ...prev.newArrivals!,
                       enabled: prev.newArrivals?.enabled ?? true,
                       title: prev.newArrivals?.title ?? "New Arrivals",
-                      viewAllText: e.target.value,
+                      viewAllText: prev.newArrivals?.viewAllText ?? "View All",
                       viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
+                      productIds: ids.length > 0 ? ids : undefined,
                     },
                   }))
                 }
-                placeholder='View All'
                 disabled={!(content.newArrivals?.enabled ?? true)}
               />
-              {isMinimal && (
-                <div className='mt-1'>
-                  <Label className='text-xs text-muted-foreground flex items-center gap-1'>
-                    <Languages className='w-3 h-3' /> Arabic
-                  </Label>
-                  <Input
-                    dir='rtl'
-                    value={content.newArrivals?.viewAllTextAr ?? ""}
-                    onChange={(e) =>
-                      setContent((prev) => ({
-                        ...prev,
-                        newArrivals: {
-                          ...prev.newArrivals!,
-                          enabled: prev.newArrivals?.enabled ?? true,
-                          title: prev.newArrivals?.title ?? "New Arrivals",
-                          viewAllText:
-                            prev.newArrivals?.viewAllText ?? "View All",
-                          viewAllTextAr: e.target.value,
-                          viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
-                        },
-                      }))
-                    }
-                    placeholder='عرض الكل'
-                    className='text-sm mt-0.5'
-                    disabled={!(content.newArrivals?.enabled ?? true)}
-                  />
-                </div>
-              )}
-            </div>
-            <div className='bg-muted p-3 rounded-md'>
-              <p className='text-sm text-muted-foreground'>
-                <strong>Note:</strong> Products are automatically fetched — only
-                recently added items are shown.
-              </p>
-            </div>
-            <HomepageProductPicker
-              selectedIds={content.newArrivals?.productIds ?? []}
-              onChange={(ids) =>
-                setContent((prev) => ({
-                  ...prev,
-                  newArrivals: {
-                    ...prev.newArrivals!,
-                    enabled: prev.newArrivals?.enabled ?? true,
-                    title: prev.newArrivals?.title ?? "New Arrivals",
-                    viewAllText: prev.newArrivals?.viewAllText ?? "View All",
-                    viewAllLink: prev.newArrivals?.viewAllLink ?? "/shop",
-                    productIds: ids.length > 0 ? ids : undefined,
-                  },
-                }))
-              }
-              disabled={!(content.newArrivals?.enabled ?? true)}
-            />
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Bottom Carousel (above testimonials, Minimal only) ──────────── */}
         {isMinimal && (

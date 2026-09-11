@@ -3,7 +3,11 @@ import type {
   HomepageCertificatesContent,
   HomepageContent,
 } from "#root/shared/types/homepage-content";
-import { DEFAULT_HOMEPAGE_CONTENT } from "#root/shared/types/homepage-content";
+import {
+  DEFAULT_HOMEPAGE_CONTENT,
+  MACH_LANDING_TEMPLATE_ID,
+  repairLegacyNewDropsTitle,
+} from "#root/shared/types/homepage-content";
 import {
   migrateLegacySectionOrder,
   normalizeGroupSections,
@@ -79,13 +83,39 @@ function mergeCertificates(
 }
 
 /**
+ * New Drops, with the one obsolete heading repaired on Mach.
+ *
+ * Before Featured had a section of its own, the only way to get a Featured row
+ * onto the page was to rename New Drops to "FEATURED". Featured is a real
+ * section now, so a store still carrying that heading renders two rows called
+ * FEATURED and no New Drops at all. The rename is repaired on read — and only
+ * that exact string, because every other heading is a decision the client made
+ * rather than a workaround they were pushed into.
+ */
+function mergeNewArrivals(
+  stored: HomepageContent["newArrivals"],
+  isMach: boolean,
+): HomepageContent["newArrivals"] {
+  const merged = stored ?? DEFAULT_HOMEPAGE_CONTENT.newArrivals;
+  if (!isMach || !merged) return merged;
+  const title = repairLegacyNewDropsTitle(merged.title) ?? merged.title;
+  return title === merged.title ? merged : { ...merged, title };
+}
+
+/**
  * Merges stored content with defaults so every required field exists,
  * whatever vintage the saved blob is.
  */
 export function mergeHomepageContentWithDefaults(
   storedContent: Partial<HomepageContent>,
+  templateId?: string,
 ): HomepageContent {
   const clean = stripNulls(storedContent);
+  // Scoped to Mach by the template id the content is stored under, because the
+  // heading it repairs is a leftover of a Mach-only workaround. Other
+  // templates never had a Featured section to work around and keep whatever
+  // they saved.
+  const isMach = templateId === MACH_LANDING_TEMPLATE_ID;
 
   return {
     meta: { ...DEFAULT_HOMEPAGE_CONTENT.meta, ...clean.meta },
@@ -113,7 +143,7 @@ export function mergeHomepageContentWithDefaults(
     footerCta: { ...DEFAULT_HOMEPAGE_CONTENT.footerCta, ...clean.footerCta },
     discountedProducts:
       clean.discountedProducts ?? DEFAULT_HOMEPAGE_CONTENT.discountedProducts,
-    newArrivals: clean.newArrivals ?? DEFAULT_HOMEPAGE_CONTENT.newArrivals,
+    newArrivals: mergeNewArrivals(clean.newArrivals, isMach),
     marquee: clean.marquee ?? DEFAULT_HOMEPAGE_CONTENT.marquee,
     promoLine: clean.promoLine ?? DEFAULT_HOMEPAGE_CONTENT.promoLine,
     contactBanner:

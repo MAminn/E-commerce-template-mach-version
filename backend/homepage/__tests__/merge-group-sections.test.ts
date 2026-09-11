@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { mergeHomepageContentWithDefaults } from "../merge-homepage-content";
 import {
+  MACH_LANDING_TEMPLATE_ID,
   groupSectionKey,
+  repairLegacyNewDropsTitle,
   resolveSectionOrder,
   type HomepageContent,
 } from "#root/shared/types/homepage-content";
@@ -365,5 +367,100 @@ describe("merge — independence", () => {
       groupCategoryIds(groups),
     );
     expect(withApparelOrder).toContain(groupSectionKey(APPAREL));
+  });
+});
+
+/**
+ * The last leftover of the workaround that predated a real Featured section.
+ *
+ * Before Featured existed, the only way to get a Featured row onto the page was
+ * to rename New Drops to "FEATURED". A store still carrying that heading now
+ * renders two rows called FEATURED and no New Drops at all — so the rename is
+ * repaired on read.
+ *
+ * The repair is deliberately the narrowest thing that fixes it. A heading is
+ * the client's copy, and rewriting copy has to be earned: only the exact string
+ * the workaround produced is a leftover, and everything else is a decision.
+ */
+describe("legacy New Drops heading", () => {
+  const newDrops = (title: string): Partial<HomepageContent> => ({
+    ...STORED,
+    newArrivals: {
+      enabled: true,
+      title,
+      viewAllText: "VIEW ALL",
+      viewAllLink: "/shop",
+    },
+  });
+
+  const machTitle = (title: string) =>
+    mergeHomepageContentWithDefaults(newDrops(title), MACH_LANDING_TEMPLATE_ID)
+      .newArrivals?.title;
+
+  it("repairs the exact legacy alias", () => {
+    expect(machTitle("FEATURED")).toBe("NEW DROPS");
+  });
+
+  it("repairs it whatever case and padding it was saved with", () => {
+    // The workaround was applied by hand, more than once, by more than one
+    // person.
+    expect(machTitle(" Featured ")).toBe("NEW DROPS");
+    expect(machTitle("featured")).toBe("NEW DROPS");
+    expect(machTitle("  FEATURED")).toBe("NEW DROPS");
+  });
+
+  it("leaves a heading the client actually chose alone", () => {
+    expect(machTitle("JUST IN")).toBe("JUST IN");
+    expect(machTitle("LATEST PRODUCTS")).toBe("LATEST PRODUCTS");
+    expect(machTitle("SEPTEMBER DROPS")).toBe("SEPTEMBER DROPS");
+    expect(machTitle("NEW DROPS")).toBe("NEW DROPS");
+  });
+
+  it("leaves a heading that merely contains the word alone", () => {
+    // Only the whole heading counts. "FEATURED DROPS" is a decision.
+    expect(machTitle("FEATURED DROPS")).toBe("FEATURED DROPS");
+    expect(machTitle("OUR FEATURED PICKS")).toBe("OUR FEATURED PICKS");
+  });
+
+  it("does not touch other templates, which never had the workaround", () => {
+    const other = mergeHomepageContentWithDefaults(
+      newDrops("FEATURED"),
+      "landing-modern",
+    );
+    expect(other.newArrivals?.title).toBe("FEATURED");
+
+    // Nor content read without a template id at all.
+    expect(
+      mergeHomepageContentWithDefaults(newDrops("FEATURED")).newArrivals?.title,
+    ).toBe("FEATURED");
+  });
+
+  it("changes nothing else about the section", () => {
+    const repaired = mergeHomepageContentWithDefaults(
+      newDrops("FEATURED"),
+      MACH_LANDING_TEMPLATE_ID,
+    ).newArrivals!;
+
+    expect(repaired).toMatchObject({
+      enabled: true,
+      viewAllText: "VIEW ALL",
+      viewAllLink: "/shop",
+    });
+  });
+
+  it("is a pure helper, usable outside the merge", () => {
+    expect(repairLegacyNewDropsTitle("FEATURED")).toBe("NEW DROPS");
+    expect(repairLegacyNewDropsTitle("JUST IN")).toBe("JUST IN");
+    expect(repairLegacyNewDropsTitle(undefined)).toBeUndefined();
+  });
+
+  it("leaves Featured's own heading alone", () => {
+    // Featured is called FEATURED because that is its name. Only New Drops
+    // carries the alias.
+    const merged = mergeHomepageContentWithDefaults(
+      STORED,
+      MACH_LANDING_TEMPLATE_ID,
+    );
+    expect(merged.featuredShelf?.title).toBe("FEATURED");
   });
 });

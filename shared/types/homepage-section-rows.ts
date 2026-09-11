@@ -159,6 +159,22 @@ function certificatesAreEmpty(content: HomepageContent): boolean {
   return items.length === 0 && !factoryReady;
 }
 
+/**
+ * The status of a hand-curated merchandising shelf.
+ *
+ * Best Sellers, New Drops, Featured and Offers all work the same way now —
+ * each shows exactly the products the client chose for it — so they get one
+ * predicate rather than four that could drift. None of them falls back to a
+ * catalogue query any more, which is what makes "nothing picked" a reportable
+ * state instead of an invisible one.
+ */
+function curatedStatus(
+  section: { enabled?: boolean; productIds?: string[] } | undefined,
+): SectionStatus {
+  if (!section?.enabled) return "off";
+  return (section.productIds ?? []).length > 0 ? "enabled" : "no-source";
+}
+
 /** The storefront status of one non-campaign section. */
 function statusForSection(
   key: OrderableSectionKey,
@@ -178,25 +194,21 @@ function statusForSection(
       // see the catalogue.
       return "enabled";
 
-    // The merchandising shelves are filled by a runtime product query.
-    // Switched on is all the CMS can honestly report about them.
+    // The four merchandising shelves are hand-curated: the client picks what
+    // goes in each one, so an empty selection *is* knowable here and means the
+    // row renders nothing. Still never "Visible" with a selection, because
+    // whether those products come back is a runtime question.
     case "featuredProducts":
-      return content.featuredProducts?.enabled ? "enabled" : "off";
+      return curatedStatus(content.featuredProducts);
 
     case "newArrivals":
-      return content.newArrivals?.enabled ? "enabled" : "off";
+      return curatedStatus(content.newArrivals);
 
     case "featuredShelf":
-      // The one merchandising shelf whose emptiness *is* knowable here: it is
-      // hand-picked by definition, so with nothing picked there is no query
-      // that could fill it and the storefront renders nothing.
-      if (!content.featuredShelf?.enabled) return "off";
-      return (content.featuredShelf.productIds ?? []).length > 0
-        ? "enabled"
-        : "no-source";
+      return curatedStatus(content.featuredShelf);
 
     case "discountedProducts":
-      return content.discountedProducts?.enabled ? "enabled" : "off";
+      return curatedStatus(content.discountedProducts);
 
     case "whyMach":
       if (!content.whyMach?.enabled) return "off";
@@ -235,9 +247,7 @@ function hintFor(key: string, status: SectionStatus): string | undefined {
     case "off":
       return "Switched off, so it keeps its place here but does not render.";
     case "no-source":
-      return key === "featuredShelf"
-        ? "No products picked yet. Featured only shows what you choose for it, so it stays hidden until you do."
-        : "No products or groups selected yet, so there is nothing to show.";
+      return "Enabled, but no products have been selected for this section.";
     case "missing-media":
       return "Enabled, but no image or video has been uploaded for it.";
     case "empty":

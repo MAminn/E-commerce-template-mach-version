@@ -26,12 +26,27 @@ interface HomepageProductPickerProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
+  /**
+   * What an empty selection means for the section using this picker.
+   *
+   * It is not the same answer everywhere, which is why it is a prop rather
+   * than a sentence in this file. On most templates an empty selection means
+   * the section fills itself from the catalogue; on Mach the four
+   * merchandising shelves are curated outright, so an empty selection means
+   * the section does not appear at all. Telling a Mach client their products
+   * "will be shown automatically" describes a fallback that was removed.
+   *
+   * Defaults to the fallback wording, so the templates that still have one
+   * keep the copy they had.
+   */
+  emptyMessage?: string;
 }
 
 export function HomepageProductPicker({
   selectedIds,
   onChange,
   disabled,
+  emptyMessage = "No products selected — all products will be shown automatically",
 }: HomepageProductPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -282,9 +297,7 @@ export function HomepageProductPicker({
           ))}
         </div>
       ) : (
-        <p className='text-xs text-muted-foreground italic'>
-          No products selected — all products will be shown automatically
-        </p>
+        <p className='text-xs text-muted-foreground italic'>{emptyMessage}</p>
       )}
     </div>
   );

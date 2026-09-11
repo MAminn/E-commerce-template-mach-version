@@ -78,6 +78,38 @@ export function orderByCmsSelection<T extends { id: string }>(
     .filter((item): item is T => Boolean(item));
 }
 
+/** The `product.search` input for a hand-curated merchandising shelf. */
+export interface CuratedSectionRequest {
+  limit: number;
+  includeOutOfStock: boolean;
+  productIds: string[];
+}
+
+/**
+ * The query a curated merchandising section needs, or `null` for no query.
+ *
+ * Best Sellers, New Drops, Featured and Offers are lists the client chose. On
+ * Mach all four are curated outright, which makes the empty case the important
+ * one: each used to fall back to a catalogue query — a general product search,
+ * `sortBy: "newest"`, `discountedOnly: true` — so a section the client had not
+ * filled in quietly populated itself, and clearing a selection put the
+ * fallback back on the page rather than taking the section off it.
+ *
+ * Returning `null` rather than an empty query is the whole point: there is no
+ * request to issue for a section nobody has picked products for, and the row
+ * renders nothing.
+ *
+ * `includeOutOfStock` stays per-section, matching what each shelf already did.
+ */
+export function buildCuratedSectionRequest(
+  productIds: string[] | undefined,
+  includeOutOfStock: boolean,
+): CuratedSectionRequest | null {
+  const ids = (productIds ?? []).filter(Boolean);
+  if (ids.length === 0) return null;
+  return { limit: ids.length, includeOutOfStock, productIds: ids };
+}
+
 /** What one group section resolved to at runtime. */
 export interface GroupProductsState {
   products: MappedProduct[];
