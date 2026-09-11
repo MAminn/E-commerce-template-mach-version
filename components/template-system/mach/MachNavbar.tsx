@@ -103,9 +103,6 @@ export function MachNavbar() {
     (l) => !isPlaceholderLink(l.url) || l.isDropdown,
   );
 
-  const announcementEnabled = layoutSettings.header.announcementBarEnabled;
-  const announcementText = layoutSettings.header.announcementBarText;
-
   /* ---- Scroll detection ----
    * Stay transparent over the hero; flip to solid once ~80% of the viewport
    * (roughly the hero height) has been scrolled past.
@@ -155,13 +152,13 @@ export function MachNavbar() {
 
   return (
     <>
-      {/* Announcement bar — inverted block, no accent hue */}
-      {announcementEnabled && announcementText && (
-        <div className="w-full select-none bg-white px-6 py-2 text-center text-[10px] font-bold uppercase tracking-[0.28em] text-[var(--mach-ink)]">
-          {announcementText}
-        </div>
-      )}
-
+      {/* No announcement strip here. Mach has exactly one top promotional
+          bar — Homepage → Promotional Banner (`content.promoBanner`), which
+          `MachPromoBanner` portals into the chrome slot directly above this
+          navbar. Layout Settings' `header.announcementBar*` still drives the
+          strip on the default navbar for the other templates and its stored
+          value is left alone; rendering it here as well put two competing
+          bars on top of the Mach storefront. */}
       <motion.nav
         aria-label="Main navigation"
         className={`w-full py-4 transition-[backdrop-filter] duration-500 lg:py-5 ${

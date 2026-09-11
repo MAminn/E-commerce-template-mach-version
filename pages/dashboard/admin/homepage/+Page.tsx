@@ -7,6 +7,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardContent,
 } from "#root/components/ui/card";
 import { Input } from "#root/components/ui/input";
@@ -1943,13 +1944,35 @@ export default function HomepageAdminPage() {
           </Card>
         )}
 
-        {/* Promo Banner Section — only for non-minimal templates */}
+        {/*
+          Promotional Banner — the thin announcement bar at the very top of
+          the site, above the navbar. Edits `content.promoBanner`.
+
+          Shown for every non-minimal template, Mach included. Mach renders it
+          through `MachPromoBanner`, portaled into the global chrome's
+          `#chrome-banner-slot` the same way the Modern template does, so it
+          stacks above the navbar and the chrome's measured height covers it.
+          This is a different feature from the Marquee Strip (`heroMarquee`,
+          under the hero) and from the full-bleed Campaign Banners
+          (`campaignBanners`, between product rows) — all three have their own
+          cards and none is a stand-in for another.
+        */}
         {!isMinimal && (
           <Card>
             <CardHeader>
               <div className='flex items-center justify-between'>
-                <CardTitle>Promotional Banner</CardTitle>
-                <div className='flex items-center gap-2'>
+                <div className='min-w-0'>
+                  <CardTitle>Promotional Banner</CardTitle>
+                  {isMach && (
+                    <CardDescription className='mt-1'>
+                      The thin announcement bar at the very top of the site,
+                      above the navigation — one line of text with an optional
+                      link. For the large image banners between product rows,
+                      see &ldquo;Campaign Banners&rdquo; below.
+                    </CardDescription>
+                  )}
+                </div>
+                <div className='flex shrink-0 items-center gap-2'>
                   <Label htmlFor='promo-enabled'>Enabled</Label>
                   <Switch
                     id='promo-enabled'

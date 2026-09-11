@@ -7,6 +7,15 @@ export default defineConfig({
       "#root": path.resolve(__dirname),
     },
   },
+  // `include` below already accepts *.test.tsx, but nothing here told esbuild
+  // how to compile the JSX in one: tsconfig sets `jsx: "preserve"` for the app
+  // build, which leaves esbuild on the classic transform and every component
+  // test failing with "React is not defined". The automatic runtime matches
+  // `jsxImportSource: "react"` and needs no import in the test file.
+  esbuild: {
+    jsx: "automatic",
+    jsxImportSource: "react",
+  },
   test: {
     globals: true,
     environment: "node",

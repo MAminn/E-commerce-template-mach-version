@@ -922,8 +922,13 @@ export default function LayoutSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Announcement bar (not used in minimal template — marquee is controlled from homepage) */}
-          {settings.header.navbarStyle !== "minimal" && (
+          {/* Announcement bar. Not offered for the minimal template (its
+              marquee is controlled from Homepage) nor for the Mach navbar
+              ("editorial"), whose single top promotional bar is Homepage →
+              Promotional Banner. The stored value is untouched either way;
+              the card simply is not shown where nothing renders it. */}
+          {settings.header.navbarStyle !== "minimal" &&
+            settings.header.navbarStyle !== "editorial" && (
           <Card>
             <CardHeader>
               <CardTitle className='text-base'>Announcement Bar</CardTitle>
@@ -957,6 +962,24 @@ export default function LayoutSettingsPage() {
               )}
             </CardContent>
           </Card>
+          )}
+
+          {settings.header.navbarStyle === "editorial" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className='text-base'>Announcement Bar</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className='text-sm text-muted-foreground'>
+                  On this storefront the announcement bar above the navigation
+                  is managed in{" "}
+                  <a href='/dashboard/admin/homepage' className='underline'>
+                    Homepage → Promotional Banner
+                  </a>
+                  .
+                </p>
+              </CardContent>
+            </Card>
           )}
 
           {/* Navigation links */}

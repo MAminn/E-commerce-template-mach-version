@@ -1,6 +1,6 @@
 import type { CampaignBannerContent } from "#root/shared/types/homepage-content";
 import { isMediaSlotEmpty } from "#root/shared/types/homepage-content";
-import { isPlaceholderLink } from "#root/shared/types/layout-settings";
+import { campaignBannerCtaHref } from "#root/shared/types/homepage-campaign-banners";
 import { Reveal } from "../../motion/Reveal";
 import { MachMedia, MachScrim } from "../MachMedia";
 import {
@@ -42,8 +42,11 @@ export function MachCampaignBanner({
   const align = banner.align ?? "left";
   const vAlign = banner.verticalAlign ?? "bottom";
 
-  const showCta =
-    Boolean(banner.ctaText?.trim()) && !isPlaceholderLink(banner.ctaLink);
+  // One decision, resolved once: a label with no destination, a destination
+  // that is still a placeholder, and a destination that would execute rather
+  // than navigate all come back as `null`, so there is no way to render the
+  // button having checked something other than the href it points at.
+  const ctaHref = campaignBannerCtaHref(banner);
 
   // Tall banners get near-full-viewport treatment; standard ones stay in the
   // 16:9-ish band so two of them in a page don't each demand a full screen.
@@ -87,7 +90,11 @@ export function MachCampaignBanner({
 
             {banner.title && (
               <Reveal variant="fadeUp" delay={0.12}>
-                <h2 className={`mt-5 ${HEADING} ${text.heading}`}>
+                {/* `break-words` only — the type scale is unchanged. At the
+                    bottom of `HEADING`'s clamp a single long word is wider
+                    than a phone, and the section's `overflow-hidden` would
+                    silently cut the end off it. */}
+                <h2 className={`mt-5 break-words ${HEADING} ${text.heading}`}>
                   {banner.title}
                 </h2>
               </Reveal>
@@ -102,10 +109,15 @@ export function MachCampaignBanner({
               </Reveal>
             )}
 
-            {showCta && (
+            {ctaHref && (
               <Reveal variant="fadeUp" delay={0.32}>
-                <div className="mt-9">
-                  <a href={banner.ctaLink as string} className={cta.primary}>
+                <div className="mt-9 max-w-full">
+                  {/* `max-w-full` + centred wrapping keeps a long CMS button
+                      label inside the phone viewport instead of pushing the
+                      banner wider than the screen. */}
+                  <a
+                    href={ctaHref}
+                    className={`${cta.primary} max-w-full text-center`}>
                     {banner.ctaText}
                   </a>
                 </div>

@@ -26,6 +26,15 @@ import {
 import { HomepageCategoryPicker } from "#root/components/admin/HomepageCategoryPicker";
 import { HomepageProductPicker } from "#root/components/admin/HomepageProductPicker";
 import { HomepageSectionOrder } from "#root/components/admin/HomepageSectionOrder";
+import {
+  CAMPAIGN_BANNER_STATUS_HINTS,
+  CAMPAIGN_BANNER_STATUS_LABELS,
+  addCampaignBanner,
+  campaignBannerStatus,
+  patchCampaignBanner,
+  patchCampaignBannerMedia,
+  removeCampaignBanner,
+} from "#root/shared/types/homepage-campaign-banners";
 import type {
   CampaignBannerContent,
   CertificateItem,
@@ -1042,31 +1051,31 @@ export function MachCampaignBannersCard({
 }) {
   const banners = content.campaignBanners ?? [];
 
-  const setBanners = (next: CampaignBannerContent[]) =>
-    setContent((prev) => ({ ...prev, campaignBanners: next }));
-
+  /*
+   * Every write below goes through `prev`, never through the `banners` array
+   * this render is looking at.
+   *
+   * That distinction is the whole repair. These handlers used to compute the
+   * next array from the render's own props and then commit it inside
+   * `setContent(prev => …)`, so any change that landed in between was
+   * overwritten — and media uploads always land in between, because they take
+   * seconds. Uploading a desktop image and a mobile crop in quick succession
+   * wrote the mobile URL onto the empty slot the second upload had started
+   * from, and the desktop image the client had just watched appear vanished
+   * again. The transitions are pure functions now; see
+   * `shared/types/homepage-campaign-banners.ts`.
+   */
   const patchBanner = (id: string, next: Partial<CampaignBannerContent>) =>
-    setBanners(banners.map((b) => (b.id === id ? { ...b, ...next } : b)));
+    setContent((prev) => patchCampaignBanner(prev, id, next));
+
+  const patchMedia = (id: string, next: Partial<MediaSlot>) =>
+    setContent((prev) => patchCampaignBannerMedia(prev, id, next));
 
   const addBanner = () =>
-    setBanners([
-      ...banners,
-      {
-        id: newId("campaign"),
-        enabled: true,
-        media: { ...EMPTY_MEDIA_SLOT },
-        eyebrow: "",
-        title: "",
-        body: "",
-        ctaText: "",
-        ctaLink: "",
-        align: "left",
-        verticalAlign: "bottom",
-        textTheme: "light",
-        overlayOpacity: 45,
-        height: "standard",
-      },
-    ]);
+    setContent((prev) => addCampaignBanner(prev, () => newId("campaign")));
+
+  const removeBanner = (id: string) =>
+    setContent((prev) => removeCampaignBanner(prev, id));
 
   return (
     <Card>
@@ -1075,9 +1084,12 @@ export function MachCampaignBannersCard({
           <div className='min-w-0'>
             <CardTitle>Campaign Banners</CardTitle>
             <CardDescription className='mt-1'>
-              Full-width lifestyle breaks between product rows. Position each
-              one using &ldquo;Section Order&rdquo; below. A banner with no
-              image does not appear on the site.
+              Large full-width image or video breaks between the product rows.
+              Position each one using &ldquo;Section Order&rdquo;. A banner is
+              the photograph, so one with no media does not appear on the site.
+              The one-line announcement bar at the very top of the site is
+              &ldquo;Promotional Banner&rdquo;; the scrolling line under the
+              hero is &ldquo;Marquee Strip&rdquo;.
             </CardDescription>
           </div>
           <Button
@@ -1097,18 +1109,27 @@ export function MachCampaignBannersCard({
           </p>
         )}
 
-        {banners.map((banner, index) => (
+        {banners.map((banner, index) => {
+          // The same two conditions the storefront drops a banner on, reported
+          // rather than guessed — so this card cannot say "Visible" next to a
+          // banner that has no photograph yet, which is the state every new
+          // banner starts in.
+          const status = campaignBannerStatus(banner);
+          return (
           <div key={banner.id} className='space-y-5 rounded-lg border p-4'>
             <div className='flex items-center justify-between gap-3 border-b pb-3'>
-              <span className='truncate text-sm font-semibold'>
+              <span className='min-w-0 flex-1 truncate text-sm font-semibold'>
                 {banner.title?.trim() || `Banner ${index + 1}`}
               </span>
               <div className='flex shrink-0 items-center gap-2'>
-                <Label className='text-xs text-muted-foreground'>
-                  {banner.enabled ? "Visible" : "Hidden"}
+                <Label
+                  className='text-xs text-muted-foreground'
+                  title={CAMPAIGN_BANNER_STATUS_HINTS[status]}>
+                  {CAMPAIGN_BANNER_STATUS_LABELS[status]}
                 </Label>
                 <Switch
                   checked={banner.enabled}
+                  aria-label={`Show banner ${index + 1} on the site`}
                   onCheckedChange={(enabled) =>
                     patchBanner(banner.id, { enabled })
                   }
@@ -1118,21 +1139,29 @@ export function MachCampaignBannersCard({
                   variant='ghost'
                   size='icon'
                   className='h-8 w-8 text-destructive'
-                  onClick={() =>
-                    setBanners(banners.filter((b) => b.id !== banner.id))
-                  }
-                  aria-label='Delete banner'>
+                  onClick={() => removeBanner(banner.id)}
+                  aria-label={`Delete banner ${index + 1}`}>
                   <Trash2 className='h-4 w-4' />
                 </Button>
               </div>
             </div>
 
+            {status === "missing-media" && (
+              <p className='text-xs text-muted-foreground'>
+                {CAMPAIGN_BANNER_STATUS_HINTS["missing-media"]}
+              </p>
+            )}
+
             <MediaSlotField
               label='Banner media'
-              hint='Required — a banner is the photograph.'
+              hint='Required — a banner is the photograph. Add a mobile crop too if the wide shot does not work on a phone; without one the desktop image is used.'
               prefix='campaign'
               value={banner.media}
               onChange={(media) => patchBanner(banner.id, { media })}
+              /* Deltas, so an upload finishing seconds later merges into
+                 whatever the slot holds by then instead of overwriting it
+                 with the slot it started from. */
+              onPatch={(media) => patchMedia(banner.id, media)}
             />
 
             <div className='grid gap-3 sm:grid-cols-2'>
@@ -1214,19 +1243,30 @@ export function MachCampaignBannersCard({
               verticalAlign={banner.verticalAlign ?? "bottom"}
               textTheme={banner.textTheme ?? "light"}
               overlayOpacity={banner.overlayOpacity ?? 45}
+              /* Only the control the client actually moved is written. The
+                 unchanged keys used to be re-sent from this render's banner,
+                 which meant a placement change could quietly restore a
+                 neighbouring value that had just been edited. */
               onChange={(next) =>
                 patchBanner(banner.id, {
-                  align: (next.align as TextAlign) ?? banner.align,
-                  verticalAlign:
-                    (next.verticalAlign as TextVerticalAlign) ??
-                    banner.verticalAlign,
-                  textTheme: (next.textTheme as TextTheme) ?? banner.textTheme,
-                  overlayOpacity: next.overlayOpacity ?? banner.overlayOpacity,
+                  ...(next.align !== undefined && {
+                    align: next.align as TextAlign,
+                  }),
+                  ...(next.verticalAlign !== undefined && {
+                    verticalAlign: next.verticalAlign as TextVerticalAlign,
+                  }),
+                  ...(next.textTheme !== undefined && {
+                    textTheme: next.textTheme as TextTheme,
+                  }),
+                  ...(next.overlayOpacity !== undefined && {
+                    overlayOpacity: next.overlayOpacity,
+                  }),
                 })
               }
             />
           </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );

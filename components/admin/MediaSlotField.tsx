@@ -41,6 +41,21 @@ export interface MediaSlotFieldProps {
   hint?: string;
   value: MediaSlot | undefined;
   onChange: (next: MediaSlot) => void;
+  /**
+   * Receives the *delta* instead of the whole slot, when the caller can apply
+   * it to current state rather than to the slot this field last rendered.
+   *
+   * Uploads are asynchronous and a campaign photograph takes seconds, so by
+   * the time one resolves, `value` is whatever it was when the file was
+   * chosen. A caller that rebuilds the slot from that stale value throws away
+   * every other change made in the meantime — including a second upload into
+   * a different sub-slot, which is how a desktop image could vanish the moment
+   * a mobile crop finished.
+   *
+   * Optional, and `onChange` still fires exactly as before when it is absent,
+   * so the hero and certificate slots keep their existing behaviour untouched.
+   */
+  onPatch?: (patch: Partial<MediaSlot>) => void;
   /** Filename prefix so uploads stay identifiable on disk. */
   prefix?: string;
   /** Hide the video option for slots that only ever hold a still. */
@@ -53,6 +68,7 @@ export function MediaSlotField({
   hint,
   value,
   onChange,
+  onPatch,
   prefix = "media",
   imageOnly = false,
   disabled = false,
@@ -65,7 +81,11 @@ export function MediaSlotField({
     posterUrl: useRef<HTMLInputElement>(null),
   };
 
-  const patch = (next: Partial<MediaSlot>) => onChange({ ...slot, ...next });
+  // Hands the caller the delta when it asked for one, so it can merge against
+  // current state; otherwise rebuilds the slot exactly as this field always
+  // has.
+  const patch = (next: Partial<MediaSlot>) =>
+    onPatch ? onPatch(next) : onChange({ ...slot, ...next });
 
   const handleUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,

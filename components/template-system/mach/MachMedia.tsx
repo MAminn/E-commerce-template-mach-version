@@ -60,7 +60,12 @@ export const MachMedia = memo(function MachMedia({
 }: MachMediaProps) {
   if (!slot || isMediaSlotEmpty(slot)) return null;
 
-  const desktop = normalizeMediaUrl(slot.desktopUrl);
+  // Each crop falls back to the other. `isMediaSlotEmpty` already treats a
+  // mobile-only slot as renderable, so without the second fallback that slot
+  // reached the page as `<img src="">` — nothing on desktop, and a browser
+  // re-requesting the document for the empty source.
+  const desktop =
+    normalizeMediaUrl(slot.desktopUrl) || normalizeMediaUrl(slot.mobileUrl);
   const mobile = normalizeMediaUrl(slot.mobileUrl) || desktop;
   const poster = normalizeMediaUrl(slot.posterUrl);
   const position = objectPosition(slot);

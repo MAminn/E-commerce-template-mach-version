@@ -16,6 +16,7 @@ import type { FeaturedProduct } from "../home/HomeFeaturedProducts";
 import type { CategoryStripItem } from "#root/components/shop/CategoryStrip";
 import type { NewArrivalProduct } from "#root/components/shop/NewArrivals";
 import { MachChrome } from "../mach/MachChrome";
+import { MachPromoBanner } from "../mach/MachPromoBanner";
 import { normalizeMediaUrl } from "../mach/MachMedia";
 import { MachHero } from "../mach/sections/MachHero";
 import { MachMarquee } from "../mach/sections/MachMarquee";
@@ -70,6 +71,10 @@ export interface LandingTemplateMachProps {
  *
  * A purpose-built supplement storefront on the existing ecommerce platform —
  * not the editorial fashion template with new words in it.
+ *
+ * Above everything sits the promotional bar (`content.promoBanner`), which
+ * is chrome rather than a section: it is portaled above the navbar and is
+ * not part of the section order.
  *
  * The page opens the way the reference supplement stores open: hero, a
  * promotional strip, then **one band of broad-group discovery** — full-bleed
@@ -446,6 +451,11 @@ export function LandingTemplateMach({
 
   return (
     <MachChrome hasPageNewsletter={content.newsletter.enabled}>
+      {/* The promotional bar is not a section of this page: it is portaled
+          into the global chrome above the navbar, so it stays with the
+          navigation rather than scrolling away with the hero. Nothing about
+          the section order below applies to it. */}
+      <MachPromoBanner content={content.promoBanner} />
       <div
         className={`landing-template-mach overflow-x-clip bg-[var(--mach-paper)] ${className}`}>
         {content.hero.enabled && (
