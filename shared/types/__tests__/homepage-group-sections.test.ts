@@ -189,7 +189,6 @@ describe("resolveGroupSections", () => {
     expect(supplements.enabled).toBe(false);
     expect(supplements.presentation).toBe("shelf");
     expect(supplements.limit).toBe(DEFAULT_GROUP_SECTION_LIMIT);
-    expect(supplements.productIds).toEqual([]);
   });
 
   it("names an unconfigured group after its category", () => {
@@ -318,15 +317,18 @@ describe("normalizeGroupSections", () => {
     expect(sections.find((s) => s.categoryId === GYM_GEAR)!.enabled).toBe(true);
   });
 
-  it("preserves a hand-picked legacy selection and its limit", () => {
-    const picked = ["p-1", "p-2", "p-3"];
+  it("preserves the legacy limit but drops its hand-picked selection", () => {
+    // The limit describes the section; the product list contradicts it. A
+    // group shows its category now, so a selection saved under the old model
+    // must not survive as a permanent override.
     const sections = normalizeGroupSections({
-      stacks: { ...LEGACY_STACKS, productIds: picked, limit: 9 },
+      stacks: { ...LEGACY_STACKS, productIds: ["p-1", "p-2", "p-3"], limit: 9 },
     });
     const stacks = sections.find((s) => s.categoryId === STACKS)!;
 
-    expect(stacks.productIds).toEqual(picked);
     expect(stacks.limit).toBe(9);
+    expect(stacks.productIds).toBeUndefined();
+    expect("productIds" in stacks).toBe(false);
   });
 
   it("keeps the Stacks feature treatment and the Gym Gear shelf", () => {

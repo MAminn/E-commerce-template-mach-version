@@ -134,7 +134,30 @@ export function legacyGroupCategoryId(
   );
 }
 
-/** Turns one legacy group row into its generic equivalent. */
+/**
+ * Drops the deprecated manual product override from a group's configuration.
+ *
+ * Removes the key rather than emptying it, so a re-saved config stops carrying
+ * a field that no longer means anything.
+ */
+function withoutManualOverride(
+  section: HomepageGroupSectionContent,
+): HomepageGroupSectionContent {
+  if (!("productIds" in section)) return section;
+  const { productIds: _deprecated, ...rest } = section;
+  return rest;
+}
+
+/**
+ * Turns one legacy group row into its generic equivalent.
+ *
+ * Everything that describes the section carries across — whether it is on, its
+ * copy, its limit, its "view all", and the presentation it was built with.
+ * Its `productIds` deliberately do not: a group is filled from its category
+ * now, and a hand-picked list saved under the old model would otherwise
+ * survive as a permanent override on a section whose whole point is that it
+ * follows the catalogue.
+ */
 function convertLegacyGroup(
   key: LegacyGroupSectionKey,
   group: HomepageProductGroupContent,
@@ -150,7 +173,6 @@ function convertLegacyGroup(
     viewAllText: group.viewAllText,
     viewAllTextAr: group.viewAllTextAr,
     viewAllLink: group.viewAllLink,
-    productIds: group.productIds,
     limit: group.limit,
     presentation: LEGACY_PRESENTATION[key],
   };
@@ -168,6 +190,13 @@ function convertLegacyGroup(
  * Legacy rows that were never pointed at a category cannot become sections:
  * there is no identity to give them. They rendered nothing before this change
  * (no source, no products, `null`), so nothing that was on the page is lost.
+ *
+ * It is also where the deprecated manual override is dropped, for saved and
+ * legacy content alike. Doing it here rather than at each point of use is what
+ * makes the guarantee structural: every reader of a group's configuration —
+ * the storefront, the admin, the merge that feeds SSR — comes through this
+ * function, so there is no path by which a stale `productIds` can reach a
+ * product query, and the next save writes the config without it.
  */
 export function normalizeGroupSections(
   content: Pick<HomepageContent, "groupSections" | "stacks" | "gymGear">,
@@ -178,7 +207,7 @@ export function normalizeGroupSections(
   for (const section of content.groupSections ?? []) {
     if (!section?.categoryId || claimed.has(section.categoryId)) continue;
     claimed.add(section.categoryId);
-    sections.push(section);
+    sections.push(withoutManualOverride(section));
   }
 
   for (const key of LEGACY_GROUP_SECTION_KEYS) {
@@ -228,6 +257,11 @@ export function migrateLegacySectionOrder(
  * across renames of the storefront copy. `heading` is what the shopper reads.
  * They are the same until the client overrides the copy, and the identity
  * never follows the override.
+ *
+ * There is deliberately no product list on this shape. A group's products are
+ * whatever is in its category, so the resolved section carries the category and
+ * a limit and nothing that could contradict them — which is why no caller can
+ * accidentally reintroduce a manual override.
  */
 export interface ResolvedGroupSection {
   /** The `sectionOrder` entry addressing this section. */
@@ -241,8 +275,12 @@ export interface ResolvedGroupSection {
   subtitle?: string;
   viewAllText: string;
   viewAllLink: string;
-  /** Hand-picked selection. Empty means "fill from the category". */
-  productIds: string[];
+  /**
+   * How many of the category's products the section carries.
+   *
+   * There is no product list beside it. The category is the source, so the
+   * only question left is how much of it the homepage shows.
+   */
   limit: number;
   presentation: GroupSectionPresentation;
   /** The stored config, or undefined for a group nobody has configured yet. */
@@ -306,7 +344,6 @@ export function resolveGroupSections(
       // A group section is a category, so the category's own page is where
       // "view all" naturally goes. Only an explicit override changes that.
       viewAllLink: viewAllLink || `/categories/${category.slug}`,
-      productIds: (config?.productIds ?? []).filter(Boolean),
       limit: config?.limit ?? DEFAULT_GROUP_SECTION_LIMIT,
       presentation: config?.presentation ?? "shelf",
       config,

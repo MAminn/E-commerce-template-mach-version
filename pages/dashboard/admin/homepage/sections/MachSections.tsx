@@ -406,7 +406,10 @@ export function MachGroupSectionsCard({
    *
    * Normalised first, so a store still carrying the two legacy group rows gets
    * them converted on the client's first edit rather than keeping two
-   * representations of the same section in the saved blob.
+   * representations of the same section in the saved blob. Normalising also
+   * drops the deprecated manual product override, so any edit here writes the
+   * group back without it — the stale field cleans itself out of stored
+   * content instead of needing a migration.
    */
   const patch = (
     categoryId: string,
@@ -473,7 +476,6 @@ function MachGroupSectionEditor({
   onPatch: (next: Partial<HomepageGroupSectionContent>) => void;
 }) {
   const config = section.config;
-  const curated = section.productIds.length > 0;
 
   return (
     <div className='rounded-lg border p-4'>
@@ -587,25 +589,22 @@ function MachGroupSectionEditor({
                   ),
                 })
               }
-              disabled={curated}
             />
             <p className='text-xs text-muted-foreground'>
-              Applies when the section is filled from the group. A hand-picked
-              selection always shows every product you picked.
+              How many of this group's products the homepage shows.
             </p>
           </div>
         </div>
 
-        <div className='space-y-2'>
-          <Label className='text-xs'>Hand-picked products (optional)</Label>
+        {/* No product picker, deliberately. The section is the category, so
+            its contents are the category's contents — a hand-picked list here
+            would go stale the moment a product was added to the group. */}
+        <div className='space-y-1.5'>
+          <Label className='text-xs'>Products</Label>
           <p className='text-xs text-muted-foreground'>
-            Overrides the group above. Products appear in the order you set
-            here.
+            Automatically pulled from the {section.category.name} group. Add or
+            remove products from that category in Dashboard → Products.
           </p>
-          <HomepageProductPicker
-            selectedIds={section.productIds}
-            onChange={(ids) => onPatch({ productIds: ids })}
-          />
         </div>
       </div>
     </div>

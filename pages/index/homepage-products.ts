@@ -92,10 +92,41 @@ const EMPTY_GROUP: GroupProductsState = {
 };
 
 /** A group section reduced to the query it needs, and nothing else. */
-interface GroupRequest {
+export interface GroupRequest {
   categoryId: string;
-  productIds: string[];
   limit: number;
+}
+
+/**
+ * The queries an enabled set of group sections needs.
+ *
+ * Pure, and exported, so what the homepage actually asks the database for can
+ * be asserted directly rather than inferred from a mock.
+ */
+export function buildGroupProductRequests(
+  sections: readonly ResolvedGroupSection[],
+): GroupRequest[] {
+  return sections
+    .filter((s) => s.enabled)
+    .map((s) => ({ categoryId: s.category.id, limit: s.limit }));
+}
+
+/**
+ * The exact `product.search` input for one group.
+ *
+ * A group section is its category, so this is the whole query: the category,
+ * and how much of it to show. There is no manual-selection branch — a group
+ * that could be pinned to a list of product ids would quietly stop showing new
+ * products the moment the client added one to the category, and they would
+ * have to come back here to publish something they had already published.
+ * Curating a list is what Featured is for.
+ */
+export function groupSearchInput(request: GroupRequest) {
+  return {
+    limit: request.limit,
+    includeOutOfStock: true,
+    categoryIds: [request.categoryId],
+  };
 }
 
 /**
@@ -108,10 +139,10 @@ interface GroupRequest {
  * on a render would change. So there is one hook and one effect here, holding
  * a result per category id.
  *
- * Each group is filled the way every other row is filled: an explicit,
- * ordered client selection if there is one, otherwise the section's own
- * category, through the same `product.search` procedure. A disabled group is
- * never queried.
+ * Every group is filled from its own category, through the same
+ * `product.search` procedure every other row uses, so a product added to the
+ * category in Dashboard → Products appears on the homepage without anyone
+ * opening Homepage Admin. A disabled group is never queried.
  */
 export function useHomepageGroupProducts(
   sections: readonly ResolvedGroupSection[],
@@ -125,15 +156,7 @@ export function useHomepageGroupProducts(
   // every content fetch and would otherwise re-query the whole page.
   const requestKey = useMemo(
     () =>
-      JSON.stringify(
-        sections
-          .filter((s) => s.enabled)
-          .map((s): GroupRequest => ({
-            categoryId: s.category.id,
-            productIds: s.productIds,
-            limit: s.limit,
-          })),
-      ),
+      JSON.stringify(buildGroupProductRequests(sections)),
     [sections],
   );
 
@@ -165,20 +188,13 @@ export function useHomepageGroupProducts(
 
     Promise.all(
       requests.map(async (request): Promise<[string, GroupProductsState]> => {
-        const curated = request.productIds.length > 0;
         try {
-          const res = await trpc.product.search.query({
-            limit: curated ? request.productIds.length : request.limit,
-            includeOutOfStock: true,
-            productIds: curated ? request.productIds : undefined,
-            categoryIds: curated ? undefined : [request.categoryId],
-          });
+          const res = await trpc.product.search.query(
+            groupSearchInput(request),
+          );
           const items =
             res.success && res.result
-              ? orderByCmsSelection(
-                  res.result.items.map(mapSearchItem),
-                  curated ? request.productIds : undefined,
-                )
+              ? res.result.items.map(mapSearchItem)
               : [];
           return [
             request.categoryId,

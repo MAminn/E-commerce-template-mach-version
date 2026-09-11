@@ -126,6 +126,29 @@ describe("merge — legacy group content", () => {
     });
   });
 
+  it("drops the deprecated manual override from every group", () => {
+    // Read path, real stored content. A group's products come from its
+    // category, so a hand-picked list must not survive the merge.
+    for (const section of merged.groupSections ?? []) {
+      expect("productIds" in section).toBe(false);
+    }
+  });
+
+  it("drops a hand-picked list saved against a group section", () => {
+    const withOverride = mergeHomepageContentWithDefaults({
+      ...STORED,
+      groupSections: [
+        { categoryId: STACKS, enabled: true, productIds: ["stale-1"] },
+      ],
+    });
+    const stacks = withOverride.groupSections!.find(
+      (s) => s.categoryId === STACKS,
+    )!;
+
+    expect("productIds" in stacks).toBe(false);
+    expect(stacks.enabled).toBe(true);
+  });
+
   it("leaves the deprecated fields in place rather than deleting them", () => {
     // Read-compatibility, not a rewrite. Nothing that still reads the old
     // shape breaks on the first load after this deploys.
@@ -240,6 +263,36 @@ describe("merge — the client's saved section order", () => {
     expect(merged.featuredShelf?.enabled).toBe(false);
     expect(merged.featuredShelf?.productIds).toEqual([]);
     expect(merged.featuredShelf?.title).toBe("FEATURED");
+  });
+
+  it("keeps Featured hand-picked while groups are category-driven", () => {
+    // The two are opposites on purpose. Featured is a list somebody chose;
+    // a group is a part of the shop. Stripping the override from groups must
+    // not touch the one section whose whole point is that it has one.
+    const curated = mergeHomepageContentWithDefaults({
+      ...STORED,
+      featuredShelf: {
+        enabled: true,
+        title: "FEATURED",
+        viewAllText: "VIEW ALL",
+        viewAllLink: "/shop",
+        productIds: ["picked-2", "picked-1", "picked-3"],
+      },
+      groupSections: [
+        { categoryId: STACKS, enabled: true, productIds: ["stale-1"] },
+      ],
+    });
+
+    // Featured keeps its selection, in the order the client chose.
+    expect(curated.featuredShelf?.productIds).toEqual([
+      "picked-2",
+      "picked-1",
+      "picked-3",
+    ]);
+    // The group next to it does not.
+    expect(
+      "productIds" in curated.groupSections!.find((s) => s.categoryId === STACKS)!,
+    ).toBe(false);
   });
 
   it("leaves an unsaved order to the default composition", () => {

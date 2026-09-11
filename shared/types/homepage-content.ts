@@ -369,11 +369,15 @@ export type GroupSectionPresentation = "shelf" | "feature";
  * a renamed heading changes what the shopper reads and nothing else, so
  * Section Order, the saved order key and the admin row all survive a rename.
  *
- * Filling order, matching every other merchandising row:
+ * **The category is the product source, always.** A group section shows what
+ * is in its category, resolved through the existing `product.search`
+ * procedure, and there is no manual override. That is the difference between a
+ * group and a merchandising shelf: Featured is a list somebody chose, and a
+ * group is a part of the shop. A hand-picked group would go stale the moment a
+ * product was added to the category, and the client would have to come back to
+ * Homepage Admin to publish a product they had already published.
  *
- *  1. `productIds` — an explicit, ordered client selection. Always wins.
- *  2. otherwise the section's own `categoryId`, resolved through the existing
- *     `product.search` procedure.
+ * `limit` controls how many of the category's products the section carries.
  *
  * Only categories in the store's *broad group* set get a section — see
  * `resolveBroadGroups` in `homepage-group-sections.ts`. A deep catalogue
@@ -395,9 +399,14 @@ export interface HomepageGroupSectionContent {
   viewAllTextAr?: string;
   /** Empty or absent falls back to the category's own page. */
   viewAllLink?: string;
-  /** Explicit, ordered product selection. Takes precedence over the category. */
+  /**
+   * @deprecated Group sections are filled from their category and nothing
+   * else. Retained only so content saved while a manual override existed still
+   * parses; it is stripped by `normalizeGroupSections` and never reaches the
+   * storefront. Curating a list of products is what Featured is for.
+   */
   productIds?: string[];
-  /** How many products the section shows when filled from its category. */
+  /** How many of the category's products the section shows. */
   limit?: number;
   presentation?: GroupSectionPresentation;
 }
