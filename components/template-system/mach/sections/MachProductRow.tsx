@@ -44,7 +44,14 @@ import { MachSectionHead } from "./MachSectionHead";
 
 export type MachRowGround = "white" | "paper" | "ink";
 
-const GROUND_CLASSES: Record<MachRowGround, string> = {
+/**
+ * The ground each row treatment paints, shared with the carousel arrangement.
+ *
+ * Exported and imported rather than copied, so a section cannot change tone
+ * by changing arrangement — Offers in particular stays the page's ink anchor
+ * whether it is laid out or scrolled.
+ */
+export const MACH_ROW_GROUND_CLASSES: Record<MachRowGround, string> = {
   white: "bg-white text-[var(--mach-ink)]",
   paper: "bg-[var(--mach-paper)] text-[var(--mach-ink)]",
   ink: "bg-[var(--mach-ink)] text-white",
@@ -91,7 +98,7 @@ export function MachProductRow({
   return (
     <section
       id={id}
-      className={`${GROUND_CLASSES[resolved]} ${rule} scroll-mt-24`}>
+      className={`${MACH_ROW_GROUND_CLASSES[resolved]} ${rule} scroll-mt-24`}>
       <div
         className={`${SHELL} ${GUTTER} ${
           dense ? "py-12 sm:py-14 lg:py-16" : SECTION_Y

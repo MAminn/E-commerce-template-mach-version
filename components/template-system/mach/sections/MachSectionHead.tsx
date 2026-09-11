@@ -18,6 +18,23 @@ import {
  * both a label and a destination that actually exists, so an unconfigured
  * "view all" disappears instead of shipping a dead link.
  */
+
+/**
+ * Whether a section's trailing action will actually render.
+ *
+ * Exported because a caller passing `actions` sometimes needs the same answer:
+ * the carousel separates its controls from "view all" with a hairline rule,
+ * and a rule floating on its own in front of two buttons — because the section
+ * had no link to separate them from — is worse than no rule. One predicate, so
+ * the header and the things placed beside it cannot disagree about whether the
+ * link is there.
+ */
+export function machSectionActionVisible(
+  actionLabel: string | undefined,
+  actionHref: string | undefined,
+): boolean {
+  return Boolean(actionLabel?.trim()) && !isPlaceholderLink(actionHref);
+}
 export function MachSectionHead({
   eyebrow,
   title,
@@ -27,6 +44,7 @@ export function MachSectionHead({
   onDark = false,
   size = "default",
   children,
+  actions,
 }: {
   eyebrow?: string;
   title: string;
@@ -41,9 +59,18 @@ export function MachSectionHead({
    */
   size?: "default" | "sm" | "xl";
   children?: ReactNode;
+  /**
+   * Controls that belong beside the section's action — carousel arrows, and
+   * nothing else so far.
+   *
+   * Purely additive: with no `actions` the header renders exactly the markup
+   * it always has, so every existing section is byte-for-byte unchanged. Only
+   * a header that is given controls grows the wrapper that groups them with
+   * the action link.
+   */
+  actions?: ReactNode;
 }) {
-  const showAction =
-    Boolean(actionLabel?.trim()) && !isPlaceholderLink(actionHref);
+  const showAction = machSectionActionVisible(actionLabel, actionHref);
 
   const headingCls = onDark ? "text-white" : "text-[var(--mach-ink)]";
   const subtitleCls = onDark ? "text-white/55" : "text-[var(--mach-mute)]";
@@ -56,6 +83,19 @@ export function MachSectionHead({
   // A compact header pulls its supporting line in tight; at the default size
   // the subtitle keeps the air it has always had.
   const isCompact = size === "sm";
+
+  const action = (
+    <Link
+      href={actionHref as string}
+      /* On the compact header the action hugs its own text on a phone
+         instead of stretching the rule across the column. Only the compact
+         size changes; the other rows keep the header they already had. */
+      className={`${LINK_ACTION} ${actionCls} shrink-0 border-b-2 pb-1 ${
+        isCompact && !actions ? "self-start sm:self-auto" : ""
+      } ${onDark ? "border-white" : "border-[var(--mach-ink)]"}`}>
+      {actionLabel}
+    </Link>
+  );
 
   return (
     <div
@@ -88,19 +128,16 @@ export function MachSectionHead({
         {children}
       </div>
 
-      {showAction && (
-        <Link
-          href={actionHref as string}
-          /* On the compact header the action hugs its own text on a phone
-             instead of stretching the rule across the column. Only the compact
-             size changes; the other rows keep the header they already had. */
-          className={`${LINK_ACTION} ${actionCls} shrink-0 border-b-2 pb-1 ${
+      {actions ? (
+        <div
+          className={`flex shrink-0 items-center gap-5 ${
             isCompact ? "self-start sm:self-auto" : ""
-          } ${
-            onDark ? "border-white" : "border-[var(--mach-ink)]"
           }`}>
-          {actionLabel}
-        </Link>
+          {showAction && action}
+          {actions}
+        </div>
+      ) : (
+        showAction && action
       )}
     </div>
   );

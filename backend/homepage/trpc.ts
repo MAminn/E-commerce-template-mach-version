@@ -45,6 +45,15 @@ const TextThemeSchema = z.enum(["light", "dark"]);
  * here — reconciliation against the live category list happens on read, so a
  * client saving while a category is mid-rename cannot lose a section.
  */
+/**
+ * How a product section arranges its products — see
+ * `ProductSectionDisplayMode`. Shared by the group sections and all four
+ * curated shelves so the two families cannot drift apart, and `nullish`
+ * throughout because every blob saved before the field existed has no value
+ * for it and must keep reading as the grid.
+ */
+const DisplayModeSchema = z.enum(["grid", "carousel"]).nullish();
+
 const GroupSectionSchema = z.object({
   categoryId: z.string().uuid(),
   enabled: z.boolean(),
@@ -63,6 +72,7 @@ const GroupSectionSchema = z.object({
     .max(GROUP_SECTION_LIMIT_MAX)
     .nullish(),
   presentation: z.enum(["shelf", "feature"]).nullish(),
+  displayMode: DisplayModeSchema,
 });
 
 /**
@@ -155,6 +165,7 @@ const HomepageContentSchema = z.object({
     viewAllTextAr: z.string().nullish(),
     viewAllLink: z.string(),
     productIds: z.array(z.string().uuid()).nullish(),
+    displayMode: DisplayModeSchema,
   }),
   valueProps: z.object({
     enabled: z.boolean(),
@@ -196,6 +207,7 @@ const HomepageContentSchema = z.object({
         .min(DISCOUNTED_LIMIT_MIN)
         .max(DISCOUNTED_LIMIT_MAX)
         .nullish(),
+      displayMode: DisplayModeSchema,
     })
     .nullish(),
   newArrivals: z
@@ -207,6 +219,7 @@ const HomepageContentSchema = z.object({
       viewAllTextAr: z.string().nullish(),
       viewAllLink: z.string(),
       productIds: z.array(z.string().uuid()).nullish(),
+      displayMode: DisplayModeSchema,
     })
     .nullish(),
   // One merchandising section per broad product group, keyed by category id.
@@ -225,6 +238,7 @@ const HomepageContentSchema = z.object({
       viewAllTextAr: z.string().nullish(),
       viewAllLink: z.string(),
       productIds: z.array(z.string().uuid()).nullish(),
+      displayMode: DisplayModeSchema,
     })
     .nullish(),
   // Deprecated hard-coded group rows, still accepted so a client running older

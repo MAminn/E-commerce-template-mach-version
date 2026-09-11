@@ -34,6 +34,7 @@ import type {
   HomepageContent,
   HomepageGroupSectionContent,
   MediaSlot,
+  ProductSectionDisplayMode,
   TextAlign,
   TextTheme,
   TextVerticalAlign,
@@ -46,6 +47,7 @@ import {
   EMPTY_MEDIA_SLOT,
   GROUP_SECTION_LIMIT_MAX,
   GROUP_SECTION_LIMIT_MIN,
+  resolveProductSectionDisplayMode,
   ValuePropIconType,
 } from "#root/shared/types/homepage-content";
 import {
@@ -67,6 +69,54 @@ import { useBroadGroups } from "#root/components/admin/useBroadGroups";
 type SetContent = (
   updater: (prev: HomepageContent) => HomepageContent,
 ) => void;
+
+/* ------------------------------------------------------------------ */
+/*  Display mode — shared by every product section                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Grid or carousel, for one product section.
+ *
+ * One control, mounted by the group sections and by all four merchandising
+ * shelves. Written once deliberately: six copies of a two-option selector is
+ * six chances for the wording, the default or the stored value to drift, and
+ * the whole promise of this setting is that it means the same thing wherever
+ * the client meets it.
+ *
+ * A section that has never been given a value is showing the grid — that is
+ * what the storefront has always rendered — so the control reads `undefined`
+ * as "Grid" rather than as "nothing selected".
+ */
+function MachDisplayModeField({
+  value,
+  onChange,
+}: {
+  value: ProductSectionDisplayMode | undefined;
+  onChange: (next: ProductSectionDisplayMode) => void;
+}) {
+  const resolved = resolveProductSectionDisplayMode(value);
+  return (
+    <div className='space-y-1.5'>
+      <Label className='text-xs'>Display</Label>
+      <Select
+        value={resolved}
+        onValueChange={(v) => onChange(v as ProductSectionDisplayMode)}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value='grid'>Grid</SelectItem>
+          <SelectItem value='carousel'>Carousel</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className='text-xs text-muted-foreground'>
+        {resolved === "carousel"
+          ? "Shows the same products in a horizontal swipeable row."
+          : "Shows products in the standard section layout."}
+      </p>
+    </div>
+  );
+}
 
 /** Stable id for a newly created repeater row. */
 function newId(prefix: string): string {
@@ -476,6 +526,7 @@ function MachGroupSectionEditor({
   onPatch: (next: Partial<HomepageGroupSectionContent>) => void;
 }) {
   const config = section.config;
+  const isCarousel = section.displayMode === "carousel";
 
   return (
     <div className='rounded-lg border p-4'>
@@ -549,10 +600,20 @@ function MachGroupSectionEditor({
         </div>
 
         <div className='grid gap-4 sm:grid-cols-2'>
+          <MachDisplayModeField
+            value={config?.displayMode}
+            onChange={(displayMode) => onPatch({ displayMode })}
+          />
           <div className='space-y-1.5'>
             <Label className='text-xs'>Presentation</Label>
             <Select
               value={section.presentation}
+              /* Disabled, not hidden, and never cleared. Presentation is how
+                 the section lays out in Grid; a carousel is one row of cards
+                 whatever it says. Leaving the control visible with its stored
+                 value shows the client what Grid will go back to, and stops
+                 them changing a setting that would appear to do nothing. */
+              disabled={isCarousel}
               onValueChange={(v) =>
                 onPatch({ presentation: v as GroupSectionPresentation })
               }>
@@ -565,8 +626,9 @@ function MachGroupSectionEditor({
               </SelectContent>
             </Select>
             <p className='text-xs text-muted-foreground'>
-              Product shelf is the standard row. Feature panels compose for a
-              group that carries two or three items on purpose, like bundles.
+              {isCarousel
+                ? "Presentation applies to Grid mode. This setting is kept, and comes back if you switch Display to Grid."
+                : "Product shelf is the standard row. Feature panels compose for a group that carries two or three items on purpose, like bundles."}
             </p>
           </div>
           <div className='space-y-1.5'>
@@ -758,6 +820,7 @@ interface CuratedShelfContent {
   viewAllText?: string;
   viewAllLink?: string;
   productIds?: string[];
+  displayMode?: ProductSectionDisplayMode;
 }
 
 /**
@@ -844,6 +907,10 @@ function MachCuratedShelfEditor({
               placeholder='/shop'
             />
           </div>
+          <MachDisplayModeField
+            value={shelf?.displayMode}
+            onChange={(displayMode) => onPatch({ displayMode })}
+          />
         </div>
 
         <div className='space-y-2'>

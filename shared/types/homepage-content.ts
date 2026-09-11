@@ -236,6 +236,11 @@ export interface HomepageFeaturedProductsContent {
   viewAllLink: string;
   /** Manually selected product IDs (when set, only these products are shown) */
   productIds?: string[];
+  /**
+   * How the section lays its products out. Absent means the grid, which is
+   * what every section saved before this field existed rendered as.
+   */
+  displayMode?: ProductSectionDisplayMode;
 }
 
 /**
@@ -285,6 +290,11 @@ export interface HomepageDiscountedProductsContent {
    * it — read it through `DEFAULT_DISCOUNTED_LIMIT`.
    */
   limit?: number;
+  /**
+   * How the section lays its products out. Absent means the grid, which is
+   * what every section saved before this field existed rendered as.
+   */
+  displayMode?: ProductSectionDisplayMode;
 }
 
 /**
@@ -312,6 +322,11 @@ export interface HomepageNewArrivalsContent {
   viewAllLink: string;
   /** Manually selected product IDs (when set, only these products are shown) */
   productIds?: string[];
+  /**
+   * How the section lays its products out. Absent means the grid, which is
+   * what every section saved before this field existed rendered as.
+   */
+  displayMode?: ProductSectionDisplayMode;
 }
 
 /**
@@ -338,6 +353,56 @@ export interface HomepageProductGroupContent {
   productIds?: string[];
   /** How many products the row shows. */
   limit?: number;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Product section display mode                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How a product section arranges the products it has.
+ *
+ * Shared by both families of product section — the dynamic group sections and
+ * the four curated merchandising shelves — because it is the same question in
+ * both places: *the client has already decided which products this section
+ * shows; this decides how they are laid out.* It changes nothing about the
+ * source, the selection or the order.
+ *
+ *  - `grid` is the storefront as it stands: the dense four-up shelf, or the
+ *    composed feature panels where a group asks for them.
+ *  - `carousel` is one horizontal row the shopper scrolls through, with the
+ *    same cards and the same products.
+ *
+ * Deliberately **not** the same axis as `GroupSectionPresentation`. That
+ * decides which *grid* treatment a group gets — shelf or feature panels — and
+ * is kept, untouched, while a section is in carousel mode, so switching back
+ * restores exactly what was there.
+ */
+export type ProductSectionDisplayMode = "grid" | "carousel";
+
+/**
+ * What a section with no saved display mode is.
+ *
+ * Every section saved before this field existed has no value for it, and the
+ * grid is what those sections have always rendered as. So "missing" resolves
+ * to `grid` rather than to anything clever: no live section may change its
+ * appearance because a new field was deployed.
+ */
+export const DEFAULT_PRODUCT_SECTION_DISPLAY_MODE: ProductSectionDisplayMode =
+  "grid";
+
+/**
+ * Reads a stored display mode, defaulting anything unrecognised to the grid.
+ *
+ * `null` as well as `undefined`, because the CMS sends `null` for optional
+ * fields it has cleared, and a stored blob can predate the field entirely.
+ * Anything that is not exactly `"carousel"` is the grid — the storefront's
+ * existing appearance is the fallback for every uncertain case.
+ */
+export function resolveProductSectionDisplayMode(
+  value: ProductSectionDisplayMode | null | undefined,
+): ProductSectionDisplayMode {
+  return value === "carousel" ? "carousel" : DEFAULT_PRODUCT_SECTION_DISPLAY_MODE;
 }
 
 /* ------------------------------------------------------------------ */
@@ -409,6 +474,13 @@ export interface HomepageGroupSectionContent {
   /** How many of the category's products the section shows. */
   limit?: number;
   presentation?: GroupSectionPresentation;
+  /**
+   * How the section lays its products out.
+   *
+   * Independent of `presentation`, which stays saved and untouched while the
+   * section is a carousel so switching back to the grid restores it.
+   */
+  displayMode?: ProductSectionDisplayMode;
 }
 
 /**
@@ -514,6 +586,11 @@ export interface HomepageFeaturedShelfContent {
   viewAllLink: string;
   /** Hand-picked, ordered. The only way this section is filled. */
   productIds?: string[];
+  /**
+   * How the section lays its products out. Absent means the grid, which is
+   * what every section saved before this field existed rendered as.
+   */
+  displayMode?: ProductSectionDisplayMode;
 }
 
 /**

@@ -3,6 +3,7 @@ import type { HomepageContent } from "#root/shared/types/homepage-content";
 import {
   CAMPAIGN_SECTION_PREFIX,
   DEFAULT_DISCOUNTED_LIMIT,
+  resolveProductSectionDisplayMode,
   resolveSectionOrder,
 } from "#root/shared/types/homepage-content";
 import {
@@ -18,9 +19,7 @@ import { MachChrome } from "../mach/MachChrome";
 import { normalizeMediaUrl } from "../mach/MachMedia";
 import { MachHero } from "../mach/sections/MachHero";
 import { MachMarquee } from "../mach/sections/MachMarquee";
-import { MachProductRow } from "../mach/sections/MachProductRow";
 import { MachCategoryTiles } from "../mach/sections/MachCategoryTiles";
-import { MachStackShowcase } from "../mach/sections/MachStackShowcase";
 import { MachCampaignBanner } from "../mach/sections/MachCampaignBanner";
 import { MachWhy } from "../mach/sections/MachWhy";
 import { MachCertificates } from "../mach/sections/MachCertificates";
@@ -30,10 +29,8 @@ import {
   resolveRowGrounds,
   type MachRowRenderState,
 } from "./mach-row-grounds";
-import {
-  groupSectionComponent,
-  groupSectionRenders,
-} from "./mach-group-rendering";
+import { groupSectionRenders } from "./mach-group-rendering";
+import { MachProductSection } from "./MachProductSection";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -302,14 +299,19 @@ export function LandingTemplateMach({
         ground: rowGrounds.get(key),
       };
 
-      // The presentation the client picked. Feature panels compose for the two
-      // or three items a bundles group carries; the dense shelf is the normal
-      // merchandising row everything else uses.
-      const Treatment = groupSectionComponent(section.presentation);
-      return Treatment === MachStackShowcase ? (
-        <MachStackShowcase key={key} {...shared} />
-      ) : (
-        <MachProductRow key={key} {...shared} dense />
+      // Two independent choices the client made. `displayMode` decides whether
+      // the group is laid out or scrolled; `presentation` decides which layout
+      // it uses when it is laid out — feature panels compose for the two or
+      // three items a bundles group carries, the dense shelf is the normal
+      // merchandising row. A group set to carousel keeps its presentation
+      // stored and unread, so switching back restores it.
+      return (
+        <MachProductSection
+          key={key}
+          {...shared}
+          displayMode={section.displayMode}
+          presentation={section.presentation}
+        />
       );
     }
 
@@ -334,7 +336,7 @@ export function LandingTemplateMach({
 
       case "featuredProducts":
         return rowRenders.featuredProducts ? (
-          <MachProductRow
+          <MachProductSection
             key={key}
             id="products"
             title={content.featuredProducts.title}
@@ -343,7 +345,9 @@ export function LandingTemplateMach({
             actionHref={content.featuredProducts.viewAllLink}
             products={featuredProducts}
             ground={rowGrounds.get("featuredProducts")}
-            dense
+            displayMode={resolveProductSectionDisplayMode(
+              content.featuredProducts.displayMode,
+            )}
           />
         ) : null;
 
@@ -352,7 +356,7 @@ export function LandingTemplateMach({
         // rather than instead of it, and shows exactly what the client picked.
         const featured = content.featuredShelf;
         return rowRenders.featuredShelf && featured ? (
-          <MachProductRow
+          <MachProductSection
             key={key}
             id="featured"
             title={featured.title}
@@ -361,29 +365,35 @@ export function LandingTemplateMach({
             actionHref={featured.viewAllLink}
             products={featuredShelf}
             ground={rowGrounds.get("featuredShelf")}
-            dense
+            displayMode={resolveProductSectionDisplayMode(
+              featured.displayMode,
+            )}
           />
         ) : null;
       }
 
       case "discountedProducts":
         return content.discountedProducts?.enabled ? (
-          <MachProductRow
+          <MachProductSection
             key={key}
             id="offers"
             title={content.discountedProducts.title}
             actionLabel={content.discountedProducts.viewAllText}
             actionHref={content.discountedProducts.viewAllLink}
             products={offersOnShelf}
+            /* Offers is the page's dark merchandising anchor, in either
+               arrangement. Scrolling a shelf is not a reason to relight it. */
             ground="ink"
-            dense
+            displayMode={resolveProductSectionDisplayMode(
+              content.discountedProducts.displayMode,
+            )}
           />
         ) : null;
 
       case "newArrivals": {
         const newDrops = content.newArrivals;
         return rowRenders.newArrivals && newDrops ? (
-          <MachProductRow
+          <MachProductSection
             key={key}
             id="new-drops"
             title={newDrops.title}
@@ -392,7 +402,9 @@ export function LandingTemplateMach({
             products={newArrivals}
             isLoading={newArrivalsLoading}
             ground={rowGrounds.get("newArrivals")}
-            dense
+            displayMode={resolveProductSectionDisplayMode(
+              newDrops.displayMode,
+            )}
           />
         ) : null;
       }

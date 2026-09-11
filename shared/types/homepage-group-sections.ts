@@ -4,11 +4,13 @@ import {
   LEGACY_GROUP_SECTION_KEYS,
   groupSectionKey,
   parseGroupSectionKey,
+  resolveProductSectionDisplayMode,
   type GroupSectionPresentation,
   type HomepageContent,
   type HomepageGroupSectionContent,
   type HomepageProductGroupContent,
   type LegacyGroupSectionKey,
+  type ProductSectionDisplayMode,
 } from "./homepage-content";
 
 /**
@@ -283,6 +285,15 @@ export interface ResolvedGroupSection {
    */
   limit: number;
   presentation: GroupSectionPresentation;
+  /**
+   * How the section arranges its products — the grid it has always rendered
+   * as, or one horizontal carousel of the same cards.
+   *
+   * A separate axis from `presentation`, which keeps describing the grid
+   * treatment while the section is a carousel. Neither touches the products:
+   * the category is still the source and the order is still the category's.
+   */
+  displayMode: ProductSectionDisplayMode;
   /** The stored config, or undefined for a group nobody has configured yet. */
   config?: HomepageGroupSectionContent;
 }
@@ -346,6 +357,9 @@ export function resolveGroupSections(
       viewAllLink: viewAllLink || `/categories/${category.slug}`,
       limit: config?.limit ?? DEFAULT_GROUP_SECTION_LIMIT,
       presentation: config?.presentation ?? "shelf",
+      // Absent means the grid. A group configured before this field existed —
+      // or one the client has never opened — keeps the appearance it has.
+      displayMode: resolveProductSectionDisplayMode(config?.displayMode),
       config,
     };
   });
