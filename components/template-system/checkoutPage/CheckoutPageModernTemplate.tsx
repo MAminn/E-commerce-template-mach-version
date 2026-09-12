@@ -215,6 +215,7 @@ export function CheckoutPageModernTemplate({
       case "stripe":
         return <CreditCard className='w-5 h-5' />;
       case "paymob":
+      case "fawaterak":
         return <Wallet className='w-5 h-5' />;
       default:
         return <Banknote className='w-5 h-5' />;

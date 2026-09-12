@@ -30,6 +30,7 @@ import { createBostaDelivery, isBostaEnabled } from "#root/backend/orders/bosta/
 import { persistBostaSyncStatus } from "#root/backend/orders/bosta/sync-status";
 import { isFincartEnabled } from "#root/backend/orders/fincart/config";
 import { logOrderEvent } from "#root/backend/orders/order-log";
+import { PAYMENT_METHODS, isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
 
 const OrderItemSchema = z.object({
   productId: z.string().uuid(),
@@ -51,7 +52,7 @@ export const createOrderSchema = z.object({
   items: z.array(OrderItemSchema).min(1),
   notes: z.string().optional(),
   promoCodeId: z.string().uuid().optional(),
-  paymentMethod: z.enum(["cod", "stripe", "paymob"]).optional().default("cod"),
+  paymentMethod: z.enum(PAYMENT_METHODS).optional().default("cod"),
   /** Legacy: Bosta district ID from the old checkout location picker. No
    * longer collected by checkout, kept optional for backward compatibility. */
   bostaDistrictId: z.string().min(1).optional(),
@@ -671,9 +672,7 @@ export const createOrder = (
           const total = Math.max(0, discountedSubtotal) + effectiveShipping;
 
           // Only include fields directly provided or calculated
-          const isOnlinePayment =
-            input.paymentMethod === "stripe" ||
-            input.paymentMethod === "paymob";
+          const isOnlinePayment = isOnlinePaymentMethod(input.paymentMethod);
           const insertData = {
             userId: userId,
             customerName: input.customerName,
@@ -904,8 +903,7 @@ export const createOrder = (
     // Single-shop mode: No vendor notifications needed
 
     // Send order to Fincart (opt-in via FINCART_ENABLED=true)
-    const isOnlinePaymentOrder =
-      input.paymentMethod === "stripe" || input.paymentMethod === "paymob";
+    const isOnlinePaymentOrder = isOnlinePaymentMethod(input.paymentMethod);
     if (isFincartEnabled() && !isOnlinePaymentOrder) {
       try {
         // Use Effect to handle the async operation correctly

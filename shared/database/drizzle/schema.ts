@@ -406,6 +406,7 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "cod",
   "stripe",
   "paymob",
+  "fawaterak",
 ]);
 
 export const paymentStatusEnum = pgEnum("payment_status", [

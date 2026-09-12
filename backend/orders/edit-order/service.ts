@@ -12,6 +12,7 @@ import { Effect } from "effect";
 import { z } from "zod";
 import type { ClientSession } from "#root/backend/auth/shared/entities";
 import { getStoreOwnerId } from "#root/shared/config/store";
+import { PAYMENT_METHODS } from "#root/shared/config/payment-methods";
 
 /**
  * Full admin edit for an order. Every field the admin can see is editable:
@@ -69,7 +70,7 @@ export const editOrderSchema = z.object({
   total: z.number().min(0).optional(),
 
   // ── Payment / status / notes ──
-  paymentMethod: z.enum(["cod", "stripe", "paymob"]).optional(),
+  paymentMethod: z.enum(PAYMENT_METHODS).optional(),
   paymentStatus: z
     .enum(["not_required", "pending", "processing", "paid", "failed", "refunded"])
     .optional(),

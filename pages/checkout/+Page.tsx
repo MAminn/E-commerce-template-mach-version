@@ -21,6 +21,11 @@ import { navigate } from "vike/client/router";
 import { useTracking } from "#root/frontend/contexts/TrackingContext";
 import { TrackingEventName } from "#root/shared/types/pixel-tracking";
 import { getCartSessionToken } from "#root/lib/cart-session";
+import {
+  isOnlinePaymentMethod,
+  type PaymentGateway,
+  type PaymentMethod,
+} from "#root/shared/config/payment-methods";
 
 /** Parse a Zod validation error (JSON array) into a friendly message */
 function parseOrderError(error: unknown): string {
@@ -198,8 +203,7 @@ export default function CheckoutPage() {
     setErrorMessage(undefined);
 
     const selectedPaymentMethod = formValues.paymentMethod || "cod";
-    const isOnlinePayment =
-      selectedPaymentMethod === "stripe" || selectedPaymentMethod === "paymob";
+    const isOnlinePayment = isOnlinePaymentMethod(selectedPaymentMethod);
 
     try {
       // Validate cart has items
@@ -236,7 +240,7 @@ export default function CheckoutPage() {
         items: orderItemsPayload,
         notes: formValues.notes || undefined,
         promoCodeId: promoCode?.id,
-        paymentMethod: selectedPaymentMethod as "cod" | "stripe" | "paymob",
+        paymentMethod: selectedPaymentMethod as PaymentMethod,
         buildingNumber: formValues.buildingNumber || undefined,
         apartment: formValues.apartment || undefined,
       });
@@ -285,7 +289,7 @@ export default function CheckoutPage() {
             typeof window !== "undefined" ? window.location.origin : "";
           const paymentResult = await trpc.payment.createSession.mutate({
             orderId,
-            paymentMethod: selectedPaymentMethod as "stripe" | "paymob",
+            paymentMethod: selectedPaymentMethod as PaymentGateway,
             successUrl: `${origin}/order-confirmation?id=${orderId}&total=${orderTotal}&email=${email}&payment=success`,
             cancelUrl: `${origin}/order-confirmation?id=${orderId}&total=${orderTotal}&email=${email}&payment=cancelled`,
           });

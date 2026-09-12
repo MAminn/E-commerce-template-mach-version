@@ -25,6 +25,7 @@ import {
 import { persistBostaSyncStatus } from "./sync-status";
 import { getBostaCheckoutLocations } from "./districts";
 import { logOrderEvent } from "#root/backend/orders/order-log";
+import { isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
 
 function requireBosta() {
   if (!isBostaEnabled()) {
@@ -107,9 +108,7 @@ export const bostaRouter = t.router({
           // payment has actually been confirmed "paid" — never speculatively,
           // and never just because an admin clicked a button. COD has nothing
           // to confirm, so it's exempt.
-          const isOnlinePayment =
-            orderRow.paymentMethod === "stripe" ||
-            orderRow.paymentMethod === "paymob";
+          const isOnlinePayment = isOnlinePaymentMethod(orderRow.paymentMethod);
           if (isOnlinePayment && orderRow.paymentStatus !== "paid") {
             return yield* $(
               Effect.fail(

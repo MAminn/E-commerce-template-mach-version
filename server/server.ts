@@ -16,6 +16,7 @@ import { fincartWebhookPlugin } from "#root/backend/orders/fincart-webhook/api.j
 import { bostaWebhookPlugin } from "#root/backend/orders/bosta/webhook-api.js";
 import { stripeWebhookPlugin } from "#root/backend/payments/stripe-webhook.js";
 import { paymobWebhookPlugin } from "#root/backend/payments/paymob-webhook.js";
+import { fawaterakWebhookPlugin } from "#root/backend/payments/fawaterak-webhook.js";
 import { ensureDefaultStoreVendor } from "#root/shared/database/bootstrap.js";
 import { backfillProductSlugs } from "#root/backend/products/slug.js";
 import { getTemplateSelectionRaw } from "#root/backend/settings/get-template-selection-raw.js";
@@ -334,6 +335,12 @@ async function buildServer() {
   // Register Paymob webhook endpoint (no-ops if Paymob is not configured)
   await instance.register(paymobWebhookPlugin, {
     prefix: "/api/webhooks/paymob",
+  });
+
+  // Register Fawaterak webhook endpoints (no-ops if Fawaterak is not configured):
+  //   /api/webhooks/fawaterak_json, /fawaterak-failed_json, /fawaterak-cancel_json
+  await instance.register(fawaterakWebhookPlugin, {
+    prefix: "/api/webhooks",
   });
 
   // Register tracking beacon endpoint

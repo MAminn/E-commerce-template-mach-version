@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 import { t, publicProcedure, provideDatabase } from "#root/shared/trpc/server";
 import {
   runBackendEffect,
@@ -16,17 +16,22 @@ import {
 } from "#root/shared/backend/effect";
 import {
   getAvailablePaymentMethods,
+  getPaymentMethodOptions,
   isStripeConfigured,
   isPaymobConfigured,
-  PAYMENT_METHOD_LABELS,
-  PAYMENT_METHOD_DESCRIPTIONS,
-  type PaymentMethod,
+  isFawaterakConfigured,
+  ONLINE_PAYMENT_METHODS,
 } from "#root/shared/config/payment";
 import { query } from "#root/shared/database/drizzle/db";
 import { order } from "#root/shared/database/drizzle/schema";
 import { eq } from "drizzle-orm";
 import { createStripeCheckoutSession, getStripeSession } from "./stripe-service";
 import { createPaymobPaymentSession, verifyPaymobIntentionPayment } from "./paymob-service";
+import {
+  createFawaterakTransaction,
+  getFawaterakTransactionData,
+  verifyFawaterakPaidTransaction,
+} from "./fawaterak-service";
 import { applyOnlinePaymentUpdate } from "./confirm-online-payment";
 import { ServerError } from "#root/shared/error/server";
 
@@ -35,11 +40,8 @@ import { ServerError } from "#root/shared/error/server";
 const paymentMethodsProcedure = publicProcedure.query(async () => {
   const methods = getAvailablePaymentMethods();
   return {
-    methods: methods.map((m) => ({
-      id: m,
-      label: PAYMENT_METHOD_LABELS[m],
-      description: PAYMENT_METHOD_DESCRIPTIONS[m],
-    })),
+    // Labels/descriptions only — never gateway config or secrets.
+    methods: getPaymentMethodOptions(methods),
     hasOnlinePayment: methods.length > 1,
     stripePublicKey: isStripeConfigured()
       ? (process.env.VITE_STRIPE_PUBLIC_KEY ?? "")
@@ -51,7 +53,9 @@ const paymentMethodsProcedure = publicProcedure.query(async () => {
 
 const createPaymentSessionSchema = z.object({
   orderId: z.string().uuid(),
-  paymentMethod: z.enum(["stripe", "paymob"]),
+  paymentMethod: z.enum(ONLINE_PAYMENT_METHODS),
+  // Used by Stripe/Paymob. Fawaterak ignores them and builds its redirect
+  // targets from the trusted PUBLIC_ORIGIN server-side.
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
 });
@@ -182,6 +186,32 @@ const createPaymentSessionProcedure = publicProcedure
 
           paymentUrl = result.paymentUrl;
           sessionId = result.sessionId;
+        } else if (input.paymentMethod === "fawaterak") {
+          if (!isFawaterakConfigured()) {
+            return yield* Effect.fail(
+              new ServerError({
+                tag: "BadRequest",
+                message: "Fawaterak is not configured",
+                statusCode: 400,
+                clientMessage: "Online payment is not available",
+              }),
+            );
+          }
+
+          // Hosted checkout: amount, customer and reference all come from the
+          // persisted order row — the browser only chose the method.
+          const result = yield* createFawaterakTransaction({
+            orderId: input.orderId,
+            customerName: orderData.customerName,
+            customerEmail: orderData.customerEmail,
+            customerPhone: orderData.customerPhone,
+            shippingAddress: orderData.shippingAddress,
+            total: orderData.total,
+            itemNames: items.map((item) => item.name),
+          });
+
+          paymentUrl = result.paymentUrl;
+          sessionId = result.sessionId; // intent_key
         } else {
           return yield* Effect.fail(
             new ServerError({
@@ -275,6 +305,46 @@ const verifyPaymentProcedure = publicProcedure
             }
           } catch {
             // If Stripe check fails, return current DB state
+          }
+        }
+
+        // For Fawaterak, ask the provider directly; the redirect/query string
+        // is never trusted. Only a fully verified match flips the order.
+        if (
+          orderData.paymentMethod === "fawaterak" &&
+          orderData.paymentSessionId &&
+          orderData.paymentStatus === "pending"
+        ) {
+          // Effect failures don't surface as JS exceptions inside gen, so a
+          // provider outage is captured with `either` and simply leaves the
+          // DB state untouched for the next poll.
+          const lookup = yield* Effect.either(
+            getFawaterakTransactionData(orderData.paymentSessionId),
+          );
+          if (Either.isRight(lookup)) {
+            const providerData = lookup.right;
+            const verification = verifyFawaterakPaidTransaction(
+              {
+                id: orderData.id,
+                paymentSessionId: orderData.paymentSessionId,
+                total: orderData.total,
+              },
+              providerData,
+            );
+            if (verification.ok) {
+              yield* query(async (db) => {
+                await applyOnlinePaymentUpdate(db, input.orderId, {
+                  paymentStatus: "paid",
+                  transactionId: verification.transactionId,
+                  gatewayData: providerData,
+                });
+              });
+              return {
+                ...orderData,
+                paymentStatus: "paid" as const,
+                status: "processing" as const,
+              };
+            }
           }
         }
 

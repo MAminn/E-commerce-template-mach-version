@@ -75,6 +75,10 @@ import { useToast } from "#root/components/ui/use-toast";
 import { Pagination } from "#root/components/utils/Pagination";
 import { OrderEditPanel } from "./OrderEditPanel";
 import { OrderActivityLog } from "./OrderActivityLog";
+import {
+  isOnlinePaymentMethod,
+  type PaymentMethod,
+} from "#root/shared/config/payment-methods";
 
 interface OrderItem {
   id: string;
@@ -104,7 +108,7 @@ interface Order {
   total: string;
   status: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
   notes: string | null;
-  paymentMethod: "cod" | "stripe" | "paymob";
+  paymentMethod: PaymentMethod;
   paymentStatus:
     | "not_required"
     | "pending"
@@ -459,6 +463,8 @@ export default function Orders() {
         return "Card (Stripe)";
       case "paymob":
         return "Online (Paymob)";
+      case "fawaterak":
+        return "Online (Fawaterak)";
       default:
         return method;
     }
@@ -489,6 +495,7 @@ export default function Orders() {
         return "bg-amber-50 text-amber-900 border-amber-200";
       case "stripe":
       case "paymob":
+      case "fawaterak":
         return "bg-indigo-50 text-indigo-900 border-indigo-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
@@ -554,7 +561,7 @@ export default function Orders() {
    * guidance — the backend enforces it regardless of what this returns.
    */
   const canSendToBosta = (order: Order) => {
-    const isOnlinePayment = order.paymentMethod === "stripe" || order.paymentMethod === "paymob";
+    const isOnlinePayment = isOnlinePaymentMethod(order.paymentMethod);
     return !isOnlinePayment || order.paymentStatus === "paid";
   };
 

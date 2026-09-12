@@ -24,6 +24,7 @@ import { Effect } from "effect";
 import { z } from "zod";
 import type { ClientSession } from "#root/backend/auth/shared/entities";
 import { ServerError } from "#root/shared/error/server";
+import { ONLINE_PAYMENT_METHODS, isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
 
 export const viewOrdersSchema = z.object({
   limit: z.number().min(1).max(100).optional().default(10),
@@ -86,7 +87,7 @@ export const viewOrders = (
           if (paymentIssueOnly) {
             conditions.push(
               and(
-                inArray(order.paymentMethod, ["stripe", "paymob"]),
+                inArray(order.paymentMethod, [...ONLINE_PAYMENT_METHODS]),
                 notInArray(order.paymentStatus, ["paid", "refunded"]),
                 or(
                   isNotNull(order.bostaDeliveryId),
@@ -200,9 +201,7 @@ export const viewOrders = (
                 };
               });
 
-              const isOnlinePayment =
-                orderData.paymentMethod === "stripe" ||
-                orderData.paymentMethod === "paymob";
+              const isOnlinePayment = isOnlinePaymentMethod(orderData.paymentMethod);
               const hasPaymentIssue =
                 isOnlinePayment &&
                 orderData.paymentStatus !== "paid" &&

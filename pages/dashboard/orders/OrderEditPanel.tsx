@@ -13,6 +13,7 @@ import {
 } from "#root/components/ui/select";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { trpc } from "#root/shared/trpc/client";
+import type { PaymentMethod } from "#root/shared/config/payment-methods";
 
 /** Minimal shape this panel needs from an order row. */
 export interface EditableOrder {
@@ -32,7 +33,7 @@ export interface EditableOrder {
   total: string;
   status: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
   notes: string | null;
-  paymentMethod: "cod" | "stripe" | "paymob";
+  paymentMethod: PaymentMethod;
   paymentStatus:
     | "not_required"
     | "pending"
@@ -574,6 +575,7 @@ export function OrderEditPanel({
                 <SelectItem value='cod'>Cash on Delivery</SelectItem>
                 <SelectItem value='stripe'>Stripe</SelectItem>
                 <SelectItem value='paymob'>Paymob</SelectItem>
+                <SelectItem value='fawaterak'>Fawaterak</SelectItem>
               </SelectContent>
             </Select>
           </div>
