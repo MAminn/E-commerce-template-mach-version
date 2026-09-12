@@ -26,8 +26,10 @@ import { applyOffersToCart } from "#root/backend/offers/service";
 import { computePromoDiscount } from "#root/shared/pricing/cart-math";
 import { getStoreOwnerId } from "#root/shared/config/store";
 import { getShippingFeeRaw } from "#root/backend/settings/get-shipping-fee";
-import { createBostaDelivery, isBostaEnabled } from "#root/backend/orders/bosta/service";
+import { isBostaEnabled } from "#root/backend/orders/bosta/service";
 import { persistBostaSyncStatus } from "#root/backend/orders/bosta/sync-status";
+import { dispatchOrderToBosta } from "#root/backend/orders/bosta/dispatch";
+import { encodeBostaDistrictRef } from "#root/backend/orders/bosta/districts";
 import { isFincartEnabled } from "#root/backend/orders/fincart/config";
 import { logOrderEvent } from "#root/backend/orders/order-log";
 import { PAYMENT_METHODS, isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
@@ -53,9 +55,10 @@ export const createOrderSchema = z.object({
   notes: z.string().optional(),
   promoCodeId: z.string().uuid().optional(),
   paymentMethod: z.enum(PAYMENT_METHODS).optional().default("cod"),
-  /** Legacy: Bosta district ID from the old checkout location picker. No
-   * longer collected by checkout, kept optional for backward compatibility. */
-  bostaDistrictId: z.string().min(1).optional(),
+  /** Exact Bosta district id picked at checkout (when Bosta is enabled).
+   * Persisted as `shippingDistrict = "bosta:<id>"` and required for any
+   * Bosta dispatch — the server never guesses a district. */
+  bostaDistrictId: z.string().trim().min(1).optional(),
   buildingNumber: z.string().trim().optional(),
   apartment: z.string().trim().optional(),
 });
@@ -271,24 +274,6 @@ const sendOrderToFincart = async (
   }
 };
 
-// ─── Bosta auto-send helper ───────────────────────────────────────────────────
-
-interface CreatedOrder {
-  id: string;
-  customerName: string;
-  customerPhone: string;
-  shippingAddress: string;
-  shippingCity: string;
-  shippingState?: string | null;
-  shippingDistrict?: string | null;
-  bostaDistrictId?: string | null;
-  buildingNumber?: string | null;
-  apartment?: string | null;
-  itemsCount?: number;
-  total: string | number;
-  notes?: string | null;
-}
-
 function formatStoredShippingAddress(input: {
   shippingAddress: string;
   buildingNumber?: string | null;
@@ -304,62 +289,6 @@ function formatStoredShippingAddress(input: {
   }
   if (parts.length === 0) return street;
   return `${street} (${parts.join(", ")})`;
-}
-
-async function autoSendOrderToBosta(orderData: CreatedOrder): Promise<void> {
-  if (!isBostaEnabled()) return;
-
-  await persistBostaSyncStatus(orderData.id, "pending");
-
-  const nameParts = orderData.customerName.trim().split(/\s+/);
-  const firstName = nameParts[0] ?? orderData.customerName;
-  const lastName = nameParts.slice(1).join(" ") || "";
-
-  const outcome = await createBostaDelivery({
-    orderId: orderData.id,
-    receiver: { firstName, lastName, phone: orderData.customerPhone },
-    dropOffAddress: {
-      firstLine: orderData.shippingAddress,
-      // shippingState holds the customer's Bosta-governorate combobox pick
-      // (Bosta's own "city" concept); shippingCity holds the free-text
-      // city/area name, used as the zone hint.
-      city: orderData.shippingState || orderData.shippingCity,
-      zone: orderData.shippingCity ?? undefined,
-      districtHint: orderData.shippingDistrict ?? undefined,
-      districtId: orderData.bostaDistrictId ?? undefined,
-      buildingNumber: orderData.buildingNumber ?? undefined,
-      apartment: orderData.apartment ?? undefined,
-    },
-    cod: Number(orderData.total),
-    notes: orderData.notes,
-    itemsCount: orderData.itemsCount,
-  });
-
-  if (!outcome) return;
-
-  if (outcome.success) {
-    await persistBostaSyncStatus(orderData.id, "sent", {
-      delivery: outcome.result,
-    });
-    await logOrderEvent({
-      orderId: orderData.id,
-      action: "bosta_sent",
-      note: `Auto-sent to Bosta at checkout (COD) — tracking ${outcome.result.trackingNumber}`,
-    });
-    console.log(
-      `[Order ${orderData.id}] Bosta delivery created — tracking: ${outcome.result.trackingNumber}`,
-    );
-    return;
-  }
-
-  await persistBostaSyncStatus(orderData.id, "failed", {
-    error: outcome.error,
-  });
-  await logOrderEvent({
-    orderId: orderData.id,
-    action: "bosta_send_failed",
-    note: `Auto-send to Bosta failed at checkout (COD): ${outcome.error}`,
-  });
 }
 
 // ─── Main create-order service ────────────────────────────────────────────────
@@ -685,7 +614,11 @@ export const createOrder = (
             }),
             shippingCity: input.shippingCity,
             shippingState: input.shippingState,
-            shippingDistrict: input.shippingDistrict,
+            // Exact Bosta district (when picked) is stored as a "bosta:<id>"
+            // reference; otherwise whatever free text the client sent.
+            shippingDistrict: input.bostaDistrictId
+              ? encodeBostaDistrictRef(input.bostaDistrictId)
+              : (input.shippingDistrict ?? undefined),
             shippingPostalCode: input.shippingPostalCode,
             shippingCountry: input.shippingCountry,
             subtotal: subtotal.toString(),
@@ -932,46 +865,50 @@ export const createOrder = (
 
     // ── Bosta integration (feature-flagged) ──────────────────────────────────
     // Runs only when SYN_BOSTA_KEY is present. Never throws — a failure here
-    // does NOT abort order creation.
-    if (!isOnlinePaymentOrder) {
-      yield* $(
-        Effect.promise(async () => {
-          try {
-            await autoSendOrderToBosta({
-              ...result,
-              shippingAddress: input.shippingAddress,
-              bostaDistrictId: input.bostaDistrictId,
-              buildingNumber: input.buildingNumber,
-              apartment: input.apartment,
-              itemsCount: input.items.reduce((sum, item) => sum + item.quantity, 0),
-            });
-          } catch (err) {
-            console.error("[Bosta] Auto-send failed (order still created):", err);
-            if (isBostaEnabled()) {
+    // does NOT abort order creation. COD ships now; online orders ship from
+    // confirm-online-payment once the gateway confirms "paid".
+    if (isBostaEnabled()) {
+      if (!isOnlinePaymentOrder) {
+        yield* $(
+          query(async (db) => {
+            try {
+              const outcome = await dispatchOrderToBosta(db, result.id, {
+                trigger: "checkout_cod",
+              });
+              if (outcome.status === "sent") {
+                console.log(
+                  `[Order ${result.id}] Bosta delivery created — tracking: ${outcome.trackingNumber}`,
+                );
+              } else {
+                console.warn(`[Order ${result.id}] Bosta not dispatched: ${outcome.reason}`);
+              }
+            } catch (err) {
+              console.error("[Bosta] Auto-send failed (order still created):", err);
               await persistBostaSyncStatus(result.id, "failed", {
                 error: err instanceof Error ? err.message : String(err),
-              });
+                client: db,
+              }).catch(() => undefined);
             }
-          }
-        }),
-      );
-    } else if (isBostaEnabled()) {
-      yield* $(
-        Effect.promise(() =>
-          persistBostaSyncStatus(result.id, "skipped", {
-            error: "Deferred until online payment is confirmed",
-          }),
-        ),
-      );
-      yield* $(
-        Effect.promise(() =>
-          logOrderEvent({
-            orderId: result.id,
-            action: "bosta_skipped",
-            note: `Bosta dispatch deferred — ${input.paymentMethod} payment not yet confirmed`,
-          }),
-        ),
-      );
+          }).pipe(Effect.catchAll(() => Effect.succeed(undefined))),
+        );
+      } else {
+        yield* $(
+          Effect.promise(() =>
+            persistBostaSyncStatus(result.id, "skipped", {
+              error: "Deferred until online payment is confirmed",
+            }),
+          ),
+        );
+        yield* $(
+          Effect.promise(() =>
+            logOrderEvent({
+              orderId: result.id,
+              action: "bosta_skipped",
+              note: `Bosta dispatch deferred — ${input.paymentMethod} payment not yet confirmed`,
+            }),
+          ),
+        );
+      }
     }
 
     return result;

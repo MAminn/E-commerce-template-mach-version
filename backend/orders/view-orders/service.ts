@@ -163,6 +163,7 @@ export const viewOrders = (
               bostaSyncError: order.bostaSyncError,
               bostaSyncedAt: order.bostaSyncedAt,
               bostaSyncAttemptedAt: order.bostaSyncAttemptedAt,
+              bostaWebhookData: order.bostaWebhookData,
             })
             .from(order)
             .where(whereClause)
@@ -210,10 +211,28 @@ export const viewOrders = (
                   orderData.bostaSyncStatus === "sent" ||
                   orderData.bostaSyncStatus === "pending");
 
+              // Exception / attempt details live inside the last raw Bosta
+              // webhook payload (no dedicated columns) — surface them here so
+              // the dashboard doesn't need the whole blob.
+              const { bostaWebhookData, ...orderFields } = orderData;
+              const webhook =
+                bostaWebhookData && typeof bostaWebhookData === "object"
+                  ? (bostaWebhookData as Record<string, unknown>)
+                  : null;
+              const bostaExceptionReason =
+                typeof webhook?.exceptionReason === "string" ? webhook.exceptionReason : null;
+              const bostaExceptionCode =
+                typeof webhook?.exceptionCode === "number" ? webhook.exceptionCode : null;
+              const bostaAttempts =
+                typeof webhook?.numberOfAttempts === "number" ? webhook.numberOfAttempts : null;
+
               return {
-                ...orderData,
+                ...orderFields,
                 items: itemsWithImage,
                 hasPaymentIssue,
+                bostaExceptionReason,
+                bostaExceptionCode,
+                bostaAttempts,
               };
             }),
           );

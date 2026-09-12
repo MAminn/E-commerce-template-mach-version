@@ -1,19 +1,32 @@
 import type { FastifyPluginAsync } from "fastify";
 import { runBackendEffect } from "#root/shared/backend/effect";
 import { provideDatabase } from "#root/shared/trpc/server";
+import { isBostaEnabled } from "./client";
 import { bostaWebhookSchema, processBostaWebhook } from "./webhook-service";
+import {
+  getBostaWebhookAllowedIps,
+  getBostaWebhookSecret,
+  isIpAllowed,
+  verifyBostaWebhookSecret,
+} from "./webhook-auth";
 
-const BOSTA_API_KEY = process.env.SYN_BOSTA_KEY;
-const BOSTA_WEBHOOK_SECRET = process.env.BOSTA_WEBHOOK_SECRET;
-
+/**
+ * POST /api/webhooks/bosta — receives Bosta delivery state changes.
+ *
+ * Bosta dashboard configuration (Settings → API Integration → Set Up Your
+ * Webhook): URL = https://<store>/api/webhooks/bosta, custom header
+ * `Authorization` = BOSTA_WEBHOOK_SECRET.
+ *
+ * Env is read per request (not at import time) so the route reflects the
+ * live configuration and is straightforward to exercise in tests.
+ */
 export const bostaWebhookPlugin: FastifyPluginAsync = async (fastify) => {
-  // Only register if Bosta is configured
-  if (!BOSTA_API_KEY) {
+  if (!isBostaEnabled()) {
     fastify.log.info("[Bosta Webhook] SYN_BOSTA_KEY not set — webhook endpoint disabled");
     return;
   }
 
-  if (!BOSTA_WEBHOOK_SECRET) {
+  if (!getBostaWebhookSecret()) {
     fastify.log.warn(
       "[Bosta Webhook] BOSTA_WEBHOOK_SECRET not set — webhook will reject all requests",
     );
@@ -22,22 +35,23 @@ export const bostaWebhookPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post("/", async (request, reply) => {
     const log = request.log.child({ module: "bosta-webhook" });
 
-    if (!BOSTA_WEBHOOK_SECRET) {
+    const secret = getBostaWebhookSecret();
+    if (!secret) {
       return reply.status(503).send({ success: false, error: "Webhook not configured" });
     }
 
-    // Extract auth token from Authorization header
-    const authHeader = (request.headers["authorization"] as string) ?? "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : authHeader;
+    const allowedIps = getBostaWebhookAllowedIps();
+    if (!isIpAllowed(request.ip, allowedIps)) {
+      log.warn({ ip: request.ip }, "Bosta webhook: source IP not in BOSTA_WEBHOOK_ALLOWED_IPS");
+      return reply.status(403).send({ success: false, error: "Forbidden" });
+    }
 
-    if (!token) {
-      log.warn("Bosta webhook: missing Authorization header");
+    const authHeader = request.headers["authorization"];
+    if (!verifyBostaWebhookSecret(authHeader, secret)) {
+      log.warn("Bosta webhook: missing or invalid Authorization header");
       return reply.status(401).send({ success: false, error: "Unauthorized" });
     }
 
-    // Validate payload shape
     const parsed = bostaWebhookSchema.safeParse(request.body);
     if (!parsed.success) {
       log.warn({ errors: parsed.error.format() }, "Bosta webhook: invalid payload");
@@ -45,12 +59,16 @@ export const bostaWebhookPlugin: FastifyPluginAsync = async (fastify) => {
     }
 
     log.info(
-      { trackingNumber: parsed.data.trackingNumber, state: parsed.data.state },
+      {
+        trackingNumber: parsed.data.trackingNumber,
+        state: parsed.data.state,
+        businessReference: parsed.data.businessReference,
+      },
       "Bosta webhook received",
     );
 
     const result = await runBackendEffect(
-      processBostaWebhook(parsed.data, token, BOSTA_WEBHOOK_SECRET).pipe(
+      processBostaWebhook(parsed.data, authHeader, secret).pipe(
         provideDatabase({ db: request.db }),
       ),
     );

@@ -2,6 +2,10 @@ import React, { useState } from "react";
 import { Button } from "#root/components/ui/button";
 import { Input } from "#root/components/ui/input";
 import { CityCombobox } from "#root/components/checkout/CityCombobox";
+import {
+  BostaShippingFields,
+  type BostaShippingSelection,
+} from "#root/components/checkout/BostaShippingFields";
 import { Skeleton } from "#root/components/ui/skeleton";
 import { Alert, AlertDescription } from "#root/components/ui/alert";
 import { AlertCircle, Loader2, Shield, ChevronLeft, ChevronDown, ShoppingBag } from "lucide-react";
@@ -76,7 +80,14 @@ export function CheckoutPageEditorialTemplate({
     country: "Egypt",
     paymentMethod: paymentMethods?.[0]?.id ?? "cod",
     notes: "",
+    // Exact Bosta district (only when the Bosta picker is active).
+    bostaDistrictId: "",
+    // "1" while the Bosta picker is shown — a district is then mandatory.
+    bostaRequired: "",
   });
+  const [bostaSelection, setBostaSelection] =
+    useState<BostaShippingSelection | null>(null);
+  const [bostaError, setBostaError] = useState<string | undefined>(undefined);
 
   const updateField = (key: string, value: string) => {
     setFormValues((prev) => ({ ...prev, [key]: value }));
@@ -84,6 +95,13 @@ export function CheckoutPageEditorialTemplate({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formValues.bostaRequired === "1" && !formValues.bostaDistrictId) {
+      setBostaError("Please select your governorate, area and district");
+      document
+        .getElementById("bostaCity")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     onSubmit?.(formValues);
   };
 
@@ -315,33 +333,58 @@ export function CheckoutPageEditorialTemplate({
                           />
                         </div>
                       </div>
-                      <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
-                        <div>
-                          <Input
-                            id='checkout-city'
-                            name='address-level2'
-                            autoComplete='address-level2'
-                            required
-                            value={formValues.city}
-                            onChange={(e) =>
-                              updateField("city", e.target.value)
-                            }
-                            className={inputCls}
-                            placeholder='City'
-                          />
-                        </div>
-                        <div>
-                          <CityCombobox
-                            id='checkout-state'
-                            name='address-level1'
-                            autoComplete='address-level1'
-                            value={formValues.state}
-                            onChange={(v) => updateField("state", v)}
-                            className={inputCls}
-                            placeholder='Governorate'
-                          />
-                        </div>
-                      </div>
+                      <BostaShippingFields
+                        value={bostaSelection}
+                        error={bostaError}
+                        onAvailabilityChange={(available) =>
+                          updateField("bostaRequired", available ? "1" : "")
+                        }
+                        onChange={(selection) => {
+                          setBostaSelection(selection);
+                          if (selection) {
+                            setBostaError(undefined);
+                            updateField("bostaDistrictId", selection.districtId);
+                            updateField("state", selection.city);
+                            updateField(
+                              "city",
+                              selection.zone === selection.districtName
+                                ? selection.districtName
+                                : `${selection.zone} / ${selection.districtName}`,
+                            );
+                          } else {
+                            updateField("bostaDistrictId", "");
+                          }
+                        }}
+                        fallback={
+                          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+                            <div>
+                              <Input
+                                id='checkout-city'
+                                name='address-level2'
+                                autoComplete='address-level2'
+                                required
+                                value={formValues.city}
+                                onChange={(e) =>
+                                  updateField("city", e.target.value)
+                                }
+                                className={inputCls}
+                                placeholder='City'
+                              />
+                            </div>
+                            <div>
+                              <CityCombobox
+                                id='checkout-state'
+                                name='address-level1'
+                                autoComplete='address-level1'
+                                value={formValues.state}
+                                onChange={(v) => updateField("state", v)}
+                                className={inputCls}
+                                placeholder='Governorate'
+                              />
+                            </div>
+                          </div>
+                        }
+                      />
                     </div>
                   </section>
                 </StaggerItem>

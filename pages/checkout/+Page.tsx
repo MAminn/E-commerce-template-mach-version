@@ -46,6 +46,7 @@ function parseOrderError(error: unknown): string {
           shippingCountry: "Country",
           buildingNumber: "Building Number",
           apartment: "Apartment",
+          bostaDistrictId: "Delivery District",
         };
         return issues
           .map((issue: { path?: string[]; message?: string }) => {
@@ -243,6 +244,8 @@ export default function CheckoutPage() {
         paymentMethod: selectedPaymentMethod as PaymentMethod,
         buildingNumber: formValues.buildingNumber || undefined,
         apartment: formValues.apartment || undefined,
+        // Exact Bosta district picked at checkout (only when Bosta is enabled).
+        bostaDistrictId: formValues.bostaDistrictId || undefined,
       });
 
       if (!result.success) {

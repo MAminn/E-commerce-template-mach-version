@@ -129,6 +129,10 @@ interface Order {
   bostaSyncError?: string | null;
   bostaSyncedAt?: Date | null;
   bostaSyncAttemptedAt?: Date | null;
+  /** From the last Bosta webhook (state 47 "Exception") */
+  bostaExceptionReason?: string | null;
+  bostaExceptionCode?: number | null;
+  bostaAttempts?: number | null;
   /** Online-payment order that reached (or is mid-flight to) Bosta without a confirmed "paid" status */
   hasPaymentIssue?: boolean;
 }
@@ -350,10 +354,18 @@ export default function Orders() {
     }
   };
 
-  const sendOrderToBosta = async (orderId: string) => {
+  const sendOrderToBosta = async (orderId: string, resend = false) => {
+    if (
+      resend &&
+      !window.confirm(
+        "This order's previous Bosta delivery was terminated. Create a NEW Bosta delivery for it?",
+      )
+    ) {
+      return;
+    }
     setBostaActionLoading(orderId);
     try {
-      const result = await trpc.order.bosta.sendOrder.mutate({ orderId });
+      const result = await trpc.order.bosta.sendOrder.mutate({ orderId, resend });
       if (result.success) {
         toast({ title: "Sent to Bosta", description: `Tracking: ${(result.result as { trackingNumber: string })?.trackingNumber ?? "—"}` });
         fetchOrders();
@@ -1220,7 +1232,23 @@ export default function Orders() {
                         Bosta Delivery
                       </h3>
                       <div className='flex items-center gap-2'>
-                        {selectedOrder.bostaSyncStatus !== "sent" && !selectedOrder.bostaDeliveryId ? (
+                        {selectedOrder.bostaSyncStatus === "cancelled" ? (
+                          canSendToBosta(selectedOrder) ? (
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              className='h-7 text-xs gap-1'
+                              disabled={bostaActionLoading === selectedOrder.id}
+                              onClick={() => sendOrderToBosta(selectedOrder.id, true)}>
+                              {bostaActionLoading === selectedOrder.id ? (
+                                <Loader2 className='w-3 h-3 animate-spin' />
+                              ) : (
+                                <Send className='w-3 h-3' />
+                              )}
+                              Send again
+                            </Button>
+                          ) : null
+                        ) : selectedOrder.bostaSyncStatus !== "sent" && !selectedOrder.bostaDeliveryId ? (
                           canSendToBosta(selectedOrder) ? (
                             <Button
                               size='sm'
@@ -1322,6 +1350,21 @@ export default function Orders() {
                             <span className='text-xs text-muted-foreground'>
                               {new Date(selectedOrder.bostaStatusUpdatedAt).toLocaleString()}
                             </span>
+                          </div>
+                        )}
+                        {typeof selectedOrder.bostaAttempts === "number" && selectedOrder.bostaAttempts > 0 && (
+                          <div className='flex items-center justify-between'>
+                            <span className='text-muted-foreground font-medium'>Delivery attempts</span>
+                            <span className='text-xs text-muted-foreground'>{selectedOrder.bostaAttempts}</span>
+                          </div>
+                        )}
+                        {selectedOrder.bostaExceptionReason && (
+                          <div className='rounded-md bg-amber-50 border border-amber-100 p-2 text-xs text-amber-800 break-words'>
+                            <span className='font-semibold'>Exception: </span>
+                            {selectedOrder.bostaExceptionReason}
+                            {typeof selectedOrder.bostaExceptionCode === "number" && (
+                              <span className='text-amber-600'> (code {selectedOrder.bostaExceptionCode})</span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1600,7 +1643,23 @@ export default function Orders() {
                           <Truck className='w-4 h-4 text-orange-500' />
                           Bosta Delivery
                         </h3>
-                        {selectedOrder.bostaSyncStatus !== "sent" && !selectedOrder.bostaDeliveryId ? (
+                        {selectedOrder.bostaSyncStatus === "cancelled" ? (
+                          canSendToBosta(selectedOrder) ? (
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              className='h-7 text-xs gap-1'
+                              disabled={bostaActionLoading === selectedOrder.id}
+                              onClick={() => sendOrderToBosta(selectedOrder.id, true)}>
+                              {bostaActionLoading === selectedOrder.id ? (
+                                <Loader2 className='w-3 h-3 animate-spin' />
+                              ) : (
+                                <Send className='w-3 h-3' />
+                              )}
+                              Send again
+                            </Button>
+                          ) : null
+                        ) : selectedOrder.bostaSyncStatus !== "sent" && !selectedOrder.bostaDeliveryId ? (
                           canSendToBosta(selectedOrder) ? (
                             <Button
                               size='sm'

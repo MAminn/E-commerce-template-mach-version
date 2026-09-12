@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Input } from "#root/components/ui/input";
 import { CityCombobox } from "#root/components/checkout/CityCombobox";
+import {
+  BostaShippingFields,
+  type BostaShippingSelection,
+} from "#root/components/checkout/BostaShippingFields";
 import { Textarea } from "#root/components/ui/textarea";
 import { Button } from "#root/components/ui/button";
 import { Alert, AlertDescription } from "#root/components/ui/alert";
@@ -139,7 +143,13 @@ export function CheckoutPageModernTemplate({
     paymentMethod: "cod",
     buildingNumber: "",
     apartment: "",
+    // Exact Bosta district (only when the Bosta picker is active).
+    bostaDistrictId: "",
+    // "1" while the Bosta picker is shown — a district is then mandatory.
+    bostaRequired: "",
   });
+  const [bostaSelection, setBostaSelection] =
+    useState<BostaShippingSelection | null>(null);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [notesOpen, setNotesOpen] = useState(false);
@@ -175,7 +185,13 @@ export function CheckoutPageModernTemplate({
     else if (form.address.trim().length < 5) {
       errors.address = "Please enter a full street address (at least 5 characters)";
     }
-    if (!form.city.trim()) errors.city = t("validation.city_required");
+    if (form.bostaRequired === "1") {
+      if (!form.bostaDistrictId) {
+        errors.bostaDistrict = "Please select your governorate, area and district";
+      }
+    } else if (!form.city.trim()) {
+      errors.city = t("validation.city_required");
+    }
 
     setFieldErrors(errors);
 
@@ -500,34 +516,64 @@ export function CheckoutPageModernTemplate({
                     />
                   </div>
                 </div>
-                <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-                  <div className='space-y-1.5'>
-                    <Input
-                      id='city'
-                      name='address-level2'
-                      autoComplete='address-level2'
-                      placeholder={t("checkout.city") || "City"}
-                      value={form.city}
-                      onChange={(e) => updateField("city", e.target.value)}
-                      className={fieldErrors.city ? "border-destructive" : ""}
-                    />
-                    {fieldErrors.city && (
-                      <p className='text-xs text-destructive'>
-                        {fieldErrors.city}
-                      </p>
-                    )}
-                  </div>
-                  <div className='space-y-1.5'>
-                    <CityCombobox
-                      id='state'
-                      name='address-level1'
-                      autoComplete='address-level1'
-                      placeholder={t("checkout.state") || "Governorate"}
-                      value={form.state}
-                      onChange={(v) => updateField("state", v)}
-                    />
-                  </div>
-                </div>
+                <BostaShippingFields
+                  value={bostaSelection}
+                  error={fieldErrors.bostaDistrict}
+                  onAvailabilityChange={(available) =>
+                    updateField("bostaRequired", available ? "1" : "")
+                  }
+                  onChange={(selection) => {
+                    setBostaSelection(selection);
+                    if (selection) {
+                      updateField("bostaDistrictId", selection.districtId);
+                      updateField("state", selection.city);
+                      updateField(
+                        "city",
+                        selection.zone === selection.districtName
+                          ? selection.districtName
+                          : `${selection.zone} / ${selection.districtName}`,
+                      );
+                      setFieldErrors((prev) => {
+                        if (!prev.bostaDistrict) return prev;
+                        const next = { ...prev };
+                        delete next.bostaDistrict;
+                        return next;
+                      });
+                    } else {
+                      updateField("bostaDistrictId", "");
+                    }
+                  }}
+                  fallback={
+                    <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+                      <div className='space-y-1.5'>
+                        <Input
+                          id='city'
+                          name='address-level2'
+                          autoComplete='address-level2'
+                          placeholder={t("checkout.city") || "City"}
+                          value={form.city}
+                          onChange={(e) => updateField("city", e.target.value)}
+                          className={fieldErrors.city ? "border-destructive" : ""}
+                        />
+                        {fieldErrors.city && (
+                          <p className='text-xs text-destructive'>
+                            {fieldErrors.city}
+                          </p>
+                        )}
+                      </div>
+                      <div className='space-y-1.5'>
+                        <CityCombobox
+                          id='state'
+                          name='address-level1'
+                          autoComplete='address-level1'
+                          placeholder={t("checkout.state") || "Governorate"}
+                          value={form.state}
+                          onChange={(v) => updateField("state", v)}
+                        />
+                      </div>
+                    </div>
+                  }
+                />
               </div>
             </div>
 

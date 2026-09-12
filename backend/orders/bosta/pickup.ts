@@ -1,182 +1,136 @@
-const BOSTA_API_BASE = "https://app.bosta.co/api/v2";
+/**
+ * Resolve the Bosta *business location id* used as `businessLocationId` on
+ * create-delivery requests.
+ *
+ * Current docs (create-your-first-delivery): for a Deliver (type 10) order the
+ * pickup is defined by `businessLocationId` — "If not added we will pick it
+ * from your default location". A full `pickupAddress` is only for cash
+ * collection / CRP / exchange flows, so we never reconstruct one here.
+ *
+ * Resolution order:
+ *   1. BOSTA_PICKUP_LOCATION_ID (explicit, non-placeholder) wins.
+ *   2. GET /pickup-locations → the location flagged `isDefault: true`.
+ *   3. Exactly one location exists → use it.
+ *   4. Several locations, none default → fail clearly (never `list[0]`).
+ */
+import { bostaFetch, getBostaApiKey } from "./client";
 
-function getBostaApiKey(): string | null {
-  return process.env.SYN_BOSTA_KEY ?? null;
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+let cachedLocationId: string | null = null;
+let cacheLoadedAt = 0;
+
+export function clearBostaPickupCache(): void {
+  cachedLocationId = null;
+  cacheLoadedAt = 0;
 }
 
-/** Address shape required by Bosta POST /deliveries */
-export interface BostaPickupAddress {
-  city: string;
-  zoneId: string;
-  districtId: string;
-  firstLine: string;
-  secondLine: string;
-  buildingNumber: string;
-  floor: string;
-  apartment: string;
-}
-
-let cachedPickup: BostaPickupAddress | null = null;
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-}
-
-function pickString(obj: Record<string, unknown>, ...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const val = obj[key];
-    if (typeof val === "string" && val.trim()) return val.trim();
-    const nested = asRecord(val);
-    if (nested) {
-      const nestedVal = pickString(
-        nested,
-        "name",
-        "nameEn",
-        "cityName",
-        "zoneName",
-        "zoneId",
-        "_id",
-        "id",
-        "districtId",
-      );
-      if (nestedVal) return nestedVal;
-    }
-  }
-  return undefined;
-}
-
-function isPlaceholderEnvValue(value: string): boolean {
-  const v = value.trim().toLowerCase();
+export function isPlaceholderEnvValue(value: string | undefined | null): boolean {
+  const v = (value ?? "").trim().toLowerCase();
   return (
     !v ||
     v.startsWith("your-") ||
     v.includes("your-") ||
     v === "placeholder" ||
     v === "example" ||
-    v === "xxx"
+    v === "xxx" ||
+    v === "changeme"
   );
 }
 
-function parsePickupLocation(record: Record<string, unknown>): BostaPickupAddress | null {
-  const address = asRecord(record.address) ?? record;
-  const city =
-    pickString(address, "city", "cityName") ?? pickString(record, "city", "cityName");
-  const zoneId =
-    pickString(address, "zoneId") ??
-    pickString(asRecord(address.zone) ?? {}, "zoneId", "_id", "id") ??
-    pickString(record, "zoneId");
-  const districtId =
-    pickString(address, "districtId") ??
-    pickString(asRecord(address.district) ?? {}, "districtId", "_id", "id") ??
-    pickString(record, "districtId");
-  const firstLine =
-    pickString(address, "firstLine", "address", "street") ??
-    pickString(record, "firstLine", "address", "street");
-  const secondLine =
-    pickString(address, "secondLine", "landmark") ??
-    pickString(record, "secondLine", "landmark") ??
-    firstLine;
+export function getConfiguredPickupLocationId(): string | null {
+  const raw = process.env.BOSTA_PICKUP_LOCATION_ID?.trim();
+  if (!raw || isPlaceholderEnvValue(raw)) return null;
+  return raw;
+}
 
-  if (!city || !zoneId || !districtId || !firstLine) return null;
+export interface BostaPickupLocationSummary {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function parseLocation(item: unknown): BostaPickupLocationSummary | null {
+  const rec = asRecord(item);
+  if (!rec) return null;
+  const id =
+    (typeof rec._id === "string" && rec._id.trim()) ||
+    (typeof rec.id === "string" && rec.id.trim()) ||
+    "";
+  if (!id) return null;
   return {
-    city,
-    zoneId,
-    districtId,
-    firstLine,
-    secondLine: secondLine ?? firstLine,
-    buildingNumber:
-      pickString(address, "buildingNumber") ??
-      pickString(record, "buildingNumber") ??
-      "1",
-    floor: pickString(address, "floor") ?? pickString(record, "floor") ?? "1",
-    apartment:
-      pickString(address, "apartment") ?? pickString(record, "apartment") ?? "1",
+    id,
+    name: typeof rec.locationName === "string" ? rec.locationName : "",
+    isDefault: rec.isDefault === true,
   };
 }
 
-function pickupFromEnv(): BostaPickupAddress | null {
-  const city = process.env.BOSTA_PICKUP_CITY?.trim();
-  const zoneId = process.env.BOSTA_PICKUP_ZONE_ID?.trim();
-  const districtId = process.env.BOSTA_PICKUP_DISTRICT_ID?.trim();
-  const firstLine = process.env.BOSTA_PICKUP_FIRST_LINE?.trim();
-
-  if (!city || !zoneId || !districtId || !firstLine) return null;
-  if (
-    isPlaceholderEnvValue(districtId) ||
-    isPlaceholderEnvValue(city) ||
-    isPlaceholderEnvValue(zoneId)
-  ) {
-    return null;
-  }
-
-  return {
-    city,
-    zoneId,
-    districtId,
-    firstLine,
-    secondLine: process.env.BOSTA_PICKUP_SECOND_LINE?.trim() || firstLine,
-    buildingNumber: process.env.BOSTA_PICKUP_BUILDING_NUMBER?.trim() || "1",
-    floor: process.env.BOSTA_PICKUP_FLOOR?.trim() || "1",
-    apartment: process.env.BOSTA_PICKUP_APARTMENT?.trim() || "1",
-  };
-}
-
-async function fetchPickupFromApi(): Promise<BostaPickupAddress | null> {
-  const apiKey = getBostaApiKey();
-  if (!apiKey) return null;
-
-  const res = await fetch(`${BOSTA_API_BASE}/pickup-locations`, {
-    headers: { Authorization: apiKey },
-  });
-  const payload = await res.json();
-  const root = asRecord(payload);
-  const data = asRecord(root?.data) ?? root;
-  const locations = Array.isArray(data?.pickupLocations)
-    ? data!.pickupLocations
-    : Array.isArray(data?.list)
-      ? data!.list
-      : Array.isArray(payload)
-        ? payload
+/** `GET /pickup-locations` → documented shape `{ data: { list: [...] } }`. */
+export async function listBostaPickupLocations(): Promise<BostaPickupLocationSummary[]> {
+  const data = await bostaFetch<Record<string, unknown> | unknown[]>("GET", "/pickup-locations");
+  const rec = asRecord(data);
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(rec?.list)
+      ? (rec!.list as unknown[])
+      : Array.isArray(rec?.pickupLocations)
+        ? (rec!.pickupLocations as unknown[])
         : [];
+  return list.map(parseLocation).filter((l): l is BostaPickupLocationSummary => !!l);
+}
 
-  const preferredId = process.env.BOSTA_PICKUP_LOCATION_ID?.trim();
-  const entries = locations
-    .map((item) => asRecord(item))
-    .filter((item): item is Record<string, unknown> => !!item);
-
-  const validPreferredId =
-    preferredId && !isPlaceholderEnvValue(preferredId) ? preferredId : undefined;
-
-  const selected =
-    (validPreferredId
-      ? entries.find((item) => pickString(item, "_id", "id") === validPreferredId)
-      : undefined) ?? entries[0];
-
-  return selected ? parsePickupLocation(selected) : null;
+/** Pure selection rule — exported for tests. */
+export function selectPickupLocation(
+  locations: BostaPickupLocationSummary[],
+): { ok: true; id: string } | { ok: false; error: string } {
+  if (locations.length === 0) {
+    return {
+      ok: false,
+      error:
+        "No pickup location found on the Bosta account. Add a business location in the Bosta dashboard (Settings → Pickup locations) or set BOSTA_PICKUP_LOCATION_ID.",
+    };
+  }
+  const defaults = locations.filter((l) => l.isDefault);
+  if (defaults.length === 1) return { ok: true, id: defaults[0]!.id };
+  if (defaults.length > 1) {
+    return {
+      ok: false,
+      error: `Bosta account has ${defaults.length} default pickup locations — set BOSTA_PICKUP_LOCATION_ID to choose one.`,
+    };
+  }
+  if (locations.length === 1) return { ok: true, id: locations[0]!.id };
+  return {
+    ok: false,
+    error: `Bosta account has ${locations.length} pickup locations and none is marked default — set BOSTA_PICKUP_LOCATION_ID to the warehouse to ship from.`,
+  };
 }
 
 /**
- * Resolve merchant pickup address required by Bosta create-delivery API.
- * Loaded automatically from your Bosta business account — no manual setup needed
- * if you already have a warehouse/pickup location in the Bosta dashboard.
+ * Resolve the business location id to ship from. Throws with a clear,
+ * admin-readable message when it cannot be determined safely.
  */
-export async function resolveBostaPickupAddress(): Promise<BostaPickupAddress> {
-  if (cachedPickup) return cachedPickup;
+export async function resolveBostaBusinessLocationId(): Promise<string> {
+  const configured = getConfiguredPickupLocationId();
+  if (configured) return configured;
 
-  const fromApi = await fetchPickupFromApi();
-  if (fromApi) {
-    cachedPickup = fromApi;
-    return fromApi;
+  if (!getBostaApiKey()) {
+    throw new Error("[Bosta] SYN_BOSTA_KEY is not configured");
   }
 
-  const fromEnv = pickupFromEnv();
-  if (fromEnv) {
-    cachedPickup = fromEnv;
-    return fromEnv;
+  const now = Date.now();
+  if (cachedLocationId && now - cacheLoadedAt < CACHE_TTL_MS) {
+    return cachedLocationId;
   }
 
-  throw new Error(
-    "[Bosta] Could not load pickup address from your Bosta account. Log in to business.bosta.co and ensure you have a warehouse/pickup location configured.",
-  );
+  const locations = await listBostaPickupLocations();
+  const selected = selectPickupLocation(locations);
+  if (!selected.ok) throw new Error(`[Bosta] ${selected.error}`);
+
+  cachedLocationId = selected.id;
+  cacheLoadedAt = now;
+  return selected.id;
 }

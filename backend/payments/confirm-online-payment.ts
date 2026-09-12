@@ -2,11 +2,11 @@
  * Shared helpers for confirming online payments and triggering deferred Bosta sync.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { DatabaseClient } from "#root/shared/database/drizzle/db";
-import { order, orderItem } from "#root/shared/database/drizzle/schema";
-import { createBostaDelivery, isBostaEnabled } from "#root/backend/orders/bosta/service";
-import { persistBostaSyncStatus } from "#root/backend/orders/bosta/sync-status";
+import { order } from "#root/shared/database/drizzle/schema";
+import { isBostaEnabled } from "#root/backend/orders/bosta/service";
+import { dispatchOrderToBosta } from "#root/backend/orders/bosta/dispatch";
 import { logOrderEvent } from "#root/backend/orders/order-log";
 
 type PaymentStatus = "paid" | "failed" | "processing";
@@ -37,6 +37,11 @@ export function extractPaymobOrderId(data: Record<string, unknown>): string | nu
   return null;
 }
 
+/**
+ * Deferred Bosta dispatch for an order whose online payment just became
+ * "paid". Goes through the shared dispatcher (same builder, eligibility
+ * rules and duplicate protection as the COD and admin paths).
+ */
 async function triggerBostaForPaidOrder(
   db: DatabaseClient,
   orderRow: typeof order.$inferSelect,
@@ -44,62 +49,10 @@ async function triggerBostaForPaidOrder(
   if (!isBostaEnabled()) return;
   if (orderRow.bostaSyncStatus === "sent" || orderRow.bostaDeliveryId) return;
 
-  await persistBostaSyncStatus(orderRow.id, "pending");
-
-  const nameParts = orderRow.customerName.trim().split(/\s+/);
-  const firstName = nameParts[0] ?? orderRow.customerName;
-  const lastName = nameParts.slice(1).join(" ") || "";
-
-  const countRows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(orderItem)
-    .where(eq(orderItem.orderId, orderRow.id))
-    .execute();
-
-  const itemsCount = countRows[0]?.count ?? 1;
-
-  const isCod = orderRow.paymentMethod === "cod";
-  const codAmount = isCod ? Number(orderRow.total) : 0;
-
-  const outcome = await createBostaDelivery({
-    orderId: orderRow.id,
-    receiver: {
-      firstName,
-      lastName,
-      phone: orderRow.customerPhone,
-    },
-    dropOffAddress: {
-      firstLine: orderRow.shippingAddress,
-      city: orderRow.shippingCity,
-      zone: orderRow.shippingState ?? undefined,
-    },
-    cod: codAmount,
-    notes: orderRow.notes,
-    itemsCount,
-  });
-
-  if (!outcome) return;
-
-  if (outcome.success) {
-    await persistBostaSyncStatus(orderRow.id, "sent", {
-      delivery: outcome.result,
-    });
-    await logOrderEvent({
-      orderId: orderRow.id,
-      action: "bosta_sent",
-      note: `Auto-sent to Bosta after payment was confirmed paid — tracking ${outcome.result.trackingNumber}`,
-    });
-    return;
+  const outcome = await dispatchOrderToBosta(db, orderRow.id, { trigger: "payment_confirmed" });
+  if (outcome.status !== "sent") {
+    console.warn(`[Payment] Bosta not dispatched for ${orderRow.id}: ${outcome.reason}`);
   }
-
-  await persistBostaSyncStatus(orderRow.id, "failed", {
-    error: outcome.error,
-  });
-  await logOrderEvent({
-    orderId: orderRow.id,
-    action: "bosta_send_failed",
-    note: `Auto-send to Bosta failed after payment confirmation: ${outcome.error}`,
-  });
 }
 
 export async function applyOnlinePaymentUpdate(

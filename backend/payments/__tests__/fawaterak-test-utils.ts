@@ -172,14 +172,23 @@ export function makeFakeDb(state: {
     select: vi.fn(() => ({ from: (table: unknown) => selectChain(table) })),
     update: vi.fn((table: unknown) => ({
       set: (values: Record<string, unknown>) => ({
-        where: () => ({
-          execute: async () => {
+        where: () => {
+          const apply = () => {
             if (table === order && state.order) {
               Object.assign(state.order, values);
               updates.push(values);
+              return [{ id: state.order.id }];
             }
-          },
-        }),
+            return [];
+          };
+          return {
+            execute: async () => {
+              apply();
+            },
+            // The Bosta dispatcher claims the row with UPDATE … RETURNING.
+            returning: () => ({ execute: async () => apply() }),
+          };
+        },
       }),
     })),
     insert: vi.fn(() => ({

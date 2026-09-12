@@ -17,15 +17,11 @@ import { eq } from "drizzle-orm";
 import { query } from "#root/shared/database/drizzle/db";
 import { order } from "#root/shared/database/drizzle/schema";
 import { ServerError } from "#root/shared/error/server";
-import {
-  createBostaDelivery,
-  cancelBostaDelivery,
-  isBostaEnabled,
-} from "./service";
+import { cancelBostaDelivery, isBostaEnabled } from "./service";
 import { persistBostaSyncStatus } from "./sync-status";
 import { getBostaCheckoutLocations } from "./districts";
+import { dispatchOrderToBosta, type BostaDispatchResult } from "./dispatch";
 import { logOrderEvent } from "#root/backend/orders/order-log";
-import { isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
 
 function requireBosta() {
   if (!isBostaEnabled()) {
@@ -38,13 +34,44 @@ function requireBosta() {
   }
 }
 
+/** Translate a non-"sent" dispatch result into the error the admin UI shows. */
+function dispatchResultToError(
+  result: Exclude<BostaDispatchResult, { status: "sent" }>,
+): ServerError<string> {
+  switch (result.status) {
+    case "skipped":
+      return new ServerError({
+        tag: "NotConfigured",
+        statusCode: 503,
+        clientMessage: "Bosta is not configured",
+      });
+    case "blocked":
+      return new ServerError({
+        tag:
+          result.code === "not_found"
+            ? "NotFound"
+            : result.code === "payment_not_confirmed"
+              ? "PaymentNotConfirmed"
+              : "AlreadyExists",
+        statusCode: result.code === "not_found" ? 404 : 409,
+        clientMessage: result.reason,
+      });
+    case "failed":
+      return new ServerError({
+        tag: result.code === "validation" ? "BadRequest" : "ExternalServiceError",
+        statusCode: result.code === "validation" ? 422 : 502,
+        clientMessage: result.reason,
+      });
+  }
+}
+
 export const bostaRouter = t.router({
   /** Checkout: whether Bosta shipping location pickers should be shown */
   checkoutIsEnabled: publicProcedure.query(() => ({
     enabled: isBostaEnabled(),
   })),
 
-  /** Checkout: city / zone / district tree from Bosta API */
+  /** Checkout: city / zone / district tree from Bosta API (drop-off-capable only) */
   listShippingLocations: publicProcedure.query(async () => {
     if (!isBostaEnabled()) {
       return { cities: [] };
@@ -61,166 +88,49 @@ export const bostaRouter = t.router({
   /**
    * Admin: manually push an existing order to Bosta (e.g. if auto-send failed,
    * or for orders placed before the integration was enabled).
+   *
+   * Same rules as every automatic path (see dispatch.ts): online orders must
+   * be paid, an order with a live delivery is never re-sent, concurrent
+   * sends are serialised by the atomic claim, and the exact checkout
+   * district is required — historical orders without one fail with a clear
+   * message instead of a guessed district.
+   *
+   * `resend: true` is the only way to create a new delivery for an order
+   * whose previous delivery was terminated.
    */
   sendOrder: adminProcedure
-    .input(z.object({ orderId: z.string().uuid() }))
+    .input(z.object({ orderId: z.string().uuid(), resend: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       return await runBackendEffect(
         Effect.gen(function* ($) {
           requireBosta();
 
-          const orderRow = yield* $(
-            query(async (db) => {
-              const rows = await db
-                .select()
-                .from(order)
-                .where(eq(order.id, input.orderId))
-                .execute();
-              return rows[0] ?? null;
-            }),
-          );
-
-          if (!orderRow) {
-            return yield* $(
-              Effect.fail(
-                new ServerError({
-                  tag: "NotFound",
-                  statusCode: 404,
-                  clientMessage: "Order not found",
-                }),
-              ),
-            );
-          }
-
-          if (orderRow.bostaDeliveryId || orderRow.bostaSyncStatus === "sent") {
-            return yield* $(
-              Effect.fail(
-                new ServerError({
-                  tag: "AlreadyExists",
-                  statusCode: 409,
-                  clientMessage: "This order already has a Bosta delivery",
-                }),
-              ),
-            );
-          }
-
-          // Hard gate: an online-payment order can only go to Bosta once its
-          // payment has actually been confirmed "paid" — never speculatively,
-          // and never just because an admin clicked a button. COD has nothing
-          // to confirm, so it's exempt.
-          const isOnlinePayment = isOnlinePaymentMethod(orderRow.paymentMethod);
-          if (isOnlinePayment && orderRow.paymentStatus !== "paid") {
-            return yield* $(
-              Effect.fail(
-                new ServerError({
-                  tag: "PaymentNotConfirmed",
-                  statusCode: 409,
-                  clientMessage: `Cannot send to Bosta — this order's ${orderRow.paymentMethod} payment is "${orderRow.paymentStatus}", not confirmed paid.`,
-                }),
-              ),
-            );
-          }
-
-          yield* $(Effect.promise(() => persistBostaSyncStatus(input.orderId, "pending")));
-
-          const nameParts = orderRow.customerName.trim().split(/\s+/);
-          const firstName = nameParts[0] ?? orderRow.customerName;
-          const lastName = nameParts.slice(1).join(" ") || "";
-
-          const isCod = orderRow.paymentMethod === "cod";
-          const codAmount = isCod ? Number(orderRow.total) : 0;
-
-          const outcome = yield* $(
-            Effect.promise(() =>
-              createBostaDelivery({
-                orderId: orderRow.id,
-                receiver: {
-                  firstName,
-                  lastName,
-                  phone: orderRow.customerPhone,
-                },
-                dropOffAddress: {
-                  firstLine: orderRow.shippingAddress,
-                  // Same routing as autoSendOrderToBosta: shippingState is
-                  // the Bosta-governorate combobox pick, shippingCity is
-                  // the free-text city/area used as the zone hint.
-                  city: orderRow.shippingState || orderRow.shippingCity,
-                  zone: orderRow.shippingCity ?? undefined,
-                },
-                cod: codAmount,
-                notes: orderRow.notes,
+          const result = yield* $(
+            query((db) =>
+              dispatchOrderToBosta(db, input.orderId, {
+                trigger: "manual",
+                actor: ctx.clientSession.email,
+                resendAfterCancel: input.resend === true,
               }),
             ),
           );
 
-          if (!outcome) {
-            return yield* $(
-              Effect.fail(
-                new ServerError({
-                  tag: "NotConfigured",
-                  statusCode: 503,
-                  clientMessage: "Bosta is not configured",
-                }),
-              ),
-            );
+          if (result.status !== "sent") {
+            return yield* $(Effect.fail(dispatchResultToError(result)));
           }
-
-          if (!outcome.success) {
-            yield* $(
-              Effect.promise(() =>
-                persistBostaSyncStatus(input.orderId, "failed", {
-                  error: outcome.error,
-                }),
-              ),
-            );
-            yield* $(
-              Effect.promise(() =>
-                logOrderEvent({
-                  orderId: input.orderId,
-                  action: "bosta_send_failed",
-                  note: `Manual "Send to Bosta" by ${ctx.clientSession.email}: ${outcome.error}`,
-                }),
-              ),
-            );
-            return yield* $(
-              Effect.fail(
-                new ServerError({
-                  tag: "ExternalServiceError",
-                  statusCode: 502,
-                  clientMessage: outcome.error,
-                }),
-              ),
-            );
-          }
-
-          yield* $(
-            Effect.promise(() =>
-              persistBostaSyncStatus(input.orderId, "sent", {
-                delivery: outcome.result,
-              }),
-            ),
-          );
-
-          yield* $(
-            Effect.promise(() =>
-              logOrderEvent({
-                orderId: input.orderId,
-                action: "bosta_sent",
-                note: `Manual "Send to Bosta" by ${ctx.clientSession.email} — tracking ${outcome.result.trackingNumber}`,
-              }),
-            ),
-          );
 
           return {
-            deliveryId: outcome.result.deliveryId,
-            trackingNumber: outcome.result.trackingNumber,
+            deliveryId: result.deliveryId,
+            trackingNumber: result.trackingNumber,
           };
         }).pipe(provideDatabase(ctx)),
       ).then(serializeBackendEffectResult);
     }),
 
   /**
-   * Admin: cancel a Bosta delivery for an order.
+   * Admin: terminate the order's Bosta delivery (by tracking number).
+   * Needs a Full Access API key; with Read/Write the call fails gracefully
+   * and the admin is told to cancel from the Bosta dashboard.
    */
   cancelDelivery: adminProcedure
     .input(z.object({ orderId: z.string().uuid() }))
@@ -232,7 +142,12 @@ export const bostaRouter = t.router({
           const orderRow = yield* $(
             query(async (db) => {
               const rows = await db
-                .select({ id: order.id, bostaDeliveryId: order.bostaDeliveryId })
+                .select({
+                  id: order.id,
+                  bostaDeliveryId: order.bostaDeliveryId,
+                  bostaTrackingNumber: order.bostaTrackingNumber,
+                  bostaSyncStatus: order.bostaSyncStatus,
+                })
                 .from(order)
                 .where(eq(order.id, input.orderId))
                 .execute();
@@ -240,58 +155,76 @@ export const bostaRouter = t.router({
             }),
           );
 
-          if (!orderRow?.bostaDeliveryId) {
+          if (!orderRow) {
+            return yield* $(
+              Effect.fail(
+                new ServerError({ tag: "NotFound", statusCode: 404, clientMessage: "Order not found" }),
+              ),
+            );
+          }
+
+          if (orderRow.bostaSyncStatus === "cancelled") {
+            return yield* $(
+              Effect.fail(
+                new ServerError({
+                  tag: "AlreadyExists",
+                  statusCode: 409,
+                  clientMessage: "This order's Bosta delivery is already terminated",
+                }),
+              ),
+            );
+          }
+
+          const trackingNumber = orderRow.bostaTrackingNumber?.trim();
+          if (!trackingNumber) {
             return yield* $(
               Effect.fail(
                 new ServerError({
                   tag: "NotFound",
                   statusCode: 404,
-                  clientMessage: "No Bosta delivery found for this order",
+                  clientMessage: "No Bosta tracking number on this order — nothing to cancel",
                 }),
               ),
             );
           }
 
-          const success = yield* $(
-            Effect.promise(() => cancelBostaDelivery(orderRow.bostaDeliveryId!)),
-          );
+          const outcome = yield* $(Effect.promise(() => cancelBostaDelivery(trackingNumber)));
 
-          if (!success) {
+          if (!outcome.success) {
             yield* $(
               Effect.promise(() =>
-                persistBostaSyncStatus(input.orderId, "failed", {
-                  error: "Bosta cancel API call failed",
+                logOrderEvent({
+                  orderId: input.orderId,
+                  action: "bosta_send_failed",
+                  note: `Cancel of Bosta delivery ${trackingNumber} by ${ctx.clientSession.email} failed: ${outcome.error}`,
                 }),
               ),
             );
             return yield* $(
               Effect.fail(
                 new ServerError({
-                  tag: "ExternalServiceError",
-                  statusCode: 502,
-                  clientMessage: "Failed to cancel Bosta delivery — check server logs",
+                  tag: outcome.permissionDenied ? "Forbidden" : "ExternalServiceError",
+                  statusCode: outcome.permissionDenied ? 403 : 502,
+                  clientMessage: outcome.error,
                 }),
               ),
             );
           }
 
-          yield* $(
-            Effect.promise(() => persistBostaSyncStatus(input.orderId, "cancelled")),
-          );
+          yield* $(Effect.promise(() => persistBostaSyncStatus(input.orderId, "cancelled")));
 
           yield* $(
             Effect.promise(() =>
               logOrderEvent({
                 orderId: input.orderId,
                 action: "bosta_cancelled",
-                note: `Bosta delivery cancelled by ${ctx.clientSession.email}`,
+                note: `Bosta delivery ${trackingNumber} (id ${orderRow.bostaDeliveryId ?? "?"}) terminated by ${ctx.clientSession.email}`,
               }),
             ),
           );
 
-          return { success: true };
+          return { success: true, trackingNumber };
         }).pipe(provideDatabase(ctx)),
       ).then(serializeBackendEffectResult);
     }),
 });
-

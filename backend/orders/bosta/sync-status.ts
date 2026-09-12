@@ -1,7 +1,8 @@
-import { db } from "#root/shared/database/drizzle/db";
+import { db, type DatabaseClient } from "#root/shared/database/drizzle/db";
 import { order } from "#root/shared/database/drizzle/schema";
 import { eq } from "drizzle-orm";
 import type { BostaDeliveryResult } from "./service";
+import { getBostaStateName } from "./states";
 
 /** Persisted on the order row for dashboard debugging */
 export type BostaSyncStatus =
@@ -11,12 +12,17 @@ export type BostaSyncStatus =
   | "skipped"
   | "cancelled";
 
+/** Bosta state code written locally when we terminate a delivery ourselves. */
+export const BOSTA_TERMINATED_STATE_CODE = 48;
+
 export async function persistBostaSyncStatus(
   orderId: string,
   status: BostaSyncStatus,
   opts?: {
     error?: string | null;
     delivery?: BostaDeliveryResult;
+    /** Use an existing client (e.g. inside a request) instead of opening one. */
+    client?: DatabaseClient;
   },
 ): Promise<void> {
   const now = new Date();
@@ -47,8 +53,8 @@ export async function persistBostaSyncStatus(
   } else if (status === "cancelled") {
     Object.assign(base, {
       bostaSyncError: null,
-      bostaStatus: "CANCELLED",
-      bostaStatusCode: "46",
+      bostaStatus: getBostaStateName(BOSTA_TERMINATED_STATE_CODE),
+      bostaStatusCode: String(BOSTA_TERMINATED_STATE_CODE),
       bostaStatusUpdatedAt: now,
     });
   } else if (status === "pending") {
@@ -57,7 +63,7 @@ export async function persistBostaSyncStatus(
     });
   }
 
-  await db()
+  await (opts?.client ?? db())
     .update(order)
     .set(base)
     .where(eq(order.id, orderId))
