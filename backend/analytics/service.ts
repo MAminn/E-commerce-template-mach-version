@@ -243,7 +243,13 @@ export const getPlatformHealth = () =>
         .from(pixelConfig)
         .execute();
 
-      // Delivery stats per platform (last 7 days)
+      // Delivery stats per platform (last 7 days).
+      //
+      // Rows carrying a skippedReason were deliberately not sent (a TikTok
+      // page view the browser already reported, say). Counting those as
+      // failures would show a permanently "down" platform that is in fact
+      // working exactly as configured, so they are excluded from the health
+      // numbers entirely.
       const deliveryStats = await db
         .select({
           platform: trackingEventDelivery.platform,
@@ -251,7 +257,12 @@ export const getPlatformHealth = () =>
           total: count(),
         })
         .from(trackingEventDelivery)
-        .where(gte(trackingEventDelivery.createdAt, sevenDaysAgo))
+        .where(
+          and(
+            gte(trackingEventDelivery.createdAt, sevenDaysAgo),
+            isNull(trackingEventDelivery.skippedReason),
+          ),
+        )
         .groupBy(trackingEventDelivery.platform, trackingEventDelivery.sent)
         .execute();
 

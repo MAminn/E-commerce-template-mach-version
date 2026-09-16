@@ -379,6 +379,13 @@
       "when": 1789146677938,
       "tag": "0053_fawaterak_payment_method",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789233077938,
+      "tag": "0054_pixel_delivery_diagnostics",
+      "breakpoints": true
     }
   ]
 }

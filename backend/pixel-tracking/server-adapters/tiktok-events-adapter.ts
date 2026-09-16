@@ -8,14 +8,56 @@ import type { EnrichedTrackingEvent } from "#root/backend/pixel-tracking/event-l
 import type {
   ServerPixelAdapter,
   AdapterDeliveryResult,
+  SendEventsOptions,
 } from "./types";
+import {
+  parseJsonBody,
+  postJsonWithRetry,
+  sanitizeResponseBody,
+} from "./http";
 
 /** TikTok Events API v1.3 endpoint */
 const TIKTOK_API_URL =
   "https://business-api.tiktok.com/open_api/v1.3/event/track/";
 
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 500;
+/**
+ * Whether this configuration should send `Pageview` to the Events API.
+ *
+ * TikTok documents `event_id` deduplication only for
+ * `ttq.track(name, properties, { event_id })`. Page views are reported by
+ * `ttq.page()`, whose documented signature takes no event id, and "Pageview"
+ * is not in TikTok's published Standard Events list. So a browser page view
+ * and a server page view cannot be paired — only one of the two paths may
+ * send them.
+ *
+ * That gives three cases, and only the third suppresses anything:
+ *
+ *   browser-only (enableClientSide, no server)
+ *       Browser sends ttq.page(). Server sends nothing — it isn't running.
+ *
+ *   server-only (enableServerSide, no client)
+ *       No browser page view exists, so the server MUST send Pageview or the
+ *       merchant loses page views entirely. Sent.
+ *
+ *   both enabled
+ *       The browser already sent ttq.page(). Sending a server copy would
+ *       double-count, with no way to deduplicate it. Skipped by default and
+ *       reported as skipped, never silently dropped.
+ *
+ * The last case is overridable per configuration for merchants who would
+ * rather have the server-side signal and accept the double count (for
+ * example while the browser pixel is blocked for most of their traffic):
+ *
+ *   pixel_config.settings = { "serverSidePageView": true }
+ */
+function serverSidePageViewEnabled(config: PixelConfig): boolean {
+  // Explicit opt-in always wins.
+  if (config.settings?.serverSidePageView === true) return true;
+  // Explicit opt-out always wins too.
+  if (config.settings?.serverSidePageView === false) return false;
+  // Otherwise: send unless the browser pixel is also running for this config.
+  return !config.enableClientSide;
+}
 
 /**
  * Map our internal event name to TikTok's event name.
@@ -29,9 +71,7 @@ function mapEventName(eventName: string): string {
 /**
  * Build the TikTok `user` object from server context.
  */
-function buildUserData(
-  event: EnrichedTrackingEvent,
-): Record<string, unknown> {
+function buildUserData(event: EnrichedTrackingEvent): Record<string, unknown> {
   const ctx = event.serverContext;
   const user: Record<string, unknown> = {};
 
@@ -100,89 +140,185 @@ function buildTikTokEvent(
   return tiktokEvent;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Shape of the parts of TikTok's response we interpret. */
+interface TikTokResponseFacts {
+  code?: number;
+  message?: string;
+  requestId?: string;
 }
 
 /**
- * Send events to TikTok's Events API with retry logic.
+ * Read TikTok's response envelope.
+ *
+ * TikTok answers HTTP 200 for application-level failures too:
+ *
+ *   { "code": 0,     "message": "OK",               "request_id": "…" }
+ *   { "code": 40100, "message": "Access token …",   "request_id": "…" }
+ *
+ * Only `code === 0` is success. Treating `response.ok` as success is what
+ * makes an invalid token or a mismatched pixel id look like a healthy
+ * integration in the delivery log.
+ */
+export function readTikTokResponse(
+  body: string | undefined,
+): TikTokResponseFacts | undefined {
+  const json = parseJsonBody(body);
+  if (!json) return undefined;
+
+  const facts: TikTokResponseFacts = {};
+  if (typeof json.code === "number") facts.code = json.code;
+  if (typeof json.message === "string") facts.message = json.message;
+  if (typeof json.request_id === "string") facts.requestId = json.request_id;
+  return facts;
+}
+
+/**
+ * Send events to TikTok's Events API.
  */
 async function sendToTikTokEventsAPI(
   events: EnrichedTrackingEvent[],
   config: PixelConfig,
+  options?: SendEventsOptions,
 ): Promise<AdapterDeliveryResult> {
+  const base = { platform: PixelPlatform.TIKTOK, configId: config.id } as const;
+
   const accessToken = config.accessToken;
   if (!accessToken) {
     return {
-      platform: PixelPlatform.TIKTOK,
+      ...base,
       success: false,
       error: "Missing access token for TikTok Events API",
+      retryable: false,
     };
   }
 
-  const body = JSON.stringify({
+  const sendable =
+    serverSidePageViewEnabled(config) || options?.includePageViews === true
+      ? events
+    : events.filter(
+        (event) => event.eventName !== TrackingEventName.PAGE_VIEWED,
+      );
+  const skippedIds = events
+    .filter((event) => !sendable.includes(event))
+    .map((event) => event.eventId);
+  const skipped =
+    skippedIds.length > 0
+      ? {
+          skipped: {
+            eventIds: skippedIds,
+            reason:
+              "Browser tracking is enabled for this TikTok pixel, so the page view was already sent by ttq.page(). TikTok documents no event_id for page views, so a server copy could not be deduplicated. Set settings.serverSidePageView = true to send it anyway and accept the double count.",
+          },
+        }
+      : {};
+
+  if (sendable.length === 0) {
+    return { ...base, success: true, acceptedCount: 0, attempts: 0, ...skipped };
+  }
+
+  const payload: Record<string, unknown> = {
     event_source: "web",
     event_source_id: config.pixelId,
-    data: events.map(buildTikTokEvent),
+    data: sendable.map(buildTikTokEvent),
+  };
+  // Only ever set for an explicit admin test request.
+  if (options?.testEventCode) payload.test_event_code = options.testEventCode;
+
+  const attempt = await postJsonWithRetry({
+    url: TIKTOK_API_URL,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Token": accessToken,
+    },
+    body: JSON.stringify(payload),
+    ...(options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options?.maxAttempts !== undefined
+      ? { maxAttempts: options.maxAttempts }
+      : {}),
+    ...(options?.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
   });
 
-  let lastError: string | undefined;
-  let lastStatusCode: number | undefined;
-  let lastResponseBody: string | undefined;
+  const responseBody = sanitizeResponseBody(attempt.body);
+  const facts = readTikTokResponse(attempt.body);
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await fetch(TIKTOK_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Token": accessToken,
-        },
-        body,
-      });
+  if (attempt.networkError) {
+    return {
+      ...base,
+      success: false,
+      error: attempt.networkError,
+      attempts: attempt.attempts,
+      retryable: attempt.retryable,
+      ...skipped,
+    };
+  }
 
-      lastStatusCode = response.status;
-      lastResponseBody = await response.text();
+  const status = attempt.status ?? 0;
+  const httpOk = status >= 200 && status < 300;
 
-      if (response.ok) {
-        return {
-          platform: PixelPlatform.TIKTOK,
-          success: true,
-          statusCode: response.status,
-          responseBody: lastResponseBody,
-        };
-      }
+  if (!httpOk) {
+    return {
+      ...base,
+      success: false,
+      statusCode: status,
+      ...(facts?.code !== undefined ? { platformCode: String(facts.code) } : {}),
+      ...(facts?.message ? { platformMessage: facts.message } : {}),
+      ...(facts?.requestId ? { requestId: facts.requestId } : {}),
+      ...(responseBody ? { responseBody } : {}),
+      error: facts?.message ?? `TikTok Events API returned ${status}`,
+      attempts: attempt.attempts,
+      retryable: attempt.retryable,
+      ...skipped,
+    };
+  }
 
-      if (
-        response.status >= 400 &&
-        response.status < 500 &&
-        response.status !== 429
-      ) {
-        return {
-          platform: PixelPlatform.TIKTOK,
-          success: false,
-          statusCode: response.status,
-          responseBody: lastResponseBody,
-          error: `TikTok Events API returned ${response.status}`,
-        };
-      }
+  if (!facts || facts.code === undefined) {
+    return {
+      ...base,
+      success: false,
+      statusCode: status,
+      ...(facts?.requestId ? { requestId: facts.requestId } : {}),
+      ...(responseBody ? { responseBody } : {}),
+      error: "TikTok Events API returned a response without a result code",
+      attempts: attempt.attempts,
+      retryable: false,
+      ...skipped,
+    };
+  }
 
-      lastError = `TikTok Events API returned ${response.status}`;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
-
-    if (attempt < MAX_RETRIES) {
-      await sleep(BASE_DELAY_MS * 2 ** (attempt - 1));
-    }
+  if (facts.code !== 0) {
+    return {
+      ...base,
+      success: false,
+      statusCode: status,
+      platformCode: String(facts.code),
+      ...(facts.message ? { platformMessage: facts.message } : {}),
+      ...(facts.requestId ? { requestId: facts.requestId } : {}),
+      ...(responseBody ? { responseBody } : {}),
+      error: facts.message
+        ? `TikTok Events API error ${facts.code}: ${facts.message}`
+        : `TikTok Events API error ${facts.code}`,
+      attempts: attempt.attempts,
+      // TikTok's rate-limit / server-busy codes are the only retryable class; the
+      // rest (bad token, unknown pixel) repeat identically.
+      retryable: facts.code === 40100 ? false : facts.code >= 50000,
+      ...skipped,
+    };
   }
 
   return {
-    platform: PixelPlatform.TIKTOK,
-    success: false,
-    statusCode: lastStatusCode,
-    responseBody: lastResponseBody,
-    error: lastError ?? "Max retries exceeded",
+    ...base,
+    success: true,
+    statusCode: status,
+    platformCode: "0",
+    ...(facts.message ? { platformMessage: facts.message } : {}),
+    ...(facts.requestId ? { requestId: facts.requestId } : {}),
+    // TikTok's envelope reports no per-event count, so we record only what we
+    // sent — it is not evidence that every event was accepted.
+    acceptedCount: sendable.length,
+    ...(responseBody ? { responseBody } : {}),
+    attempts: attempt.attempts,
+    retryable: false,
+    ...skipped,
   };
 }
 
@@ -192,6 +328,8 @@ export {
   buildProperties,
   buildTikTokEvent,
   sendToTikTokEventsAPI,
+  serverSidePageViewEnabled,
+  TIKTOK_API_URL,
 };
 
 export const tiktokEventsAdapter: ServerPixelAdapter = {
@@ -200,7 +338,8 @@ export const tiktokEventsAdapter: ServerPixelAdapter = {
   async sendEvents(
     events: EnrichedTrackingEvent[],
     config: PixelConfig,
+    options?: SendEventsOptions,
   ): Promise<AdapterDeliveryResult> {
-    return sendToTikTokEventsAPI(events, config);
+    return sendToTikTokEventsAPI(events, config, options);
   },
 };

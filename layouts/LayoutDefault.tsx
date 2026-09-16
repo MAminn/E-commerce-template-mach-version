@@ -23,6 +23,8 @@ import {
   useTemplate,
 } from "#root/frontend/contexts/TemplateContext";
 import { TrackingProvider } from "#root/frontend/contexts/TrackingContext";
+import { ConsentProvider } from "#root/frontend/contexts/ConsentContext";
+import { ConsentBanner } from "#root/frontend/components/ConsentBanner";
 import { Toaster as ShadcnToaster } from "#root/components/ui/toaster";
 import {
   NavbarModeContext,
@@ -266,6 +268,11 @@ function LayoutShell({
   const inner = (
     <LayoutSettingsContext.Provider value={layoutSettings}>
       <NavbarModeContext.Provider value={navbarMode}>
+        {/* ConsentProvider wraps TrackingProvider: the tracking runtime reads
+            the decision on mount and listens for changes, so a pixel marked
+            "consent required" only initializes once the matching category is
+            granted — and is torn down again if it is withdrawn. */}
+        <ConsentProvider>
         <TrackingProvider>
           <main
             id='page-content'
@@ -315,7 +322,11 @@ function LayoutShell({
               className='page-transition-overlay'
             />
           </main>
+          {/* Storefront only — the dashboard is staff, not a visitor
+              subject to the marketing-consent banner. */}
+          {!isDashboardRoute && <ConsentBanner />}
         </TrackingProvider>
+        </ConsentProvider>
       </NavbarModeContext.Provider>
     </LayoutSettingsContext.Provider>
   );

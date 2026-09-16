@@ -48,121 +48,26 @@ export const updateConsentSchema = z.object({
 export type RecordConsentInput = z.infer<typeof recordConsentSchema>;
 export type UpdateConsentInput = z.infer<typeof updateConsentSchema>;
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Pure helpers ───────────────────────────────────────────────────────────
+//
+// The cookie/state helpers live in `shared/utils/consent-gate.ts` so the
+// browser can import them without dragging this file's database imports into
+// the client bundle. They are re-exported here so existing server-side
+// callers and tests keep working unchanged.
+
+export {
+  CONSENT_COOKIE_NAME,
+  getDefaultConsentState,
+  buildAcceptAllConsent,
+  buildRejectAllConsent,
+  isConsentExpired,
+  getAllowedPlatforms,
+  serializeConsentCookie,
+  deserializeConsentCookie,
+} from "#root/shared/utils/consent-gate";
 
 /** Consent is valid for 12 months from the date it was given. */
 const CONSENT_VALIDITY_MS = 365 * 24 * 60 * 60 * 1000;
-
-// ─── Default Consent State ──────────────────────────────────────────────────
-
-/**
- * Default consent state — only functional tracking is allowed.
- * This is the state before the user interacts with the consent banner.
- */
-export function getDefaultConsentState(): ConsentState {
-  return {
-    given: false,
-    categories: {
-      functional: true,
-      analytics: false,
-      marketing: false,
-    },
-    method: "implied",
-    expiresAt: null,
-  };
-}
-
-/**
- * Build a ConsentState where all categories are accepted.
- */
-export function buildAcceptAllConsent(method: ConsentMethodType): ConsentState {
-  return {
-    given: true,
-    categories: {
-      functional: true,
-      analytics: true,
-      marketing: true,
-    },
-    method,
-    expiresAt: new Date(Date.now() + CONSENT_VALIDITY_MS),
-  };
-}
-
-/**
- * Build a ConsentState where only functional is allowed (reject marketing & analytics).
- */
-export function buildRejectAllConsent(method: ConsentMethodType): ConsentState {
-  return {
-    given: true, // User has made a choice, even if it's to reject
-    categories: {
-      functional: true,
-      analytics: false,
-      marketing: false,
-    },
-    method,
-    expiresAt: new Date(Date.now() + CONSENT_VALIDITY_MS),
-  };
-}
-
-/**
- * Check whether a consent state has expired.
- */
-export function isConsentExpired(state: ConsentState): boolean {
-  if (!state.expiresAt) return false; // No expiry = not expired
-  return new Date() > new Date(state.expiresAt);
-}
-
-/**
- * Determines which pixel platforms should fire based on consent categories.
- */
-export function getAllowedPlatforms(
-  categories: ConsentCategories,
-): { analytics: boolean; marketing: boolean } {
-  return {
-    analytics: categories.analytics,
-    marketing: categories.marketing,
-  };
-}
-
-// ─── Cookie Name Constants ──────────────────────────────────────────────────
-
-export const CONSENT_COOKIE_NAME = "_tracking_consent";
-
-/**
- * Serialize consent state for cookie storage.
- */
-export function serializeConsentCookie(state: ConsentState): string {
-  return JSON.stringify({
-    g: state.given ? 1 : 0,
-    a: state.categories.analytics ? 1 : 0,
-    m: state.categories.marketing ? 1 : 0,
-    mt: state.method,
-    ex: state.expiresAt ? new Date(state.expiresAt).getTime() : null,
-  });
-}
-
-/**
- * Deserialize consent state from cookie.
- */
-export function deserializeConsentCookie(
-  cookieValue: string,
-): ConsentState | null {
-  try {
-    const data = JSON.parse(cookieValue);
-    return {
-      given: data.g === 1,
-      categories: {
-        functional: true, // Always true
-        analytics: data.a === 1,
-        marketing: data.m === 1,
-      },
-      method: data.mt || "implied",
-      expiresAt: data.ex ? new Date(data.ex) : null,
-    };
-  } catch {
-    return null;
-  }
-}
 
 // ─── DB Service Functions ───────────────────────────────────────────────────
 

@@ -8,21 +8,36 @@ import React, {
   useCallback,
   type ReactNode,
 } from "react";
+import { usePageContext } from "vike-react/usePageContext";
 import { v7 } from "uuid";
 import {
   TrackingEventName,
+  type ConsentState,
   type TrackingEvent,
   type EcommerceEventData,
   type PixelConfig,
   type CustomTrackingEventConfig,
 } from "#root/shared/types/pixel-tracking";
+import {
+  CONSENT_COOKIE,
+  parseConsentCookieValue,
+} from "#root/shared/utils/consent-gate";
 import { trackingEventBus } from "#root/shared/utils/tracking-event-bus";
 import { getSessionId } from "#root/shared/utils/session-id";
 import { trpc } from "#root/shared/trpc/client";
-import { PixelAdapterRegistry } from "#root/frontend/pixel-adapters/registry";
-import { createAdapterForPlatform } from "#root/frontend/pixel-adapters/factory";
+import {
+  TrackingRuntime,
+  type TrackingRuntimeDiagnostics,
+} from "#root/frontend/tracking/tracking-runtime";
 import { CustomEventTriggerManager } from "#root/frontend/tracking/custom-event-triggers";
 import { EngagementTracker } from "#root/frontend/pixel-adapters/engagement-tracker";
+
+// ─── Cross-component signals ────────────────────────────────────────────────
+
+/** Dispatched by the admin pixels page after a configuration is saved. */
+export const PIXEL_CONFIGS_CHANGED_EVENT = "tracking:pixel-configs-changed";
+/** Dispatched by ConsentContext when the visitor's choice changes. */
+export const CONSENT_CHANGED_EVENT = "tracking:consent-changed";
 
 // ─── UTM Parsing ────────────────────────────────────────────────────────────
 
@@ -51,6 +66,22 @@ function parseUtmParams(): UtmParams {
   return utm;
 }
 
+// ─── Consent ────────────────────────────────────────────────────────────────
+
+/**
+ * Read the stored decision so a returning visitor keeps their choice across
+ * reloads without the banner re-asking. Uses the same parser as the beacon
+ * endpoint — a second implementation here is how browser and server gating
+ * would quietly diverge.
+ */
+export function readConsentCookie(): ConsentState | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${CONSENT_COOKIE}=([^;]*)`),
+  );
+  return parseConsentCookieValue(match?.[1]);
+}
+
 // ─── Context Types ──────────────────────────────────────────────────────────
 
 interface TrackingContextValue {
@@ -62,6 +93,23 @@ interface TrackingContextValue {
     },
   ) => void;
   sessionId: string;
+  /**
+   * Fire one event at a single pixel configuration, for the admin browser
+   * test. Returns whether the vendor SDK accepted the call — never whether
+   * the platform received it.
+   */
+  dispatchToConfig: (
+    configId: string,
+    eventName: TrackingEventName | string,
+    data?: {
+      ecommerce?: EcommerceEventData;
+      customProperties?: Record<string, unknown>;
+    },
+  ) => { dispatched: boolean; eventId: string };
+  /** Re-read pixel configurations (after an admin change). */
+  refreshPixelConfigs: () => Promise<void>;
+  /** Adapter lifecycle snapshot for the admin diagnostics view. */
+  getDiagnostics: () => TrackingRuntimeDiagnostics | null;
 }
 
 const TrackingContext = createContext<TrackingContextValue | undefined>(
@@ -73,6 +121,11 @@ const TrackingContext = createContext<TrackingContextValue | undefined>(
 export function TrackingProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState<string>("");
   const utmRef = useRef<UtmParams>({});
+  const pageContext = usePageContext();
+  const currentUrl = `${pageContext.urlPathname ?? ""}${
+    (pageContext as { urlParsed?: { searchOriginal?: string | null } })
+      .urlParsed?.searchOriginal ?? ""
+  }`;
 
   // Initialize session ID and UTM params once
   useEffect(() => {
@@ -80,9 +133,9 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     utmRef.current = parseUtmParams();
   }, []);
 
-  // ── Pixel Adapter Wiring ────────────────────────────────────────────────
-  const registryRef = useRef<PixelAdapterRegistry | null>(null);
-  const hasFiredInitialPageView = useRef(false);
+  // ── Tracking runtime (adapters, buffering, consent) ─────────────────────
+  const runtimeRef = useRef<TrackingRuntime | null>(null);
+  const lastPageViewUrl = useRef<string | null>(null);
   const trackEventRef = useRef<
     (
       eventName: TrackingEventName | string,
@@ -184,6 +237,28 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /** Build a canonical TrackingEvent. Callers own what happens to it. */
+  const buildEvent = useCallback(
+    (
+      eventName: TrackingEventName | string,
+      data?: {
+        ecommerce?: EcommerceEventData;
+        customProperties?: Record<string, unknown>;
+      },
+    ): TrackingEvent => ({
+      eventId: v7(),
+      eventName,
+      timestamp: Date.now(),
+      pageUrl: typeof window !== "undefined" ? window.location.href : "",
+      referrer: typeof document !== "undefined" ? document.referrer : undefined,
+      sessionId: sessionId || getSessionId(),
+      ...utmRef.current,
+      ecommerce: data?.ecommerce,
+      customProperties: data?.customProperties,
+    }),
+    [sessionId],
+  );
+
   const trackEvent = useCallback(
     (
       eventName: TrackingEventName | string,
@@ -192,20 +267,10 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
         customProperties?: Record<string, unknown>;
       },
     ) => {
-      const event: TrackingEvent = {
-        eventId: v7(),
-        eventName,
-        timestamp: Date.now(),
-        pageUrl: typeof window !== "undefined" ? window.location.href : "",
-        referrer:
-          typeof document !== "undefined" ? document.referrer : undefined,
-        sessionId: sessionId || getSessionId(),
-        ...utmRef.current,
-        ecommerce: data?.ecommerce,
-        customProperties: data?.customProperties,
-      };
+      const event = buildEvent(eventName, data);
 
-      // Emit to the event bus — adapters receive via broadcastEvent subscription
+      // Emit to the event bus — the runtime receives it via its subscription
+      // and either dispatches it or queues it until adapters exist.
       trackingEventBus.emit(event);
 
       // Buffer event for server-side beacon relay
@@ -219,7 +284,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
         console.debug("[Tracking]", event.eventName, event);
       }
     },
-    [sessionId, bufferEvent],
+    [buildEvent, bufferEvent],
   );
   trackEventRef.current = trackEvent;
 
@@ -227,60 +292,85 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     // Only run client-side
     if (typeof window === "undefined") return;
 
-    let cancelled = false;
-    const registry = new PixelAdapterRegistry();
-    registryRef.current = registry;
-
-    const fireInitialPageView = () => {
-      if (hasFiredInitialPageView.current) return;
-      hasFiredInitialPageView.current = true;
-      trackEventRef.current(TrackingEventName.PAGE_VIEWED);
-    };
-
-    // Fetch enabled client-side configs and bootstrap adapters
-    trpc.pixelTracking.config.listActive
-      .query()
-      .then((result) => {
-        if (cancelled) return;
-        if (result.success) {
-          const configs = result.result as PixelConfig[];
-
-          for (const config of configs) {
-            const adapter = createAdapterForPlatform(config.platform);
-            if (adapter) {
-              adapter.initialize(config);
-              registry.register(adapter);
-            }
-          }
+    const runtime = new TrackingRuntime({
+      loadConfigs: async () => {
+        const result = await trpc.pixelTracking.config.listActive.query();
+        if (!result.success) {
+          throw new Error("Pixel configuration request was rejected");
         }
+        return result.result as PixelConfig[];
+      },
+      onError: (message, error) => {
+        // A silent failure here means no browser pixels at all while the
+        // server beacon keeps reporting events, which reads as "tracking
+        // works". Always leave a trace.
+        console.error(message, error);
+      },
+    });
+    runtimeRef.current = runtime;
+    runtime.setConsent(readConsentCookie());
 
-        fireInitialPageView();
-      })
-      .catch(() => {
-        // Pixel config fetch failed — gracefully degrade, no pixels fire
-        if (
-          typeof window !== "undefined" &&
-          window.location.hostname === "localhost"
-        ) {
-          console.debug("[Tracking] Failed to fetch pixel configs");
-        }
-        if (!cancelled) {
-          fireInitialPageView();
-        }
-      });
+    // Local-development inspection hook: lets a browser session (or an
+    // automated one) read adapter lifecycle state without a React handle.
+    // Never installed on a real hostname.
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      (window as unknown as Record<string, unknown>).__machTracking = {
+        getDiagnostics: () => runtime.getDiagnostics(),
+        refresh: () => runtime.refresh(),
+      };
+    }
 
-    // Subscribe registry.broadcastEvent to the event bus
+    // Subscribe the runtime to the event bus before loading configs so events
+    // emitted during the request are queued rather than lost.
     const unsubscribe = trackingEventBus.subscribe((event) => {
-      registry.broadcastEvent(event);
+      runtime.handleEvent(event);
+    });
+
+    const handleConsentChanged = (e: Event) => {
+      const detail = (e as CustomEvent<ConsentState>).detail;
+      runtime.setConsent(detail ?? readConsentCookie());
+    };
+    const handleConfigsChanged = () => {
+      void runtime.refresh();
+    };
+    window.addEventListener(CONSENT_CHANGED_EVENT, handleConsentChanged);
+    window.addEventListener(PIXEL_CONFIGS_CHANGED_EVENT, handleConfigsChanged);
+
+    void runtime.initialize().finally(() => {
+      // Initial page view, fired once adapters exist so it carries an event id
+      // that deduplicates against the server-side event of the same name.
+      if (runtimeRef.current !== runtime) return;
+      if (lastPageViewUrl.current !== null) return;
+      lastPageViewUrl.current =
+        typeof window !== "undefined" ? window.location.href : "";
+      trackEventRef.current(TrackingEventName.PAGE_VIEWED);
     });
 
     return () => {
-      cancelled = true;
       unsubscribe();
-      registry.destroyAll();
-      registryRef.current = null;
+      window.removeEventListener(CONSENT_CHANGED_EVENT, handleConsentChanged);
+      window.removeEventListener(
+        PIXEL_CONFIGS_CHANGED_EVENT,
+        handleConfigsChanged,
+      );
+      runtime.destroy();
+      runtimeRef.current = null;
+      delete (window as unknown as Record<string, unknown>).__machTracking;
     };
   }, []);
+
+  // ── Client-side navigation page views ───────────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // The initial page view is fired by the bootstrap effect above. This only
+    // covers real client-side navigations, and only when the URL changed.
+    if (lastPageViewUrl.current === null) return;
+    if (lastPageViewUrl.current === window.location.href) return;
+
+    lastPageViewUrl.current = window.location.href;
+    trackEventRef.current(TrackingEventName.PAGE_VIEWED);
+  }, [currentUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -346,9 +436,45 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     };
   }, [trackEvent]);
 
+  const dispatchToConfig = useCallback<
+    TrackingContextValue["dispatchToConfig"]
+  >(
+    (configId, eventName, data) => {
+      const event = buildEvent(eventName, data);
+      const runtime = runtimeRef.current;
+      if (!runtime) return { dispatched: false, eventId: event.eventId };
+      return {
+        dispatched: runtime.dispatchToConfig(configId, event),
+        eventId: event.eventId,
+      };
+    },
+    [buildEvent],
+  );
+
+  const refreshPixelConfigs = useCallback(async () => {
+    await runtimeRef.current?.refresh();
+  }, []);
+
+  const getDiagnostics = useCallback(
+    () => runtimeRef.current?.getDiagnostics() ?? null,
+    [],
+  );
+
   const value = useMemo<TrackingContextValue>(
-    () => ({ trackEvent, sessionId }),
-    [trackEvent, sessionId],
+    () => ({
+      trackEvent,
+      sessionId,
+      dispatchToConfig,
+      refreshPixelConfigs,
+      getDiagnostics,
+    }),
+    [
+      trackEvent,
+      sessionId,
+      dispatchToConfig,
+      refreshPixelConfigs,
+      getDiagnostics,
+    ],
   );
 
   return (

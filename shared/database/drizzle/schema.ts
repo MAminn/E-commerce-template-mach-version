@@ -1205,9 +1205,31 @@ export const trackingEventDelivery = pgTable("tracking_event_delivery", {
       onUpdate: "cascade",
     }),
   platform: pixelPlatform("platform").notNull(),
+  /**
+   * Which pixel configuration this delivery targeted. Nullable so historical
+   * rows written before per-configuration attribution stay readable.
+   */
+  pixelConfigId: uuid("pixel_config_id").references(() => pixelConfig.id, {
+    onDelete: "set null",
+    onUpdate: "cascade",
+  }),
   sent: boolean("sent").notNull().default(false),
   sentAt: timestamp("sent_at", { withTimezone: true, mode: "date" }),
   platformEventId: text("platform_event_id"),
+  /** HTTP status of the final delivery attempt. */
+  statusCode: integer("status_code"),
+  /** Application-level code: TikTok `code`, Meta `error.code`. */
+  platformCode: text("platform_code"),
+  /** Platform-supplied message (secret-scrubbed, truncated). */
+  platformMessage: text("platform_message"),
+  /** `fbtrace_id` / `request_id` — the identifier platform support asks for. */
+  requestId: text("request_id"),
+  /** Events the platform reported receiving for the batch. */
+  acceptedCount: integer("accepted_count"),
+  /** HTTP attempts made, including the first. */
+  attempts: integer("attempts"),
+  /** Set when the event was deliberately not sent; carries the reason. */
+  skippedReason: text("skipped_reason"),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .defaultNow()

@@ -1,9 +1,19 @@
 import { query } from "#root/shared/database/drizzle/db";
 import {
+  pixelConfig,
   trackingEvent,
   trackingEventDelivery,
 } from "#root/shared/database/drizzle/schema";
-import { desc, eq, and, sql, count, gte, countDistinct, isNull } from "drizzle-orm";
+import {
+  desc,
+  eq,
+  and,
+  count,
+  gte,
+  countDistinct,
+  isNull,
+  isNotNull,
+} from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 
@@ -38,8 +48,16 @@ export const listTrackingEvents = (input: z.infer<typeof listEventsSchema>) =>
           // Delivery fields
           deliveryId: trackingEventDelivery.id,
           platform: trackingEventDelivery.platform,
+          pixelConfigId: trackingEventDelivery.pixelConfigId,
           sent: trackingEventDelivery.sent,
           sentAt: trackingEventDelivery.sentAt,
+          statusCode: trackingEventDelivery.statusCode,
+          platformCode: trackingEventDelivery.platformCode,
+          platformMessage: trackingEventDelivery.platformMessage,
+          requestId: trackingEventDelivery.requestId,
+          acceptedCount: trackingEventDelivery.acceptedCount,
+          attempts: trackingEventDelivery.attempts,
+          skippedReason: trackingEventDelivery.skippedReason,
           error: trackingEventDelivery.error,
         })
         .from(trackingEvent)
@@ -141,6 +159,60 @@ export const getDeliveryStats = () =>
         .groupBy(trackingEventDelivery.platform, trackingEventDelivery.sent)
         .execute();
 
+      // Deliveries success/fail per pixel CONFIGURATION. Two pixels of the
+      // same platform (one healthy, one with a stale token) are indistinguish-
+      // able when the numbers are only grouped by platform — which is exactly
+      // the case where an ad account looks fine while it receives nothing.
+      const configStats = await db
+        .select({
+          pixelConfigId: trackingEventDelivery.pixelConfigId,
+          platform: trackingEventDelivery.platform,
+          pixelId: pixelConfig.pixelId,
+          sent: trackingEventDelivery.sent,
+          total: count(),
+        })
+        .from(trackingEventDelivery)
+        .leftJoin(
+          pixelConfig,
+          eq(trackingEventDelivery.pixelConfigId, pixelConfig.id),
+        )
+        .where(gte(trackingEventDelivery.createdAt, week))
+        .groupBy(
+          trackingEventDelivery.pixelConfigId,
+          trackingEventDelivery.platform,
+          pixelConfig.pixelId,
+          trackingEventDelivery.sent,
+        )
+        .execute();
+
+      // Deliveries that were deliberately not sent (e.g. TikTok page views
+      // that cannot be deduplicated), so "not sent" never reads as "failed".
+      const [skippedResult] = await db
+        .select({ total: count() })
+        .from(trackingEventDelivery)
+        .where(
+          and(
+            gte(trackingEventDelivery.createdAt, week),
+            isNotNull(trackingEventDelivery.skippedReason),
+          ),
+        )
+        .execute();
+
+      // Deliveries the platform rejected. There is no automatic re-delivery
+      // (see the retry note in delivery-pipeline.ts), so this number is the
+      // only signal that events were lost — it has to be visible.
+      const [failedResult] = await db
+        .select({ total: count() })
+        .from(trackingEventDelivery)
+        .where(
+          and(
+            gte(trackingEventDelivery.createdAt, week),
+            eq(trackingEventDelivery.sent, false),
+            isNull(trackingEventDelivery.skippedReason),
+          ),
+        )
+        .execute();
+
       return {
         events24h: events24h?.total ?? 0,
         events7d: events7d?.total ?? 0,
@@ -150,6 +222,9 @@ export const getDeliveryStats = () =>
         sessions30d: sessions30d?.total ?? 0,
         eventTypeCounts,
         platformStats,
+        configStats,
+        skipped7d: skippedResult?.total ?? 0,
+        failed7d: failedResult?.total ?? 0,
       };
     });
   });

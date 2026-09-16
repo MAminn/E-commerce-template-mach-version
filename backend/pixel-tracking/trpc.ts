@@ -5,6 +5,7 @@ import { eventDeliveryRouter } from "./event-delivery/trpc";
 import { customEventsRouter } from "./custom-events/trpc";
 import { attributionRouter } from "./attribution/trpc";
 import { consentRouter } from "./consent/trpc";
+import { pixelTestRouter } from "./pixel-test/trpc";
 
 export const pixelTrackingRouter = t.router({
   trackEvent: trackEventProcedure,
@@ -13,4 +14,5 @@ export const pixelTrackingRouter = t.router({
   customEvents: customEventsRouter,
   attribution: attributionRouter,
   consent: consentRouter,
+  test: pixelTestRouter,
 });

@@ -20,7 +20,7 @@ import {
   serializeConsentCookie,
   deserializeConsentCookie,
   CONSENT_COOKIE_NAME,
-} from "#root/backend/pixel-tracking/consent/service";
+} from "#root/shared/utils/consent-gate";
 
 // ─── Context Types ──────────────────────────────────────────────────────────
 
@@ -37,6 +37,15 @@ interface ConsentContextValue {
   updateCategories: (categories: ConsentCategories) => void;
   /** Dismiss the banner without changing consent (implied consent). */
   dismissBanner: () => void;
+  /**
+   * Re-open the banner so a visitor can change or withdraw a decision they
+   * already made. Without this, consent is a one-way door: the banner never
+   * reappears once a cookie exists, and "reject" would be unreachable after
+   * an accept.
+   */
+  openPreferences: () => void;
+  /** Whether the banner was opened by the visitor rather than shown on entry. */
+  preferencesRequested: boolean;
 }
 
 const ConsentContext = createContext<ConsentContextValue | undefined>(undefined);
@@ -62,6 +71,7 @@ function getCookie(name: string): string | null {
 export function ConsentProvider({ children }: { children: ReactNode }) {
   const [consent, setConsent] = useState<ConsentState>(getDefaultConsentState);
   const [showBanner, setShowBanner] = useState(false);
+  const [preferencesRequested, setPreferencesRequested] = useState(false);
 
   // Load consent from cookie on mount
   useEffect(() => {
@@ -86,6 +96,7 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
     (state: ConsentState) => {
       setConsent(state);
       setShowBanner(false);
+      setPreferencesRequested(false);
       setCookie(CONSENT_COOKIE_NAME, serializeConsentCookie(state), 365);
 
       // Fire a custom event so TrackingContext can react
@@ -97,6 +108,11 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const openPreferences = useCallback(() => {
+    setPreferencesRequested(true);
+    setShowBanner(true);
+  }, []);
 
   const acceptAll = useCallback(() => {
     persistConsent(buildAcceptAllConsent("banner_accept"));
@@ -129,6 +145,7 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
     };
     setConsent(state);
     setShowBanner(false);
+    setPreferencesRequested(false);
     // Don't persist to cookie — banner will reappear on next visit
   }, []);
 
@@ -140,8 +157,19 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
       rejectAll,
       updateCategories,
       dismissBanner,
+      openPreferences,
+      preferencesRequested,
     }),
-    [consent, showBanner, acceptAll, rejectAll, updateCategories, dismissBanner],
+    [
+      consent,
+      showBanner,
+      acceptAll,
+      rejectAll,
+      updateCategories,
+      dismissBanner,
+      openPreferences,
+      preferencesRequested,
+    ],
   );
 
   return (

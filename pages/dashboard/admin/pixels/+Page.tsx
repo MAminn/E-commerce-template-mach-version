@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { trpc } from "#root/shared/trpc/client";
 import { toast } from "sonner";
 import { PixelPlatform } from "#root/shared/types/pixel-tracking";
+import { PIXEL_CONFIGS_CHANGED_EVENT } from "#root/frontend/contexts/TrackingContext";
+import { PixelTestDialog } from "./PixelTestDialog";
 
 import {
   Card,
@@ -144,7 +146,7 @@ export default function AdminPixelsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PixelFormState>(EMPTY_FORM);
-  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testConfig, setTestConfig] = useState<PixelConfigRow | null>(null);
 
   // ── Readiness status state ──────────────────────────────────────────────
   const [platformHealth, setPlatformHealth] = useState<PlatformHealthRow[]>([]);
@@ -283,6 +285,9 @@ export default function AdminPixelsPage() {
         }
       }
       setDialogOpen(false);
+      // Configurations are loaded once per page load, so without this the tab
+      // that just saved keeps running the previous pixel setup.
+      window.dispatchEvent(new CustomEvent(PIXEL_CONFIGS_CHANGED_EVENT));
       await fetchConfigs();
     } catch {
       toast.error("An error occurred while saving");
@@ -301,6 +306,7 @@ export default function AdminPixelsPage() {
       const result = await trpc.pixelTracking.config.delete.mutate({ id });
       if (result.success) {
         toast.success("Pixel configuration deleted");
+        window.dispatchEvent(new CustomEvent(PIXEL_CONFIGS_CHANGED_EVENT));
         await Promise.all([fetchConfigs(), fetchReadinessData()]);
       } else {
         toast.error("Failed to delete pixel configuration");
@@ -311,32 +317,12 @@ export default function AdminPixelsPage() {
   };
 
   // ── Test pixel ──────────────────────────────────────────────────────────
-
-  const handleTestPixel = async (config: PixelConfigRow) => {
-    setTestingId(config.id);
-    try {
-      const { v7 } = await import("uuid");
-      const { trackingEventBus } =
-        await import("#root/shared/utils/tracking-event-bus");
-
-      const testEvent = {
-        eventId: v7(),
-        eventName: "page_viewed",
-        timestamp: Date.now(),
-        pageUrl: window.location.href,
-        sessionId: "test-session",
-      };
-
-      trackingEventBus.emit(testEvent);
-      toast.success(
-        `Test event fired! Check your ${PLATFORM_LABELS[config.platform] ?? config.platform} dashboard for the event.`,
-      );
-    } catch {
-      toast.error("Failed to fire test event");
-    } finally {
-      setTestingId(null);
-    }
-  };
+  //
+  // Opens a dialog with two clearly separated checks (browser SDK dispatch and
+  // server Conversions API), each scoped to this one configuration. The old
+  // button emitted a page_viewed onto the global event bus, which fanned out
+  // to every pixel, skipped the server entirely, was ignored by TikTok, and
+  // reported success regardless of what happened.
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -477,6 +463,7 @@ export default function AdminPixelsPage() {
                               {totalDelivered > 0 ? (
                                 <Badge
                                   variant='outline'
+                                  title='Requests the platform API accepted. Acceptance is not the same as being visible in the platform reporting — confirm that in its Test Events view.'
                                   className={`text-[10px] px-1.5 ${
                                     health?.status === "healthy"
                                       ? "border-green-300 text-green-700"
@@ -484,13 +471,23 @@ export default function AdminPixelsPage() {
                                         ? "border-amber-300 text-amber-700"
                                         : "border-red-300 text-red-700"
                                   }`}>
-                                  {health?.successCount ?? 0} delivered (7d)
+                                  {health?.successCount ?? 0} accepted by API
+                                  (7d)
                                 </Badge>
                               ) : (
                                 <Badge
                                   variant='outline'
+                                  title='No server-side delivery attempts recorded in the last 7 days.'
                                   className='text-[10px] px-1.5 border-muted text-muted-foreground'>
-                                  No deliveries yet
+                                  No API deliveries yet
+                                </Badge>
+                              )}
+                              {(health?.failedCount ?? 0) > 0 && (
+                                <Badge
+                                  variant='outline'
+                                  title='Requests the platform API rejected. These events are not re-sent automatically — fix the cause and the next events will go through, but the rejected ones are gone.'
+                                  className='text-[10px] px-1.5 border-red-300 text-red-700'>
+                                  {health?.failedCount} rejected (7d)
                                 </Badge>
                               )}
                             </div>
@@ -520,7 +517,12 @@ export default function AdminPixelsPage() {
                 {/* Commerce Events Seen */}
                 <div>
                   <p className='text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider'>
-                    Commerce Events (last 30 days)
+                    Commerce events received by this store (last 30 days)
+                  </p>
+                  <p className='text-xs text-muted-foreground mb-2'>
+                    Counted from this store's own event log. It shows the
+                    storefront is emitting events — not that any ad platform
+                    recorded them.
                   </p>
                   <div className='flex flex-wrap gap-2'>
                     {[
@@ -560,6 +562,51 @@ export default function AdminPixelsPage() {
                     </p>
                   )}
                 </div>
+
+                {/* What the numbers on this page do and do not mean */}
+                <div className='flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 border rounded-md px-3 py-2'>
+                  <Info className='w-3.5 h-3.5 mt-0.5 shrink-0' />
+                  <span>
+                    Three different things are reported here.{" "}
+                    <strong>Received by this store</strong> means the browser
+                    reached our own beacon.{" "}
+                    <strong>Accepted by API</strong> means the platform's
+                    Conversions API returned a success for the request.{" "}
+                    <strong>Visible in the platform</strong> can only be
+                    confirmed in Meta Events Manager → Test Events or TikTok
+                    Events Manager → Test Event. Use the Test button on a pixel
+                    to send one event and get its Event ID to match there.
+                  </span>
+                </div>
+
+                {/* Rejected deliveries are not retried — say so plainly */}
+                {platformHealth.some((h) => h.failedCount > 0) && (
+                  <div className='flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2'>
+                    <XCircle className='w-3.5 h-3.5 mt-0.5 shrink-0' />
+                    <span>
+                      Some server-side deliveries were rejected in the last 7
+                      days. Transient failures are retried within the same
+                      request, but an event that still fails is{" "}
+                      <strong>not re-sent later</strong> — there is no
+                      re-delivery queue. Open the event log for the platform
+                      code and message, fix the cause, and check that new
+                      events go through.
+                    </span>
+                  </div>
+                )}
+
+                {/* Consent-gated pixels will not load without a decision */}
+                {configs.some((c) => c.enabled && c.consentRequired) && (
+                  <div className='flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2'>
+                    <AlertTriangle className='w-3.5 h-3.5 mt-0.5 shrink-0' />
+                    <span>
+                      Some pixels are marked "consent required". Those load in
+                      the browser only after the visitor grants the matching
+                      consent category, so they will report fewer events than
+                      pixels without that flag.
+                    </span>
+                  </div>
+                )}
 
                 {/* Honesty note about server-side delivery */}
                 {configs.some((c) => c.enableServerSide && !c.accessToken) && (
@@ -621,13 +668,8 @@ export default function AdminPixelsPage() {
                 <Button
                   variant='outline'
                   size='sm'
-                  onClick={() => handleTestPixel(config)}
-                  disabled={!config.enabled || testingId === config.id}>
-                  {testingId === config.id ? (
-                    <Loader2 className='w-4 h-4 animate-spin' />
-                  ) : (
-                    <TestTube className='w-4 h-4' />
-                  )}
+                  onClick={() => setTestConfig(config)}>
+                  <TestTube className='w-4 h-4' />
                   <span className='ml-1'>Test</span>
                 </Button>
                 <Button
@@ -835,6 +877,15 @@ export default function AdminPixelsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Per-configuration test dialog (browser SDK / server API) */}
+      <PixelTestDialog
+        config={testConfig}
+        open={testConfig !== null}
+        onOpenChange={(open) => {
+          if (!open) setTestConfig(null);
+        }}
+      />
     </div>
   );
 }

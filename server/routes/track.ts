@@ -2,6 +2,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { processTrackingBeacon } from "#root/backend/pixel-tracking/delivery-pipeline";
+import {
+  CONSENT_COOKIE,
+  parseConsentCookieValue,
+} from "#root/shared/utils/consent-gate";
+import type { ConsentState } from "#root/shared/types/pixel-tracking";
 
 /**
  * Beacon tracking endpoint schema.
@@ -68,6 +73,14 @@ export interface ServerContext {
   ttp?: string;
   scid?: string;
   ga?: string;
+  /**
+   * The visitor's consent decision, read from the same first-party cookie the
+   * browser writes. `null` means no valid decision was presented — which is
+   * not permission. The delivery pipeline applies it to every server-side
+   * configuration, so rejecting marketing in the banner also stops the
+   * Conversions API relay rather than only the browser pixel.
+   */
+  consent?: ConsentState | null;
 }
 
 /** Hash an IP address so we never store raw IPs. */
@@ -131,6 +144,9 @@ function extractServerContext(request: {
   // Google Analytics client ID cookie
   const ga = request.cookies?._ga ?? undefined;
 
+  // Consent decision — same cookie, same parser, same rule as the browser.
+  const consent = parseConsentCookieValue(request.cookies?.[CONSENT_COOKIE]);
+
   return {
     ip,
     ipHash: hashIp(ip),
@@ -142,6 +158,7 @@ function extractServerContext(request: {
     ttp,
     scid,
     ga,
+    consent,
   };
 }
 

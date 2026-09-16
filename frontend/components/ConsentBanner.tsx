@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useConsent } from "#root/frontend/contexts/ConsentContext";
 import { Button } from "#root/components/ui/button";
 import { Switch } from "#root/components/ui/switch";
-import { Shield, Settings, X } from "lucide-react";
+import { Shield, Settings, X, Cookie } from "lucide-react";
 import type { ConsentCategories } from "#root/shared/types/pixel-tracking";
 
 // ─── Consent Category Descriptions ──────────────────────────────────────────
@@ -39,8 +39,15 @@ const CATEGORY_INFO: {
 // ─── Banner Component ───────────────────────────────────────────────────────
 
 export function ConsentBanner() {
-  const { consent, showBanner, acceptAll, rejectAll, updateCategories } =
-    useConsent();
+  const {
+    consent,
+    showBanner,
+    acceptAll,
+    rejectAll,
+    updateCategories,
+    openPreferences,
+    preferencesRequested,
+  } = useConsent();
   const [showCustomize, setShowCustomize] = useState(false);
   const [customCategories, setCustomCategories] = useState<ConsentCategories>({
     functional: true,
@@ -48,7 +55,38 @@ export function ConsentBanner() {
     marketing: consent.categories.marketing,
   });
 
-  if (!showBanner) return null;
+  // Keep the toggles in step with the stored decision, so re-opening
+  // preferences shows what the visitor actually chose rather than the state
+  // this component happened to mount with.
+  useEffect(() => {
+    setCustomCategories({
+      functional: true,
+      analytics: consent.categories.analytics,
+      marketing: consent.categories.marketing,
+    });
+  }, [consent.categories.analytics, consent.categories.marketing]);
+
+  // A visitor who re-opens preferences wants the toggles, not the intro copy.
+  useEffect(() => {
+    if (preferencesRequested) setShowCustomize(true);
+  }, [preferencesRequested]);
+
+  // Once a decision exists the banner is hidden, but withdrawing consent has
+  // to stay reachable — otherwise "Accept" is irreversible.
+  if (!showBanner) {
+    return (
+      <button
+        type="button"
+        onClick={openPreferences}
+        aria-label="Cookie preferences"
+        data-testid="consent-reopen"
+        className="fixed bottom-3 left-3 z-40 flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+      >
+        <Cookie className="h-3.5 w-3.5" />
+        Cookie preferences
+      </button>
+    );
+  }
 
   const handleSaveCustom = () => {
     updateCategories(customCategories);
