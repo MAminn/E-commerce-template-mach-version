@@ -287,11 +287,12 @@ export function MachProductCarousel({
   if (isLoading || products.length === 0) return null;
 
   const resolved: MachRowGround = ground ?? "white";
-  const isDark = resolved === "ink";
-  const rule = isDark ? "" : "border-t border-[var(--mach-ink)]/10";
   // Same helper the grid row uses, so a section keeps its background — and
-  // keeps reading the same way on it — through a change of arrangement.
+  // keeps reading the same way on it — through a change of arrangement. The
+  // controls, the header and the cards all take their treatment from here.
   const backdrop = machSectionBackdrop(resolved, background);
+  const isDark = backdrop.onDark;
+  const rule = isDark ? "" : "border-t border-[var(--mach-ink)]/10";
   const labels = machCarouselControlLabels(title);
   const hasAction = machSectionActionVisible(actionLabel, actionHref);
 

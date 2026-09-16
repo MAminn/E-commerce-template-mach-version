@@ -59,8 +59,12 @@ import {
   EMPTY_MEDIA_SLOT,
   GROUP_SECTION_LIMIT_MAX,
   GROUP_SECTION_LIMIT_MIN,
+  clampSectionOverlayOpacity,
+  DEFAULT_SECTION_OVERLAY_OPACITY,
   resolveProductSectionDisplayMode,
   resolveSectionBackground,
+  SECTION_OVERLAY_OPACITY_MAX,
+  SECTION_OVERLAY_OPACITY_MIN,
   ValuePropIconType,
 } from "#root/shared/types/homepage-content";
 import {
@@ -168,6 +172,18 @@ function MachSectionBackgroundField({
   // uploaded under a type the client has since switched away from survives
   // being switched back to.
   const url = value?.url ?? "";
+  const overlayOpacity = clampSectionOverlayOpacity(value?.overlayOpacity);
+
+  /**
+   * Writes one field of the background, keeping the rest.
+   *
+   * Every control here edits the same object, so rebuilding it from `type` and
+   * `url` alone — which is what the media picker used to do — would silently
+   * discard the text theme and the overlay the moment the client replaced the
+   * picture.
+   */
+  const patch = (next: Partial<MachSectionBackground>) =>
+    onChange({ ...(value ?? { type: resolved.type }), ...next });
 
   return (
     <div className='space-y-2'>
@@ -175,7 +191,7 @@ function MachSectionBackgroundField({
       <Select
         value={resolved.type}
         onValueChange={(v) =>
-          onChange({ type: v as MachSectionBackgroundType, url })
+          patch({ type: v as MachSectionBackgroundType, url })
         }>
         <SelectTrigger>
           <SelectValue />
@@ -197,13 +213,61 @@ function MachSectionBackgroundField({
             kind={resolved.type}
             value={url}
             prefix={prefix}
-            onChange={(next) => onChange({ type: resolved.type, url: next })}
+            onChange={(next) => patch({ url: next })}
           />
           <p className='text-xs text-muted-foreground'>
             {resolved.type === "video"
               ? "Plays silently behind the whole section — heading, products and links."
               : "Fills the whole section behind the heading, products and links."}
           </p>
+
+          {/* Contrast, and only contrast. A photograph the client did not
+              shoot for this slot can leave the heading and the prices
+              unreadable, and the two settings that fix that are which way the
+              type reads and how hard the picture is washed back. Anything
+              more here would be a design tool. */}
+          <div className='grid gap-3 rounded-md border p-3 sm:grid-cols-2'>
+            <div className='space-y-1.5'>
+              <Label className='text-xs'>Text colour</Label>
+              <Select
+                value={resolved.textTheme ?? "light"}
+                onValueChange={(v) => patch({ textTheme: v as TextTheme })}>
+                <SelectTrigger className='h-8 text-xs'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='light'>Light (on dark media)</SelectItem>
+                  <SelectItem value='dark'>Dark (on light media)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className='space-y-1.5'>
+              <div className='flex items-baseline justify-between'>
+                <Label className='text-xs'>Overlay strength</Label>
+                <span className='text-[11px] text-muted-foreground'>
+                  {overlayOpacity}%
+                </span>
+              </div>
+              <Slider
+                value={[overlayOpacity]}
+                min={SECTION_OVERLAY_OPACITY_MIN}
+                max={SECTION_OVERLAY_OPACITY_MAX}
+                step={5}
+                onValueChange={([v]) =>
+                  patch({
+                    overlayOpacity: clampSectionOverlayOpacity(
+                      v ?? DEFAULT_SECTION_OVERLAY_OPACITY,
+                    ),
+                  })
+                }
+              />
+              <p className='text-[11px] text-muted-foreground'>
+                Washes the media back behind the text. Raise it if the heading
+                or the prices are hard to read.
+              </p>
+            </div>
+          </div>
         </>
       )}
     </div>

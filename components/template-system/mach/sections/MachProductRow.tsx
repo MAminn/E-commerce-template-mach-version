@@ -113,16 +113,19 @@ export function MachProductRow({
   if (isLoading || products.length === 0) return null;
 
   const resolved: MachRowGround = ground ?? (onDark ? "ink" : "white");
-  const isDark = resolved === "ink";
+
+  // With no background configured this is the ground class the row has always
+  // carried, an empty wrapper class and `ground === "ink"`, so the markup
+  // below is unchanged for every section that has not been given one. With a
+  // background it is the client's text theme that decides how the type reads,
+  // which is then handed to the header and to every card exactly as an ink
+  // ground would have been.
+  const backdrop = machSectionBackdrop(resolved, background);
+  const isDark = backdrop.onDark;
 
   // A light row butting against another light row needs an edge; a dark row
   // already has one.
   const rule = isDark ? "" : "border-t border-[var(--mach-ink)]/10";
-
-  // With no background configured this is the ground class the row has always
-  // carried and an empty wrapper class, so the markup below is unchanged for
-  // every section that has not been given one.
-  const backdrop = machSectionBackdrop(resolved, background);
 
   return (
     <section

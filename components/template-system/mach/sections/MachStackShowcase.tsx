@@ -340,14 +340,14 @@ export function MachStackShowcase({
   // merchandising slot reads as broken, not as "coming soon".
   if (isLoading || products.length === 0) return null;
 
-  const isDark = ground === "ink";
+  // The same helper the shelf and the carousel use: a group set to feature
+  // panels gets its background, and its text treatment, laid exactly as the
+  // other two arrangements do.
+  const backdrop = machSectionBackdrop(ground, background);
+  const isDark = backdrop.onDark;
   const showAction =
     Boolean(actionLabel?.trim()) && !isPlaceholderLink(actionHref);
   const solo = products.length === 1;
-
-  // The same helper the shelf and the carousel use: a group set to feature
-  // panels gets its background laid exactly as the other two arrangements do.
-  const backdrop = machSectionBackdrop(ground, background);
 
   const headingCls = isDark ? "text-white" : "text-[var(--mach-ink)]";
   const subtitleCls = isDark ? "text-white/55" : "text-[var(--mach-mute)]";

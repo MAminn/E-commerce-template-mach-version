@@ -231,6 +231,72 @@ describe("a merchandising shelf's background", () => {
     expect(reloaded.discountedProducts?.background).toBeUndefined();
   });
 
+  it("carries its contrast treatment through the save mutation", () => {
+    // Through the *real* schema, which strips keys it does not declare: a
+    // `textTheme` or `overlayOpacity` added to the type and forgotten in the
+    // mutation would vanish silently on the first save, and the admin would
+    // watch their setting revert on reload.
+    const reloaded = saveAndReload(
+      content({
+        featuredProducts: {
+          ...DEFAULT_HOMEPAGE_CONTENT.featuredProducts,
+          background: {
+            type: "image",
+            url: "/uploads/section-bg-best.webp",
+            textTheme: "dark",
+            overlayOpacity: 65,
+          },
+        },
+        groupSections: [
+          {
+            categoryId: SUPPLEMENTS,
+            enabled: true,
+            background: {
+              type: "video",
+              url: "/uploads/section-bg-supps.mp4",
+              textTheme: "light",
+              overlayOpacity: 0,
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(reloaded.featuredProducts.background).toEqual({
+      type: "image",
+      url: "/uploads/section-bg-best.webp",
+      textTheme: "dark",
+      overlayOpacity: 65,
+    });
+    // Zero has to survive as zero rather than being read as "not set".
+    expect(reloaded.groupSections?.[0]?.background?.overlayOpacity).toBe(0);
+    expect(resolveGroupSections(reloaded, GROUPS)[0]?.background).toEqual({
+      type: "video",
+      url: "/uploads/section-bg-supps.mp4",
+      textTheme: "light",
+      overlayOpacity: 0,
+    });
+  });
+
+  it("rejects an overlay outside the range it offers", () => {
+    // The CMS slider cannot produce this; a hand-edited blob can, and the
+    // mutation is where that stops.
+    expect(() =>
+      saveAndReload(
+        content({
+          featuredProducts: {
+            ...DEFAULT_HOMEPAGE_CONTENT.featuredProducts,
+            background: {
+              type: "image",
+              url: "/uploads/section-bg-best.webp",
+              overlayOpacity: 95,
+            },
+          },
+        }),
+      ),
+    ).toThrow(/save rejected/);
+  });
+
   it("goes back to nothing when the media is removed", () => {
     // "Remove" in the CMS empties the url and leaves the type alone; the
     // section has to return to its flat ground, not render an empty layer.
@@ -271,14 +337,19 @@ describe("a group section's background", () => {
     const [supplements, gymGear] = resolveGroupSections(reloaded, GROUPS);
 
     // Each group independently, which is the whole point of storing it on the
-    // group's own config rather than on the page.
+    // group's own config rather than on the page. The contrast treatment is
+    // resolved onto both, since neither group saved one.
     expect(supplements?.background).toEqual({
       type: "video",
       url: "/uploads/section-bg-supps.mp4",
+      textTheme: "light",
+      overlayOpacity: 40,
     });
     expect(gymGear?.background).toEqual({
       type: "image",
       url: "/uploads/section-bg-gym.webp",
+      textTheme: "light",
+      overlayOpacity: 40,
     });
   });
 

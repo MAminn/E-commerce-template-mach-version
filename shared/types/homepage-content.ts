@@ -90,6 +90,26 @@ export type MachSectionBackgroundType = "none" | "image" | "video";
 export interface MachSectionBackground {
   type: MachSectionBackgroundType;
   url?: string;
+  /**
+   * Which way the section's own type has to read against the media.
+   *
+   * The same `TextTheme` the hero and the campaign banners use, meaning the
+   * same thing: `light` is light text, for a section laid over a dark or
+   * scrimmed photograph. It is the client's call rather than something
+   * measured off the image, because a photograph has no single brightness —
+   * the heading can sit over sky and the prices over asphalt — and a
+   * setting an admin can see and change beats a guess that is right most of
+   * the time.
+   */
+  textTheme?: TextTheme;
+  /**
+   * How hard the media is washed back behind the type, 0-80.
+   *
+   * A wash rather than a filter on the media, so the photograph keeps its own
+   * contrast and only the layer between it and the words changes. Black for
+   * light text, white for dark text.
+   */
+  overlayOpacity?: number;
 }
 
 /**
@@ -100,6 +120,42 @@ export interface MachSectionBackground {
  * live section may change its appearance because a new field was deployed.
  */
 export const NO_SECTION_BACKGROUND: MachSectionBackground = { type: "none" };
+
+/**
+ * What a background with no contrast treatment saved is.
+ *
+ * Light text over a 40% black wash, because that is the treatment that makes
+ * *arbitrary* photography readable: it is dark enough to carry a heading over
+ * a bright sky and light enough not to turn a studio shot into a black
+ * rectangle. A client who uploads a picture and changes nothing else gets a
+ * section they can read.
+ */
+export const DEFAULT_SECTION_BACKGROUND_TEXT_THEME: TextTheme = "light";
+export const DEFAULT_SECTION_OVERLAY_OPACITY = 40;
+
+/**
+ * Range the overlay accepts.
+ *
+ * Capped at 80 rather than 100 on purpose: past that the media is no longer a
+ * background, it is a coloured band with a photograph faintly behind it, and a
+ * client reaching for 100 wants a plain ground — which is what turning the
+ * background off already gives them.
+ */
+export const SECTION_OVERLAY_OPACITY_MIN = 0;
+export const SECTION_OVERLAY_OPACITY_MAX = 80;
+
+/** Reads a stored overlay strength, defaulting and bounding it. */
+export function clampSectionOverlayOpacity(
+  value: number | null | undefined,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_SECTION_OVERLAY_OPACITY;
+  }
+  return Math.min(
+    SECTION_OVERLAY_OPACITY_MAX,
+    Math.max(SECTION_OVERLAY_OPACITY_MIN, Math.round(value)),
+  );
+}
 
 /**
  * Reads a stored background, defaulting anything unrecognised to none.
@@ -116,7 +172,18 @@ export function resolveSectionBackground(
   if (value.type !== "image" && value.type !== "video") {
     return NO_SECTION_BACKGROUND;
   }
-  return { type: value.type, url: value.url };
+  return {
+    type: value.type,
+    url: value.url,
+    // Both defaulted here rather than at each point of use, so the storefront
+    // and the CMS cannot disagree about what a background saved before these
+    // controls existed looks like.
+    textTheme:
+      value.textTheme === "dark"
+        ? "dark"
+        : DEFAULT_SECTION_BACKGROUND_TEXT_THEME,
+    overlayOpacity: clampSectionOverlayOpacity(value.overlayOpacity),
+  };
 }
 
 /**

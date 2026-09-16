@@ -14,6 +14,8 @@ import {
   DISCOUNTED_LIMIT_MIN,
   GROUP_SECTION_LIMIT_MAX,
   GROUP_SECTION_LIMIT_MIN,
+  SECTION_OVERLAY_OPACITY_MAX,
+  SECTION_OVERLAY_OPACITY_MIN,
   ValuePropIconType,
   type HomepageContent,
 } from "#root/shared/types/homepage-content";
@@ -68,6 +70,15 @@ const SectionBackgroundSchema = z
   .object({
     type: z.enum(["none", "image", "video"]),
     url: z.string().nullish(),
+    // The contrast treatment, both optional for the same reason the rest of
+    // this object is: a background saved before these controls existed carries
+    // neither, and reads as the shipped default.
+    textTheme: TextThemeSchema.nullish(),
+    overlayOpacity: z
+      .number()
+      .min(SECTION_OVERLAY_OPACITY_MIN)
+      .max(SECTION_OVERLAY_OPACITY_MAX)
+      .nullish(),
   })
   .nullish();
 
