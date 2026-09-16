@@ -1,6 +1,11 @@
+import type { MachSectionBackground } from "#root/shared/types/homepage-content";
 import { StaggerContainer, StaggerItem } from "../../motion/Stagger";
 import { MachProductCard, type MachProduct } from "../MachProductCard";
 import { GUTTER, SECTION_Y, SHELL } from "../machTokens";
+import {
+  MachSectionBackdrop,
+  machSectionBackdrop,
+} from "./MachSectionBackdrop";
 import { MachSectionHead } from "./MachSectionHead";
 
 /**
@@ -57,6 +62,22 @@ export const MACH_ROW_GROUND_CLASSES: Record<MachRowGround, string> = {
   ink: "bg-[var(--mach-ink)] text-white",
 };
 
+/**
+ * The same grounds with the fill taken off, for a section carrying a CMS
+ * background.
+ *
+ * Only the fill goes. Which ground a section is on still decides how its type
+ * reads — Offers is the page's ink anchor and its heading is white whatever is
+ * laid behind it — and dropping the text colour along with the background
+ * would make every backgrounded section dark-on-media. Kept beside the full
+ * classes so the two cannot drift apart.
+ */
+export const MACH_ROW_GROUND_TEXT: Record<MachRowGround, string> = {
+  white: "text-[var(--mach-ink)]",
+  paper: "text-[var(--mach-ink)]",
+  ink: "text-white",
+};
+
 export function MachProductRow({
   id,
   eyebrow,
@@ -69,6 +90,7 @@ export function MachProductRow({
   onDark = false,
   ground,
   dense = false,
+  background,
 }: {
   id?: string;
   eyebrow?: string;
@@ -83,6 +105,8 @@ export function MachProductRow({
   ground?: MachRowGround;
   /** Current shelf treatment — four-up, compact header, tight rhythm. */
   dense?: boolean;
+  /** Optional CMS image or video behind the whole section. */
+  background?: MachSectionBackground;
 }) {
   // While the first fetch is in flight we also render nothing, so the page
   // never flashes an empty section and then reflows once products arrive.
@@ -95,12 +119,18 @@ export function MachProductRow({
   // already has one.
   const rule = isDark ? "" : "border-t border-[var(--mach-ink)]/10";
 
+  // With no background configured this is the ground class the row has always
+  // carried and an empty wrapper class, so the markup below is unchanged for
+  // every section that has not been given one.
+  const backdrop = machSectionBackdrop(resolved, background);
+
   return (
     <section
       id={id}
-      className={`${MACH_ROW_GROUND_CLASSES[resolved]} ${rule} scroll-mt-24`}>
+      className={`${backdrop.sectionCls} ${rule} scroll-mt-24`}>
+      <MachSectionBackdrop background={background} />
       <div
-        className={`${SHELL} ${GUTTER} ${
+        className={`${backdrop.contentCls} ${SHELL} ${GUTTER} ${
           dense ? "py-12 sm:py-14 lg:py-16" : SECTION_Y
         }`}>
         <MachSectionHead

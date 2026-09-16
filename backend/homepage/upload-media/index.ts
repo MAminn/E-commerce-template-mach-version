@@ -38,14 +38,14 @@ export interface UploadHomepageMediaResult {
   kind: UploadMediaKind;
 }
 
-const IMAGE_TYPES = [
+export const IMAGE_TYPES = [
   "image/jpeg",
   "image/jpg",
   "image/png",
   "image/webp",
   "image/avif",
 ];
-const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
+export const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 const DOCUMENT_TYPES = ["application/pdf"];
 
 /** Per-kind ceilings. Video is the outlier — a short loop still runs large. */

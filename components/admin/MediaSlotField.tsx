@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { trpc } from "#root/shared/trpc/client";
+import { uploadMediaFile } from "./uploadMediaFile";
 import { Button } from "#root/components/ui/button";
 import { Input } from "#root/components/ui/input";
 import { Label } from "#root/components/ui/label";
@@ -30,7 +30,15 @@ import { EMPTY_MEDIA_SLOT } from "#root/shared/types/homepage-content";
 
 type SubSlot = "desktopUrl" | "mobileUrl" | "posterUrl";
 
-const ACCEPT_BY_KIND: Record<MediaKind, string> = {
+/**
+ * What the file picker accepts for each kind of asset.
+ *
+ * Exported so the compact single-asset control (`MediaUploadField`) offers the
+ * client exactly the same formats this one does — the upload endpoint is
+ * shared, and two different accept lists in front of it would mean a file the
+ * CMS refuses in one place and takes in another.
+ */
+export const ACCEPT_BY_KIND: Record<MediaKind, string> = {
   image: "image/jpeg,image/png,image/webp,image/avif",
   video: "video/mp4,video/webm,video/quicktime",
 };
@@ -96,21 +104,18 @@ export function MediaSlotField({
 
     setUploading(target);
     try {
-      const buffer = new Uint8Array(await file.arrayBuffer());
-      const result = await trpc.homepage.uploadMedia.mutate({
-        file: { name: file.name, type: file.type, buffer },
-        prefix,
-      });
+      // The shared upload path, not a copy of it. This behaviour is the one
+      // that has always worked here; `uploadMediaFile` is it, lifted out so
+      // the compact control cannot drift from it.
+      const outcome = await uploadMediaFile(file, prefix);
+      if (!outcome) return;
 
-      if (result.success && result.data) {
-        patch({ [target]: result.data.url } as Partial<MediaSlot>);
+      if (outcome.ok) {
+        patch({ [target]: outcome.url } as Partial<MediaSlot>);
         toast.success("Uploaded");
       } else {
-        toast.error(result.error || "Upload failed");
+        toast.error(outcome.message);
       }
-    } catch (error) {
-      console.error("Media upload error:", error);
-      toast.error("Error uploading file");
     } finally {
       setUploading(null);
       event.target.value = "";

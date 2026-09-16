@@ -302,6 +302,9 @@ export function LandingTemplateMach({
         products,
         isLoading: resolved?.isLoading ?? false,
         ground: rowGrounds.get(key),
+        // The group's own background, already resolved to `{ type: "none" }`
+        // for a group configured before the field existed.
+        background: section.background,
       };
 
       // Two independent choices the client made. `displayMode` decides whether
@@ -350,6 +353,7 @@ export function LandingTemplateMach({
             actionHref={content.featuredProducts.viewAllLink}
             products={featuredProducts}
             ground={rowGrounds.get("featuredProducts")}
+            background={content.featuredProducts.background}
             displayMode={resolveProductSectionDisplayMode(
               content.featuredProducts.displayMode,
             )}
@@ -370,6 +374,7 @@ export function LandingTemplateMach({
             actionHref={featured.viewAllLink}
             products={featuredShelf}
             ground={rowGrounds.get("featuredShelf")}
+            background={featured.background}
             displayMode={resolveProductSectionDisplayMode(
               featured.displayMode,
             )}
@@ -389,6 +394,7 @@ export function LandingTemplateMach({
             /* Offers is the page's dark merchandising anchor, in either
                arrangement. Scrolling a shelf is not a reason to relight it. */
             ground="ink"
+            background={content.discountedProducts.background}
             displayMode={resolveProductSectionDisplayMode(
               content.discountedProducts.displayMode,
             )}
@@ -407,6 +413,7 @@ export function LandingTemplateMach({
             products={newArrivals}
             isLoading={newArrivalsLoading}
             ground={rowGrounds.get("newArrivals")}
+            background={newDrops.background}
             displayMode={resolveProductSectionDisplayMode(
               newDrops.displayMode,
             )}

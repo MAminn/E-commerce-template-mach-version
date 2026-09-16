@@ -63,6 +63,77 @@ export function isMediaSlotEmpty(slot: MediaSlot | undefined | null): boolean {
   return !(slot.desktopUrl || "").trim() && !(slot.mobileUrl || "").trim();
 }
 
+/* ------------------------------------------------------------------ */
+/*  Section backgrounds                                               */
+/* ------------------------------------------------------------------ */
+
+/** What a section background is pointing at, or that there isn't one. */
+export type MachSectionBackgroundType = "none" | "image" | "video";
+
+/**
+ * An optional image or video laid behind one product section.
+ *
+ * Deliberately smaller than `MediaSlot`. A `MediaSlot` is an *asset* — a
+ * desktop crop, a mobile crop, a poster frame, alt text and a focal point —
+ * because the hero and the campaign banners are made of their photograph and
+ * every one of those controls changes what the shopper sees. A section
+ * background is not the section: the heading, the shelf, the arrows and the
+ * "view all" are, and the background is the surface they sit on. So it carries
+ * the two things a surface needs and nothing else, which is also what keeps
+ * the control in Homepage Admin to one selector and one picker.
+ *
+ * `url` is the path the existing media upload returns, normalised on render by
+ * `normalizeMediaUrl` exactly as every other Mach visual is. It is optional
+ * because a client can pick "Image" and not have uploaded one yet — that state
+ * renders as no background rather than as a broken asset.
+ */
+export interface MachSectionBackground {
+  type: MachSectionBackgroundType;
+  url?: string;
+}
+
+/**
+ * What a section with no saved background is.
+ *
+ * Every section saved before this field existed has no value for it, and those
+ * sections render on their flat ground. So "missing" resolves to `none`: no
+ * live section may change its appearance because a new field was deployed.
+ */
+export const NO_SECTION_BACKGROUND: MachSectionBackground = { type: "none" };
+
+/**
+ * Reads a stored background, defaulting anything unrecognised to none.
+ *
+ * `null` as well as `undefined`, because the CMS sends `null` for optional
+ * fields it has cleared and a stored blob can predate the field entirely.
+ * Anything that is not exactly `"image"` or `"video"` is none — the
+ * storefront's existing appearance is the fallback for every uncertain case.
+ */
+export function resolveSectionBackground(
+  value: MachSectionBackground | null | undefined,
+): MachSectionBackground {
+  if (!value) return NO_SECTION_BACKGROUND;
+  if (value.type !== "image" && value.type !== "video") {
+    return NO_SECTION_BACKGROUND;
+  }
+  return { type: value.type, url: value.url };
+}
+
+/**
+ * Whether a background will actually put anything behind a section.
+ *
+ * A type with no asset behind it is not a background. Half-configured is the
+ * state every section is in between choosing "Video" and the upload finishing,
+ * and a section that dropped its ground for it would flash through a
+ * transparent band on the way.
+ */
+export function isSectionBackgroundActive(
+  value: MachSectionBackground | null | undefined,
+): boolean {
+  const resolved = resolveSectionBackground(value);
+  return resolved.type !== "none" && (resolved.url ?? "").trim().length > 0;
+}
+
 /**
  * Meta information for SEO and page head
  */
@@ -241,6 +312,12 @@ export interface HomepageFeaturedProductsContent {
    * what every section saved before this field existed rendered as.
    */
   displayMode?: ProductSectionDisplayMode;
+  /**
+   * An optional image or video laid behind the whole section — heading,
+   * products, controls and all. Absent means no background, which is what
+   * every section saved before this field existed renders as.
+   */
+  background?: MachSectionBackground;
 }
 
 /**
@@ -295,6 +372,12 @@ export interface HomepageDiscountedProductsContent {
    * what every section saved before this field existed rendered as.
    */
   displayMode?: ProductSectionDisplayMode;
+  /**
+   * An optional image or video laid behind the whole section — heading,
+   * products, controls and all. Absent means no background, which is what
+   * every section saved before this field existed renders as.
+   */
+  background?: MachSectionBackground;
 }
 
 /**
@@ -327,6 +410,12 @@ export interface HomepageNewArrivalsContent {
    * what every section saved before this field existed rendered as.
    */
   displayMode?: ProductSectionDisplayMode;
+  /**
+   * An optional image or video laid behind the whole section — heading,
+   * products, controls and all. Absent means no background, which is what
+   * every section saved before this field existed renders as.
+   */
+  background?: MachSectionBackground;
 }
 
 /**
@@ -481,6 +570,12 @@ export interface HomepageGroupSectionContent {
    * section is a carousel so switching back to the grid restores it.
    */
   displayMode?: ProductSectionDisplayMode;
+  /**
+   * An optional image or video laid behind the whole section — heading,
+   * products, controls and all. Absent means no background, which is what
+   * every section saved before this field existed renders as.
+   */
+  background?: MachSectionBackground;
 }
 
 /**
@@ -591,6 +686,12 @@ export interface HomepageFeaturedShelfContent {
    * what every section saved before this field existed rendered as.
    */
   displayMode?: ProductSectionDisplayMode;
+  /**
+   * An optional image or video laid behind the whole section — heading,
+   * products, controls and all. Absent means no background, which is what
+   * every section saved before this field existed renders as.
+   */
+  background?: MachSectionBackground;
 }
 
 /**

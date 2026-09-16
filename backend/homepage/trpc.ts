@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MEDIA_UPLOAD_PREFIX_MAX_LENGTH } from "#root/shared/types/media-upload";
 import {
   publicProcedure,
   router,
@@ -54,6 +55,22 @@ const TextThemeSchema = z.enum(["light", "dark"]);
  */
 const DisplayModeSchema = z.enum(["grid", "carousel"]).nullish();
 
+/**
+ * Matches `MachSectionBackground` — the optional image or video behind one
+ * product section.
+ *
+ * `nullish` throughout, and at every level: the field itself is absent from
+ * every blob saved before it existed, and the CMS sends `null` for a `url` it
+ * has cleared. Neither may fail validation, because a client saving an
+ * untouched homepage must not be told their content is invalid.
+ */
+const SectionBackgroundSchema = z
+  .object({
+    type: z.enum(["none", "image", "video"]),
+    url: z.string().nullish(),
+  })
+  .nullish();
+
 const GroupSectionSchema = z.object({
   categoryId: z.string().uuid(),
   enabled: z.boolean(),
@@ -73,6 +90,7 @@ const GroupSectionSchema = z.object({
     .nullish(),
   presentation: z.enum(["shelf", "feature"]).nullish(),
   displayMode: DisplayModeSchema,
+  background: SectionBackgroundSchema,
 });
 
 /**
@@ -166,6 +184,7 @@ const HomepageContentSchema = z.object({
     viewAllLink: z.string(),
     productIds: z.array(z.string().uuid()).nullish(),
     displayMode: DisplayModeSchema,
+    background: SectionBackgroundSchema,
   }),
   valueProps: z.object({
     enabled: z.boolean(),
@@ -208,6 +227,7 @@ const HomepageContentSchema = z.object({
         .max(DISCOUNTED_LIMIT_MAX)
         .nullish(),
       displayMode: DisplayModeSchema,
+      background: SectionBackgroundSchema,
     })
     .nullish(),
   newArrivals: z
@@ -220,6 +240,7 @@ const HomepageContentSchema = z.object({
       viewAllLink: z.string(),
       productIds: z.array(z.string().uuid()).nullish(),
       displayMode: DisplayModeSchema,
+      background: SectionBackgroundSchema,
     })
     .nullish(),
   // One merchandising section per broad product group, keyed by category id.
@@ -239,6 +260,7 @@ const HomepageContentSchema = z.object({
       viewAllLink: z.string(),
       productIds: z.array(z.string().uuid()).nullish(),
       displayMode: DisplayModeSchema,
+      background: SectionBackgroundSchema,
     })
     .nullish(),
   // Deprecated hard-coded group rows, still accepted so a client running older
@@ -548,8 +570,15 @@ export const homepageRouter = router({
           type: z.string(),
           buffer: z.instanceof(Uint8Array),
         }),
-        /** Filename prefix so uploads stay identifiable on disk. */
-        prefix: z.string().max(24).nullish(),
+        /**
+         * Filename prefix so uploads stay identifiable on disk.
+         *
+         * The cap is the shared one rather than a number typed here, because
+         * the CMS now *builds* prefixes from client data (a section background
+         * is named after its group) and has to be able to respect the same
+         * limit the schema enforces.
+         */
+        prefix: z.string().max(MEDIA_UPLOAD_PREFIX_MAX_LENGTH).nullish(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

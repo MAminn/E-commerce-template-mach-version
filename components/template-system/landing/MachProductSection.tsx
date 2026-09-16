@@ -1,5 +1,6 @@
 import type {
   GroupSectionPresentation,
+  MachSectionBackground,
   ProductSectionDisplayMode,
 } from "#root/shared/types/homepage-content";
 import type { MachProduct } from "../mach/MachProductCard";
@@ -39,6 +40,15 @@ export interface MachProductSectionProps {
   products: MachProduct[];
   isLoading?: boolean;
   ground?: MachRowGround;
+  /**
+   * An optional image or video laid behind the whole section.
+   *
+   * Passed straight through to whichever arrangement the section renders as,
+   * so the setting means the same thing in all three of them and a section
+   * keeps its background when the client switches between grid and carousel.
+   * Absent, or set to `none`, leaves the section exactly as it was.
+   */
+  background?: MachSectionBackground;
   /** The client's choice. Resolve `undefined` to `"grid"` before passing it. */
   displayMode: ProductSectionDisplayMode;
   /**

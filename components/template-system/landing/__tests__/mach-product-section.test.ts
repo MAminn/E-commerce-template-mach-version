@@ -6,6 +6,7 @@ import {
   MACH_ROW_GROUND_CLASSES,
   MachProductRow,
 } from "../../mach/sections/MachProductRow";
+import { machSectionBackdrop } from "../../mach/sections/MachSectionBackdrop";
 import { MachStackShowcase } from "../../mach/sections/MachStackShowcase";
 import {
   MachProductCarousel,
@@ -170,7 +171,14 @@ describe("ground alternation", () => {
     expect(MACH_ROW_GROUND_CLASSES.ink).toBe(
       "bg-[var(--mach-ink)] text-white",
     );
-    expect(CAROUSEL_SOURCE).toContain("MACH_ROW_GROUND_CLASSES[resolved]");
+    // Both arrangements paint their ground through the same helper, which
+    // returns exactly the row's ground class for a section with no CMS
+    // background behind it — so the black ground and white type come across
+    // with the switch to a carousel.
+    expect(CAROUSEL_SOURCE).toContain("machSectionBackdrop(resolved, background)");
+    expect(machSectionBackdrop("ink", undefined).sectionCls).toBe(
+      MACH_ROW_GROUND_CLASSES.ink,
+    );
   });
 });
 

@@ -1,12 +1,17 @@
 import { Link } from "#root/components/utils/Link";
 import { getProductUrl } from "#root/lib/utils/route-helpers";
 import { STORE_CURRENCY } from "#root/shared/config/branding";
+import type { MachSectionBackground } from "#root/shared/types/homepage-content";
 import { isPlaceholderLink } from "#root/shared/types/layout-settings";
 import { StaggerContainer, StaggerItem } from "../../motion/Stagger";
 import { normalizeMediaUrl } from "../MachMedia";
 import type { MachProduct } from "../MachProductCard";
 import { MachQuickAdd } from "../MachQuickAdd";
 import type { MachRowGround } from "./MachProductRow";
+import {
+  MachSectionBackdrop,
+  machSectionBackdrop,
+} from "./MachSectionBackdrop";
 import { HEADING_FEATURE, LINK_ACTION } from "../machTokens";
 
 /**
@@ -101,11 +106,9 @@ function resolveSecondaryImage(product: MachProduct): string | null {
 const STACK_SHELL = "mx-auto w-full max-w-[1920px]";
 const STACK_GUTTER = "px-5 sm:px-8 lg:px-10 xl:px-12";
 
-const SECTION_GROUND: Record<MachRowGround, string> = {
-  white: "bg-white text-[var(--mach-ink)]",
-  paper: "bg-[var(--mach-paper)] text-[var(--mach-ink)]",
-  ink: "bg-[var(--mach-ink)] text-white",
-};
+/* The grounds this section paints are the shelf's own — see
+   `MACH_ROW_GROUND_CLASSES`, applied through `machSectionBackdrop` so a
+   feature panel and a product row cannot end up on different blacks. */
 
 /**
  * How wide each panel runs, decided by how many there are.
@@ -320,6 +323,7 @@ export function MachStackShowcase({
   products,
   isLoading = false,
   ground = "paper",
+  background,
 }: {
   id?: string;
   title: string;
@@ -329,6 +333,8 @@ export function MachStackShowcase({
   products: MachProduct[];
   isLoading?: boolean;
   ground?: MachRowGround;
+  /** Optional CMS image or video behind the whole section. */
+  background?: MachSectionBackground;
 }) {
   // Nothing to merchandise, and nothing rendered — an empty bordered box in a
   // merchandising slot reads as broken, not as "coming soon".
@@ -339,6 +345,10 @@ export function MachStackShowcase({
     Boolean(actionLabel?.trim()) && !isPlaceholderLink(actionHref);
   const solo = products.length === 1;
 
+  // The same helper the shelf and the carousel use: a group set to feature
+  // panels gets its background laid exactly as the other two arrangements do.
+  const backdrop = machSectionBackdrop(ground, background);
+
   const headingCls = isDark ? "text-white" : "text-[var(--mach-ink)]";
   const subtitleCls = isDark ? "text-white/55" : "text-[var(--mach-mute)]";
   const actionCls = isDark ? "text-white" : "text-[var(--mach-ink)]";
@@ -346,13 +356,15 @@ export function MachStackShowcase({
   return (
     <section
       id={id}
-      className={`${SECTION_GROUND[ground]} scroll-mt-24 ${
+      className={`${backdrop.sectionCls} scroll-mt-24 ${
         isDark ? "" : "border-t border-[var(--mach-ink)]/10"
       }`}>
+      <MachSectionBackdrop background={background} />
       {/* Wider than the product rows below it, and on a tighter gutter. The
           feature block out-measures the shelves horizontally; it no longer
           out-measures them vertically. */}
-      <div className={`${STACK_SHELL} ${STACK_GUTTER} py-10 sm:py-12 lg:py-14`}>
+      <div
+        className={`${backdrop.contentCls} ${STACK_SHELL} ${STACK_GUTTER} py-10 sm:py-12 lg:py-14`}>
         {/* ── Header ──
             The same shape as every other section head on the page — title
             left, action right, on one baseline — one size down from the

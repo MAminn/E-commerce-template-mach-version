@@ -5,11 +5,13 @@ import {
   groupSectionKey,
   parseGroupSectionKey,
   resolveProductSectionDisplayMode,
+  resolveSectionBackground,
   type GroupSectionPresentation,
   type HomepageContent,
   type HomepageGroupSectionContent,
   type HomepageProductGroupContent,
   type LegacyGroupSectionKey,
+  type MachSectionBackground,
   type ProductSectionDisplayMode,
 } from "./homepage-content";
 
@@ -294,6 +296,15 @@ export interface ResolvedGroupSection {
    * the category is still the source and the order is still the category's.
    */
   displayMode: ProductSectionDisplayMode;
+  /**
+   * The optional image or video laid behind the section.
+   *
+   * Resolved here rather than read raw so the storefront never has to ask what
+   * a missing field means: a group configured before backgrounds existed, or
+   * one the client has never opened, resolves to `{ type: "none" }` and renders
+   * on its flat ground exactly as it always has.
+   */
+  background: MachSectionBackground;
   /** The stored config, or undefined for a group nobody has configured yet. */
   config?: HomepageGroupSectionContent;
 }
@@ -360,6 +371,9 @@ export function resolveGroupSections(
       // Absent means the grid. A group configured before this field existed —
       // or one the client has never opened — keeps the appearance it has.
       displayMode: resolveProductSectionDisplayMode(config?.displayMode),
+      // Absent means no background, for the same reason: a new field must not
+      // change what a live section looks like.
+      background: resolveSectionBackground(config?.background),
       config,
     };
   });

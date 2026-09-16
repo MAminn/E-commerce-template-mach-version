@@ -7,12 +7,14 @@ import {
 } from "react";
 import { useReducedMotion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { MachSectionBackground } from "#root/shared/types/homepage-content";
 import { MachProductCard, type MachProduct } from "../MachProductCard";
 import { GUTTER, SHELL } from "../machTokens";
+import type { MachRowGround } from "./MachProductRow";
 import {
-  MACH_ROW_GROUND_CLASSES,
-  type MachRowGround,
-} from "./MachProductRow";
+  MachSectionBackdrop,
+  machSectionBackdrop,
+} from "./MachSectionBackdrop";
 import {
   MachSectionHead,
   machSectionActionVisible,
@@ -198,6 +200,7 @@ export function MachProductCarousel({
   products,
   isLoading = false,
   ground,
+  background,
 }: {
   id?: string;
   eyebrow?: string;
@@ -208,6 +211,8 @@ export function MachProductCarousel({
   products: MachProduct[];
   isLoading?: boolean;
   ground?: MachRowGround;
+  /** Optional CMS image or video behind the whole section. */
+  background?: MachSectionBackground;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [canScrollBack, setCanScrollBack] = useState(false);
@@ -284,6 +289,9 @@ export function MachProductCarousel({
   const resolved: MachRowGround = ground ?? "white";
   const isDark = resolved === "ink";
   const rule = isDark ? "" : "border-t border-[var(--mach-ink)]/10";
+  // Same helper the grid row uses, so a section keeps its background — and
+  // keeps reading the same way on it — through a change of arrangement.
+  const backdrop = machSectionBackdrop(resolved, background);
   const labels = machCarouselControlLabels(title);
   const hasAction = machSectionActionVisible(actionLabel, actionHref);
 
@@ -321,8 +329,10 @@ export function MachProductCarousel({
   return (
     <section
       id={id}
-      className={`${MACH_ROW_GROUND_CLASSES[resolved]} ${rule} scroll-mt-24`}>
-      <div className={`${SHELL} ${GUTTER} py-12 sm:py-14 lg:py-16`}>
+      className={`${backdrop.sectionCls} ${rule} scroll-mt-24`}>
+      <MachSectionBackdrop background={background} />
+      <div
+        className={`${backdrop.contentCls} ${SHELL} ${GUTTER} py-12 sm:py-14 lg:py-16`}>
         <MachSectionHead
           eyebrow={eyebrow}
           title={title}

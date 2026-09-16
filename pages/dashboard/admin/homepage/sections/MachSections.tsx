@@ -23,6 +23,7 @@ import {
   MediaSlotField,
   MediaTextControls,
 } from "#root/components/admin/MediaSlotField";
+import { MediaUploadField } from "#root/components/admin/MediaUploadField";
 import { HomepageCategoryPicker } from "#root/components/admin/HomepageCategoryPicker";
 import { HomepageProductPicker } from "#root/components/admin/HomepageProductPicker";
 import { HomepageSectionOrder } from "#root/components/admin/HomepageSectionOrder";
@@ -42,6 +43,8 @@ import type {
   HeroMediaLayout,
   HomepageContent,
   HomepageGroupSectionContent,
+  MachSectionBackground,
+  MachSectionBackgroundType,
   MediaSlot,
   ProductSectionDisplayMode,
   TextAlign,
@@ -57,6 +60,7 @@ import {
   GROUP_SECTION_LIMIT_MAX,
   GROUP_SECTION_LIMIT_MIN,
   resolveProductSectionDisplayMode,
+  resolveSectionBackground,
   ValuePropIconType,
 } from "#root/shared/types/homepage-content";
 import {
@@ -123,6 +127,85 @@ function MachDisplayModeField({
           ? "Shows the same products in a horizontal swipeable row."
           : "Shows products in the standard section layout."}
       </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Section background — shared by every product section              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The optional image or video behind one product section.
+ *
+ * Mounted by the group sections and by all four merchandising shelves, for the
+ * same reason `MachDisplayModeField` is: one control, one wording, one default,
+ * so the setting means the same thing wherever the client meets it.
+ *
+ * Deliberately three things and no more — none / image / video, and the file.
+ * There is no opacity, no overlay, no focal point and no separate mobile crop
+ * here: the storefront covers the section with the asset and takes its height
+ * from the section's own content, so those controls would be settings without
+ * a decision behind them.
+ *
+ * The asset is *kept* when the client switches type, and only the type is
+ * written. Switching Image → Video → Image to look at the options should not
+ * silently discard the photograph they uploaded a minute ago; "Remove" is how
+ * an asset is discarded, and it is a button that says so.
+ */
+function MachSectionBackgroundField({
+  value,
+  onChange,
+  prefix,
+}: {
+  value: MachSectionBackground | undefined;
+  onChange: (next: MachSectionBackground) => void;
+  /** Filename prefix so uploads stay identifiable on disk. */
+  prefix: string;
+}) {
+  const resolved = resolveSectionBackground(value);
+  // Read from the stored value rather than the resolved one, so an asset
+  // uploaded under a type the client has since switched away from survives
+  // being switched back to.
+  const url = value?.url ?? "";
+
+  return (
+    <div className='space-y-2'>
+      <Label className='text-xs'>Background</Label>
+      <Select
+        value={resolved.type}
+        onValueChange={(v) =>
+          onChange({ type: v as MachSectionBackgroundType, url })
+        }>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value='none'>None</SelectItem>
+          <SelectItem value='image'>Image</SelectItem>
+          <SelectItem value='video'>Video</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {resolved.type === "none" ? (
+        <p className='text-xs text-muted-foreground'>
+          The section sits on the page's own background.
+        </p>
+      ) : (
+        <>
+          <MediaUploadField
+            kind={resolved.type}
+            value={url}
+            prefix={prefix}
+            onChange={(next) => onChange({ type: resolved.type, url: next })}
+          />
+          <p className='text-xs text-muted-foreground'>
+            {resolved.type === "video"
+              ? "Plays silently behind the whole section — heading, products and links."
+              : "Fills the whole section behind the heading, products and links."}
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -665,6 +748,14 @@ function MachGroupSectionEditor({
               How many of this group's products the homepage shows.
             </p>
           </div>
+          <MachSectionBackgroundField
+            value={config?.background}
+            /* Named after the group so uploads stay identifiable on disk.
+               `uploadMediaFile` normalises it, so a long or non-latin group
+               name cannot produce a prefix the mutation refuses. */
+            prefix={`sec-bg-${section.category.slug}`}
+            onChange={(background) => onPatch({ background })}
+          />
         </div>
 
         {/* No product picker, deliberately. The section is the category, so
@@ -830,6 +921,7 @@ interface CuratedShelfContent {
   viewAllLink?: string;
   productIds?: string[];
   displayMode?: ProductSectionDisplayMode;
+  background?: MachSectionBackground;
 }
 
 /**
@@ -919,6 +1011,11 @@ function MachCuratedShelfEditor({
           <MachDisplayModeField
             value={shelf?.displayMode}
             onChange={(displayMode) => onPatch({ displayMode })}
+          />
+          <MachSectionBackgroundField
+            value={shelf?.background}
+            prefix={`sec-bg-${name}`}
+            onChange={(background) => onPatch({ background })}
           />
         </div>
 
