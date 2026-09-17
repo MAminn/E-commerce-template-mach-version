@@ -96,6 +96,22 @@ html[dir="rtl"] .minimal-template h6 {
   font-weight: 500 !important;
 }
 
+/* Mach storefront: Arabic runs in Rubik (the storefront's Arabic face), the
+   same rule the Minimal template applies site-wide, scoped here to elements
+   that declare their language. Latin text is untouched. */
+.landing-template-mach [lang="ar"] {
+  font-family: "Rubik", "Poppins", sans-serif;
+}
+
+/* Horizontal card rows keep native scrolling but hide the bar; arrows and
+   the peeking next card are the affordance. */
+.mach-scroll-hide {
+  scrollbar-width: none;
+}
+.mach-scroll-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Links */
 a:where(:not([class*="text-"])) {
   text-decoration: none;

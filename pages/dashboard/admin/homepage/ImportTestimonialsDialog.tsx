@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  ExternalLink,
   FileSpreadsheet,
   FolderOpen,
   Loader2,
@@ -112,11 +113,14 @@ export function downloadTestimonialTemplateCsv() {
   URL.revokeObjectURL(url);
 }
 
-function RowStatusBadge({ row }: { row: TestimonialRowResult }) {
+function RowStatusBadge({
+  row,
+  completed,
+}: { row: TestimonialRowResult; completed: boolean }) {
   if (row.status === "valid")
     return (
       <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-        Will add
+        {completed ? "Added" : "Will add"}
       </Badge>
     );
   if (row.status === "duplicate")
@@ -130,7 +134,10 @@ function RowStatusBadge({ row }: { row: TestimonialRowResult }) {
   );
 }
 
-function PreviewTable({ rows }: { rows: TestimonialRowResult[] }) {
+function PreviewTable({
+  rows,
+  completed,
+}: { rows: TestimonialRowResult[]; completed: boolean }) {
   return (
     <div className="max-h-72 w-full overflow-auto rounded-md border">
       <Table className="min-w-[720px]">
@@ -163,7 +170,7 @@ function PreviewTable({ rows }: { rows: TestimonialRowResult[] }) {
                 )}
               </TableCell>
               <TableCell className="align-top">
-                <RowStatusBadge row={row} />
+                <RowStatusBadge row={row} completed={completed} />
               </TableCell>
               {row.status === "invalid" ? (
                 <TableCell colSpan={3} className="align-top">
@@ -188,8 +195,8 @@ function PreviewTable({ rows }: { rows: TestimonialRowResult[] }) {
                     {row.status === "duplicate" && (
                       <p className="mb-1 text-xs text-slate-500">
                         {row.reason === "in-file"
-                          ? `Same as row ${row.duplicateOfRow} — will be skipped.`
-                          : "Already on the homepage — will be skipped."}
+                          ? `Same as row ${row.duplicateOfRow} — ${completed ? "skipped" : "will be skipped"}.`
+                          : `Already on the homepage — ${completed ? "skipped" : "will be skipped"}.`}
                       </p>
                     )}
                     <p dir="auto" className="line-clamp-2 whitespace-pre-wrap text-sm text-slate-600">
@@ -492,7 +499,7 @@ export function ImportTestimonialsDialog({
                 <span className="font-medium">{fileName}</span>
                 <span className="text-slate-500">· {preview.summary.total} rows</span>
                 <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                  {preview.summary.valid} will be added
+                  {preview.summary.valid} {result ? "added" : "will be added"}
                 </Badge>
                 <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">
                   {preview.summary.duplicate} duplicate
@@ -502,7 +509,7 @@ export function ImportTestimonialsDialog({
                 </Badge>
               </div>
 
-              <PreviewTable rows={preview.rows} />
+              <PreviewTable rows={preview.rows} completed={!!result} />
 
               {!result && (
                 <>
@@ -602,9 +609,19 @@ export function ImportTestimonialsDialog({
               )}
 
               {result && (
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
                   <Button type="button" variant="outline" onClick={reset}>
                     Upload another file
+                  </Button>
+                  <Button type="button" variant="outline" asChild>
+                    <a
+                      href="/#testimonials"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="testimonials-view-homepage">
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      View homepage
+                    </a>
                   </Button>
                   <Button type="button" onClick={() => handleClose(false)}>
                     Done
