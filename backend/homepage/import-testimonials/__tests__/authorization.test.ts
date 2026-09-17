@@ -79,6 +79,40 @@ describe("testimonial import procedures — authorization", () => {
     }
   });
 
+  describe("homepage.updateContent (the general CMS save)", () => {
+    const input = {
+      merchantId: "00000000-0000-0000-0000-000000000001",
+      templateId: "landing-editorial",
+      content: { hero: { enabled: true, title: "x", subtitle: "", ctaText: "", ctaLink: "/" } } as never,
+    };
+
+    it("rejects a guest with UNAUTHORIZED", async () => {
+      await expect(makeCaller(null).updateContent(input)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    });
+
+    it.each(["user", "vendor"] as const)("%s role is FORBIDDEN", async (role) => {
+      await expect(makeCaller(session(role)).updateContent(input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+
+    it.each(["admin", "superadmin"] as const)("%s passes the guard", async (role) => {
+      // Past the guard the handler hits the real db() singleton, which is not
+      // configured here — any error other than an auth TRPCError proves the
+      // guard let the call through.
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await makeCaller(session(role)).updateContent(input).then(
+          () => undefined,
+          (err: { code?: string }) => {
+            expect(err.code).not.toBe("UNAUTHORIZED");
+            expect(err.code).not.toBe("FORBIDDEN");
+          },
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+  });
+
   it("rejects a payload over the size cap before any work is done", async () => {
     await expect(
       makeCaller(session("admin")).importTestimonials({ csvText: "x".repeat(2 * 1024 * 1024 + 1) }),

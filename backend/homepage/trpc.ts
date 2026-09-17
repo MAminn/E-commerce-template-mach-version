@@ -511,7 +511,8 @@ export const homepageRouter = router({
       };
     }),
 
-  updateContent: protectedProcedure
+  /** Admin-only: writes the whole homepage blob for a template. */
+  updateContent: adminProcedure
     .input(
       z.object({
         merchantId: z.string().uuid(),

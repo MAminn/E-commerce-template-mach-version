@@ -60,6 +60,7 @@ interface ImportResult {
   failed: number;
   totalAfter: number;
   replaced: number;
+  blocked: string | null;
   templateId: string;
   analysis: TestimonialImportAnalysis;
 }
@@ -67,6 +68,8 @@ interface ImportResult {
 type Preview = TestimonialImportAnalysis & {
   existing: ExistingTestimonialsInfo;
   replaceExisting: boolean;
+  /** Server refused publication (unchanged sample quotes would go live). */
+  blocked: string | null;
 };
 
 const TEMPLATE_ROWS: string[][] = [
@@ -256,9 +259,8 @@ export function ImportTestimonialsDialog({
   const [fileName, setFileName] = useState<string | null>(null);
   const [csvText, setCsvText] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  /** Never pre-selected: removing saved testimonials is the admin's call. */
   const [replaceExisting, setReplaceExisting] = useState(false);
-  /** Set once per chosen file so a re-preview does not re-tick the box. */
-  const [replaceDecided, setReplaceDecided] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -271,7 +273,6 @@ export function ImportTestimonialsDialog({
     setImporting(false);
     setResult(null);
     setReplaceExisting(false);
-    setReplaceDecided(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -310,7 +311,6 @@ export function ImportTestimonialsDialog({
 
   const handleReplaceToggle = async (next: boolean) => {
     setReplaceExisting(next);
-    setReplaceDecided(true);
     if (!csvText) return;
     const p = await runPreview(csvText, next);
     if (p) setPreview(p);
@@ -320,7 +320,7 @@ export function ImportTestimonialsDialog({
     setPreview(null);
     setResult(null);
     setCsvText(null);
-    setReplaceDecided(false);
+    setReplaceExisting(false);
     setFileName(file?.name ?? null);
     if (!file) return;
 
@@ -333,21 +333,12 @@ export function ImportTestimonialsDialog({
 
     const text = await file.text();
     setCsvText(text);
+    // Always previewed as an append. If the section holds unchanged sample
+    // quotes the server reports `blocked`; the admin then decides — tick
+    // removal here, or edit the samples in the editor — nothing is decided
+    // for them.
     const first = await runPreview(text, false);
-    if (!first) return;
-    // Shipped sample quotes must not go live beside real customers: when
-    // that is all the section holds, default to replacing them (still an
-    // explicit, visible, untickable choice) and re-run the preview so the
-    // counts reflect it.
-    if (first.existing.shippedSamples) {
-      setReplaceExisting(true);
-      setReplaceDecided(true);
-      const again = await runPreview(text, true);
-      setPreview(again ?? first);
-      return;
-    }
-    setReplaceExisting(false);
-    setPreview(first);
+    if (first) setPreview(first);
   };
 
   const handleImport = async () => {
@@ -361,6 +352,12 @@ export function ImportTestimonialsDialog({
       });
       if (!res.success) {
         toast.error(res.error || "Import failed — nothing was published.");
+        return;
+      }
+      if (res.result.blocked) {
+        // The server re-checked and refused; reflect its reason and stop.
+        setPreview((prev) => (prev ? { ...prev, blocked: res.result.blocked } : prev));
+        toast.error("Not published — see the explanation in the dialog.");
         return;
       }
       setResult(res.result);
@@ -383,6 +380,7 @@ export function ImportTestimonialsDialog({
     !!preview &&
     preview.fileErrors.length === 0 &&
     preview.summary.valid > 0 &&
+    !preview.blocked &&
     !hasUnsavedChanges;
 
   return (
@@ -521,7 +519,7 @@ export function ImportTestimonialsDialog({
                   )}
                   {preview.existing.count > 0 && (
                     <div
-                      className={`space-y-2 rounded-md border p-3 ${preview.existing.shippedSamples ? "border-amber-300 bg-amber-50" : "bg-slate-50"}`}
+                      className={`space-y-2 rounded-md border p-3 ${preview.existing.sampleCount > 0 ? "border-amber-300 bg-amber-50" : "bg-slate-50"}`}
                       data-testid="testimonials-existing-panel">
                       <p className="text-sm text-slate-700">
                         The section already holds{" "}
@@ -533,11 +531,11 @@ export function ImportTestimonialsDialog({
                           {preview.existing.names.length > 6 ? ", …" : ""}
                         </span>
                       </p>
-                      {preview.existing.shippedSamples && (
+                      {preview.existing.sampleCount > 0 && (
                         <p className="text-sm font-medium text-amber-800">
-                          These are the template's sample quotes, not real
-                          customers. Publishing would show them on the site, so
-                          replacing them is pre-selected.
+                          {preview.existing.shippedSamples
+                            ? "All of these are the template's sample quotes, not real customers."
+                            : `${preview.existing.sampleCount} of these ${preview.existing.sampleNames.length === 1 ? "is" : "are"} the template's unchanged sample quote${preview.existing.sampleCount === 1 ? "" : "s"} (${preview.existing.sampleNames.join(", ")}).`}
                         </p>
                       )}
                       <div className="flex items-start gap-2">
@@ -559,6 +557,13 @@ export function ImportTestimonialsDialog({
                         </Label>
                       </div>
                     </div>
+                  )}
+                  {preview.blocked && (
+                    <Alert variant="destructive" data-testid="testimonials-blocked">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>Not published — sample quotes would go live</AlertTitle>
+                      <AlertDescription>{preview.blocked}</AlertDescription>
+                    </Alert>
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-slate-600" data-testid="testimonials-import-summary">

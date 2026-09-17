@@ -60,6 +60,13 @@ describeIfDb("homepage testimonial import service (integration)", () => {
       .where(and(eq(schema.homepageContent.merchantId, merchantId), eq(schema.homepageContent.templateId, TEMPLATE)));
   });
 
+  async function seedRowUpdate(items: unknown[]) {
+    const { sql } = await import("drizzle-orm");
+    await db.execute(
+      sql`update homepage_content set content = jsonb_set(content, '{testimonials,items}', ${JSON.stringify(items)}::jsonb) where merchant_id = ${merchantId} and template_id = ${TEMPLATE}`,
+    );
+  }
+
   async function seedRow(testimonials: unknown) {
     const { v7 } = await import("uuid");
     await db.insert(schema.homepageContent).values({
@@ -160,7 +167,7 @@ describeIfDb("homepage testimonial import service (integration)", () => {
     expect(merged.hero).toBeDefined(); // defaults filled in
   });
 
-  it("flags the template's shipped sample quotes and can replace them explicitly", async () => {
+  it("refuses to publish unchanged shipped sample quotes until the admin explicitly removes them", async () => {
     const { DEFAULT_HOMEPAGE_CONTENT } = await import("#root/shared/types/homepage-content");
     const samples = DEFAULT_HOMEPAGE_CONTENT.testimonials!.items;
     await seedRow({ enabled: false, title: "Voices", items: samples });
@@ -171,27 +178,60 @@ describeIfDb("homepage testimonial import service (integration)", () => {
       count: samples.length,
       names: samples.map((i) => i.name),
       shippedSamples: true,
+      sampleCount: samples.length,
+      sampleNames: samples.map((i) => i.name),
       enabled: false,
     });
-    expect(preview.summary.afterImport).toBe(samples.length + 1); // append by default
+    expect(preview.replaceExisting).toBe(false); // never pre-selected
+    expect(preview.blocked).toMatch(/6 of the 6 saved testimonials are the template's unchanged sample quotes \(Sarah Mitchell, James Cooper/);
 
+    // Import without the explicit choice: refused server-side, nothing written.
+    const refused = await run(service.importTestimonials({ csvText: text, templateId: TEMPLATE }));
+    expect(refused).toMatchObject({ imported: 0, replaced: 0, totalAfter: samples.length });
+    expect(refused.blocked).toMatch(/unchanged sample quotes/);
+    const untouched = ((await storedRow())!.content as { testimonials: { enabled: boolean; items: unknown[] } }).testimonials;
+    expect(untouched.enabled).toBe(false);
+    expect(untouched.items).toHaveLength(samples.length);
+
+    // Explicit removal unblocks it.
     const withReplace = await run(
       service.previewTestimonialImport({ csvText: text, templateId: TEMPLATE, replaceExisting: true }),
     );
+    expect(withReplace.blocked).toBeNull();
     expect(withReplace.summary).toMatchObject({ existing: 0, afterImport: 1 });
 
     const result = await run(
       service.importTestimonials({ csvText: text, templateId: TEMPLATE, replaceExisting: true }),
     );
-    expect(result).toMatchObject({ imported: 1, replaced: samples.length, totalAfter: 1 });
+    expect(result).toMatchObject({ imported: 1, replaced: samples.length, totalAfter: 1, blocked: null });
     const block = ((await storedRow())!.content as { testimonials: { enabled: boolean; title: string; items: { name: string }[] } }).testimonials;
     expect(block.enabled).toBe(true);
     expect(block.title).toBe("Voices"); // title/titleAr kept even when items are replaced
     expect(block.items.map((i) => i.name)).toEqual(["Real Customer"]);
 
-    // A real customer entry means the section is no longer "just samples".
+    // A real customer entry means the section is no longer "just samples",
+    // and with no samples left nothing blocks.
     const after = await run(service.previewTestimonialImport({ csvText: text, templateId: TEMPLATE }));
-    expect(after.existing.shippedSamples).toBe(false);
+    expect(after.existing).toMatchObject({ shippedSamples: false, sampleCount: 0 });
+    expect(after.blocked).toBeNull();
+  });
+
+  it("also blocks when only some saved entries are unchanged samples, and unblocks once they are edited", async () => {
+    const { DEFAULT_HOMEPAGE_CONTENT } = await import("#root/shared/types/homepage-content");
+    const [sample] = DEFAULT_HOMEPAGE_CONTENT.testimonials!.items;
+    await seedRow({ enabled: true, items: [{ name: "Real One", rating: 5, review: "Genuine quote" }, sample] });
+
+    const text = csv("Another Real,4,Also genuine,,");
+    const blocked = await run(service.previewTestimonialImport({ csvText: text, templateId: TEMPLATE }));
+    expect(blocked.existing).toMatchObject({ count: 2, shippedSamples: false, sampleCount: 1, sampleNames: [sample!.name] });
+    expect(blocked.blocked).toMatch(/1 of the 2 saved testimonials is the template's unchanged sample quote/);
+
+    // The admin edits the sample in the editor (a changed quote is no longer a shipped sample).
+    await seedRowUpdate([{ name: "Real One", rating: 5, review: "Genuine quote" }, { ...sample, review: "Edited by the admin" }]);
+    const ok = await run(service.previewTestimonialImport({ csvText: text, templateId: TEMPLATE }));
+    expect(ok.blocked).toBeNull();
+    const result = await run(service.importTestimonials({ csvText: text, templateId: TEMPLATE }));
+    expect(result).toMatchObject({ imported: 1, replaced: 0, totalAfter: 3, blocked: null });
   });
 
   it("never touches product_review", async () => {

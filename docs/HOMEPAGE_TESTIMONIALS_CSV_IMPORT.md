@@ -38,11 +38,17 @@ delete the examples before uploading.
    **Error** (with the Excel row number and the reason).
 3. The dialog shows how many testimonials the section holds now and how many
    it will hold after the import. Existing testimonials are **kept** by
-   default; the file is appended after them.
-   - If the section only contains the template's sample quotes ("Sarah
-     Mitchell", "James Cooper", …), the dialog says so and pre-ticks
-     **Remove the existing testimonials and keep only the ones in this file**,
-     so placeholder quotes never go live. Untick it to keep them anyway.
+   default; the file is appended after them. The box **Remove the existing
+   testimonials and keep only the ones in this file** is never pre-selected —
+   removing saved content is always your explicit choice.
+   - If the section still contains the template's unchanged sample quotes
+     ("Sarah Mitchell", "James Cooper", …), the dialog names them and
+     **refuses to publish** ("Not published — sample quotes would go live"),
+     because publishing turns the section on and would show invented quotes
+     as real customers. To continue, either tick the *Remove the existing
+     testimonials* box, or close the dialog, edit or remove those entries in
+     the Testimonials editor, save, and upload again. Nothing is published or
+     deleted until you do one of those.
 4. Click **Import and publish N testimonials**. This saves the rows and turns
    the Testimonials section **on**. Open the storefront homepage to see them.
 
