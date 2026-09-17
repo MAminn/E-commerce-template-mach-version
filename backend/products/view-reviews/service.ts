@@ -4,7 +4,7 @@ import {
   product,
   productReview,
 } from "#root/shared/database/drizzle/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 
@@ -58,7 +58,7 @@ export const viewReviews = (input: z.infer<typeof viewReviewsSchema>) =>
     );
   });
 
-/** List all reviews across all products (for admin dashboard) */
+/** List all reviews across all products (for admin dashboard), paginated. */
 export const viewAllReviewsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
@@ -68,33 +68,47 @@ export const viewAllReviews = (input: z.infer<typeof viewAllReviewsSchema>) =>
   Effect.gen(function* ($) {
     return yield* $(
       query(async (db) => {
-        const rawReviews = await db
-          .select({
-            id: productReview.id,
-            productId: productReview.productId,
-            productName: product.name,
-            userId: productReview.userId,
-            userName: productReview.userName,
-            rating: productReview.rating,
-            comment: productReview.comment,
-            status: productReview.status,
-            createdAt: productReview.createdAt,
-            imageDiskname: file.diskname,
-          })
-          .from(productReview)
-          .innerJoin(product, eq(productReview.productId, product.id))
-          .leftJoin(file, eq(productReview.imageId, file.id))
-          .orderBy(desc(productReview.createdAt))
-          .limit(input.limit ?? 50)
-          .offset(input.offset ?? 0)
-          .execute();
+        const limit = input.limit ?? 50;
+        const offset = input.offset ?? 0;
 
-        const reviews = rawReviews.map(({ imageDiskname, ...rest }) => ({
+        const [rawReviews, totals] = await Promise.all([
+          db
+            .select({
+              id: productReview.id,
+              productId: productReview.productId,
+              productName: product.name,
+              userId: productReview.userId,
+              userName: productReview.userName,
+              rating: productReview.rating,
+              comment: productReview.comment,
+              status: productReview.status,
+              createdAt: productReview.createdAt,
+              imported: isNotNull(productReview.importKey),
+              imageDiskname: file.diskname,
+            })
+            .from(productReview)
+            .innerJoin(product, eq(productReview.productId, product.id))
+            .leftJoin(file, eq(productReview.imageId, file.id))
+            // id is a UUIDv7 (time-ordered) — a stable tiebreak so imported
+            // rows sharing a createdAt don't shuffle between pages.
+            .orderBy(desc(productReview.createdAt), desc(productReview.id))
+            .limit(limit)
+            .offset(offset)
+            .execute(),
+          db
+            .select({ total: count() })
+            .from(productReview)
+            .innerJoin(product, eq(productReview.productId, product.id))
+            .execute(),
+        ]);
+
+        const reviews = rawReviews.map(({ imageDiskname, imported, ...rest }) => ({
           ...rest,
+          imported: Boolean(imported),
           imageUrl: imageDiskname ? `/uploads/${imageDiskname}` : null,
         }));
 
-        return { reviews };
+        return { reviews, total: totals[0]?.total ?? 0, limit, offset };
       })
     );
   });

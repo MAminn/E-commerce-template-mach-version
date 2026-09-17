@@ -5,12 +5,20 @@ import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 
+/** Length limits shared by the storefront form and the CSV importer so an
+ * imported review can never exceed what a customer could submit. */
+export const REVIEW_LIMITS = {
+  userName: { min: 2, max: 50 },
+  comment: { min: 3, max: 500 },
+  rating: { min: 1, max: 5 },
+} as const;
+
 export const createReviewSchema = z.object({
   productId: z.string().uuid(),
   userId: z.string().uuid().optional(),
-  userName: z.string().min(2).max(50),
-  rating: z.number().int().min(1).max(5),
-  comment: z.string().min(3).max(500),
+  userName: z.string().min(REVIEW_LIMITS.userName.min).max(REVIEW_LIMITS.userName.max),
+  rating: z.number().int().min(REVIEW_LIMITS.rating.min).max(REVIEW_LIMITS.rating.max),
+  comment: z.string().min(REVIEW_LIMITS.comment.min).max(REVIEW_LIMITS.comment.max),
   imageId: z.string().uuid().optional(),
 });
 

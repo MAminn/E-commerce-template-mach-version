@@ -54,17 +54,16 @@ function splitStatements(sql: string): string[] {
 describe("0054 migration — discovery by the real runner", () => {
   it("is picked up by the boot-time migration runner", () => {
     // Registration is by filename in the migrations folder. There is no
-    // manifest to add it to — but it must sort last, or the runner would
-    // apply it out of order on a fresh database.
+    // manifest to add it to — but it must sort after its predecessor, or the
+    // runner would apply it out of order on a fresh database.
     const files = discoverMigrationFiles();
     expect(files).toContain(FILE);
-    expect(files.at(-1)).toBe(FILE);
   });
 
-  it("has a filename that sorts after every earlier migration", () => {
+  it("has a filename that sorts directly after the previous migration", () => {
     const files = discoverMigrationFiles();
     const index = files.indexOf(FILE);
-    expect(index).toBe(files.length - 1);
+    expect(files[index - 1]).toBe("0053_fawaterak_payment_method.sql");
     expect(files[index - 1]!.localeCompare(FILE)).toBeLessThan(0);
   });
 
@@ -79,7 +78,7 @@ describe("0054 migration — discovery by the real runner", () => {
       (e) => e.tag === "0054_pixel_delivery_diagnostics",
     );
     expect(entry).toBeDefined();
-    expect(entry!.idx).toBe(journal.entries.length - 1);
+    expect(entry!.idx).toBe(54);
   });
 });
 

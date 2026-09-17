@@ -18,6 +18,10 @@ import { moderateReviewProcedure } from "./moderate-review/trpc";
 import { uploadReviewImageProcedure } from "./upload-review-image/trpc";
 import { getProductImagesProcedure } from "./get-product-images/trpc";
 import { getProductByIdProcedure } from "./get-product-by-id/trpc";
+import {
+  importReviewsProcedure,
+  previewReviewImportProcedure,
+} from "./import-reviews/trpc";
 
 export const productRouter = t.router({
   view: viewProductsProcedure,
@@ -33,6 +37,8 @@ export const productRouter = t.router({
   createReview: createReviewProcedure,
   deleteReview: deleteReviewProcedure,
   moderateReview: moderateReviewProcedure,
+  previewReviewImport: previewReviewImportProcedure,
+  importReviews: importReviewsProcedure,
   uploadReviewImage: uploadReviewImageProcedure,
   getProductImages: getProductImagesProcedure,
   getCategories: getCategoriesProcedure,

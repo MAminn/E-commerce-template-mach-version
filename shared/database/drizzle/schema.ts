@@ -583,6 +583,12 @@ export const productReview = pgTable("product_review", {
     onUpdate: "cascade",
   }),
   status: reviewStatus("status").default("pending").notNull(),
+  /** Deterministic identity of a CSV-imported review (sha256 of product +
+   * reviewer + rating + comment + supplied date). NULL for reviews written
+   * on the storefront. The unique index makes a re-uploaded, retried or
+   * double-clicked import a no-op instead of a second copy — Postgres
+   * treats NULLs as distinct, so storefront reviews are unaffected. */
+  importKey: text("import_key"),
   createdAt: timestamp("created_at", {
     withTimezone: true,
     mode: "date",
@@ -593,7 +599,9 @@ export const productReview = pgTable("product_review", {
     withTimezone: true,
     mode: "date",
   }),
-});
+}, (table) => ({
+  importKeyUnique: uniqueIndex("product_review_import_key_idx").on(table.importKey),
+}));
 
 // Table to store multiple images for products
 export const productImage = pgTable("product_image", {

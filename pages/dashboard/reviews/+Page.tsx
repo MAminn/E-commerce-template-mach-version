@@ -25,7 +25,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "#root/components/ui/alert-dialog";
-import { Star, Trash2, Loader2, Check, X, Eye } from "lucide-react";
+import {
+  Star,
+  Trash2,
+  Loader2,
+  Check,
+  X,
+  Eye,
+  Upload,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Badge } from "#root/components/ui/badge";
 import {
   Dialog,
@@ -36,6 +47,9 @@ import {
 } from "#root/components/ui/dialog";
 import { trpc } from "#root/shared/trpc/client";
 import { toast } from "sonner";
+import { ImportReviewsDialog, downloadTemplateCsv } from "./ImportReviewsDialog";
+
+const PAGE_SIZE = 100;
 
 interface Review {
   id: string;
@@ -46,6 +60,8 @@ interface Review {
   rating: number;
   comment: string;
   status: "pending" | "approved" | "rejected";
+  /** True for rows created by the CSV importer (no customer account). */
+  imported: boolean;
   imageUrl: string | null;
   createdAt: Date | string;
 }
@@ -96,13 +112,20 @@ export default function ReviewsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [moderatingId, setModeratingId] = useState<string | null>(null);
   const [viewingReview, setViewingReview] = useState<Review | null>(null);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
 
   const fetchReviews = useCallback(async () => {
     setIsLoading(true);
     try {
-      const result = await trpc.product.getAllReviews.query({ limit: 100 });
+      const result = await trpc.product.getAllReviews.query({
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
       if (result.success) {
         setReviews(result.result.reviews as Review[]);
+        setTotal(result.result.total);
       }
     } catch (err) {
       console.error("Failed to fetch reviews:", err);
@@ -110,11 +133,19 @@ export default function ReviewsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     fetchReviews();
   }, [fetchReviews]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  /** After an import, jump to the first page (newest first) and reload. */
+  const handleImported = () => {
+    if (page === 0) fetchReviews();
+    else setPage(0);
+  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -124,6 +155,7 @@ export default function ReviewsPage() {
       if (result.success) {
         toast.success("Review deleted");
         setReviews((prev) => prev.filter((r) => r.id !== deleteId));
+        setTotal((t) => Math.max(0, t - 1));
       } else {
         toast.error("Failed to delete review");
       }
@@ -172,18 +204,32 @@ export default function ReviewsPage() {
 
   return (
     <div className="p-6 w-full h-full mx-auto">
-      <div className="flex flex-col gap-2 mb-6">
-        <h1 className="text-2xl font-bold">Reviews</h1>
-        <p className="text-slate-500">
-          Manage customer reviews across all products
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold">Reviews</h1>
+          <p className="text-slate-500">
+            Manage customer reviews across all products
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={downloadTemplateCsv}>
+            <Download className="h-4 w-4 mr-2" />
+            Download CSV template
+          </Button>
+          <Button type="button" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>All Reviews ({reviews.length})</CardTitle>
+          <CardTitle>All Reviews ({total})</CardTitle>
           <CardDescription>
             View and manage product reviews. Delete inappropriate or spam reviews.
+            Product reviews show on each product's page once approved; homepage
+            testimonials are managed separately in the CMS.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -218,7 +264,14 @@ export default function ReviewsPage() {
                     <TableCell className="font-medium max-w-[150px] truncate">
                       {review.productName}
                     </TableCell>
-                    <TableCell>{review.userName}</TableCell>
+                    <TableCell>
+                      {review.userName}
+                      {review.imported && (
+                        <span className="ml-1.5 align-middle text-[10px] uppercase tracking-wide text-slate-400">
+                          imported
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <StarRating rating={review.rating} />
                     </TableCell>
@@ -291,8 +344,41 @@ export default function ReviewsPage() {
               </TableBody>
             </Table>
           )}
+          {!isLoading && total > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-sm text-muted-foreground">
+                Showing {page * PAGE_SIZE + 1}–
+                {Math.min((page + 1) * PAGE_SIZE, total)} of {total} · Page{" "}
+                {page + 1} of {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      <ImportReviewsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={handleImported}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
