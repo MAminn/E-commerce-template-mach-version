@@ -229,6 +229,9 @@ describe("merge — the client's saved section order", () => {
       "ugc",
       "certificates",
       "whyMach",
+      // Added after this order was saved; the resolver places it where the
+      // default composition puts it — directly after Why Mach.
+      "testimonials",
       "campaign:campaign-secondary",
       "newsletter",
       "footerCta",

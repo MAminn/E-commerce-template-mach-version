@@ -36,6 +36,7 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  MessageSquareQuote,
 } from "lucide-react";
 import { Badge } from "#root/components/ui/badge";
 import {
@@ -221,6 +222,23 @@ export default function ReviewsPage() {
             Import CSV
           </Button>
         </div>
+      </div>
+
+      <div className="mb-6 flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          <strong className="text-slate-800">Looking for the homepage
+          “Testimonials” section?</strong>{" "}
+          Those are landing-page quotes, managed in the Homepage CMS — not
+          product reviews. Upload a testimonials CSV there; no product IDs
+          needed.
+        </p>
+        <a
+          href="/dashboard/admin/homepage#testimonials"
+          data-testid="link-homepage-testimonials"
+          className="inline-flex shrink-0 items-center gap-2 font-medium text-slate-900 underline underline-offset-4 hover:text-slate-700">
+          <MessageSquareQuote className="h-4 w-4" />
+          Homepage testimonials
+        </a>
       </div>
 
       <Card>

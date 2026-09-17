@@ -1,5 +1,6 @@
 /**
- * Minimal RFC 4180 CSV reader for the review importer.
+ * Minimal RFC 4180 CSV reader shared by the CSV importers (product reviews,
+ * homepage testimonials). Browser-safe: no Node imports.
  *
  * Deliberately a character-level state machine rather than `split(",")`:
  * Excel's "CSV UTF-8" export produces quoted fields containing commas,

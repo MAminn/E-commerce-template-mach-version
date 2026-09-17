@@ -44,6 +44,9 @@ import {
   X,
   Check,
   Languages,
+  Download,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { usePageContext } from "vike-react/usePageContext";
 import { Alert, AlertDescription } from "#root/components/ui/alert";
@@ -53,6 +56,10 @@ import {
 } from "#root/components/template-system/templateConfig";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { HomepageProductPicker } from "#root/components/admin/HomepageProductPicker";
+import {
+  ImportTestimonialsDialog,
+  downloadTestimonialTemplateCsv,
+} from "./ImportTestimonialsDialog";
 import {
   MachHeroCampaignCard,
   MachMarqueeCard,
@@ -131,6 +138,16 @@ const TRANSLATION_GROUPS = [
   },
 ] as const;
 
+/** Swap a testimonial with its neighbour; a no-op at either end. */
+function moveTestimonial<T>(items: T[], index: number, delta: -1 | 1): T[] {
+  const target = index + delta;
+  if (target < 0 || target >= items.length) return items;
+  const next = [...items];
+  const [moved] = next.splice(index, 1);
+  next.splice(target, 0, moved as T);
+  return next;
+}
+
 export default function HomepageAdminPage() {
   const pageContext = usePageContext();
   const session = pageContext.clientSession;
@@ -153,6 +170,7 @@ export default function HomepageAdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [testimonialImportOpen, setTestimonialImportOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isUploadingMobileImage, setIsUploadingMobileImage] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -202,6 +220,25 @@ export default function HomepageAdminPage() {
     loadContent();
     loadTranslations();
   }, [selectedTemplateId]);
+
+  /**
+   * Re-read the saved content without the page-level loading state. Used
+   * after a CSV import: the full loader unmounts the whole form — including
+   * the import dialog and its result — so the admin would never see what
+   * was published.
+   */
+  const refreshContentQuietly = async () => {
+    const result = await trpc.homepage.getContent.query({
+      merchantId: MERCHANT_ID,
+      templateId: selectedTemplateId,
+    });
+    if (result.success && result.result) {
+      setContent(result.result);
+      setOriginalContent(result.result);
+    } else {
+      toast.error("Imported, but the editor could not reload — refresh the page.");
+    }
+  };
 
   const loadContent = async () => {
     setIsLoading(true);
@@ -3867,12 +3904,38 @@ export default function HomepageAdminPage() {
         )}
 
         {/* ── Testimonials ──────────── */}
-        <Card>
+        <Card id='testimonials' className='scroll-mt-24'>
           <CardHeader>
-            <div className='flex items-center justify-between'>
-              <CardTitle className='text-base'>Testimonials</CardTitle>
-              <Switch
-                checked={content.testimonials?.enabled ?? false}
+            <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+              <div>
+                <CardTitle className='text-base'>Testimonials</CardTitle>
+                <p className='mt-1 text-xs text-slate-500'>
+                  Customer quotes shown on the landing page. Not product
+                  reviews — those live under Reviews.
+                </p>
+              </div>
+              <div className='flex flex-wrap items-center gap-2'>
+                <Button
+                  type='button'
+                  size='sm'
+                  data-testid='upload-testimonials-csv'
+                  onClick={() => setTestimonialImportOpen(true)}>
+                  <Upload className='mr-2 h-4 w-4' />
+                  Upload testimonials CSV
+                </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='ghost'
+                  className='text-slate-600'
+                  data-testid='download-testimonials-template'
+                  onClick={downloadTestimonialTemplateCsv}>
+                  <Download className='mr-2 h-4 w-4' />
+                  Download template
+                </Button>
+                <Switch
+                  aria-label='Testimonials section enabled'
+                  checked={content.testimonials?.enabled ?? false}
                 onCheckedChange={(checked) =>
                   setContent((prev) => ({
                     ...prev,
@@ -3884,6 +3947,7 @@ export default function HomepageAdminPage() {
                   }))
                 }
               />
+              </div>
             </div>
           </CardHeader>
           <CardContent className='space-y-4'>
@@ -3939,26 +4003,77 @@ export default function HomepageAdminPage() {
                     <span className='text-sm font-medium'>
                       Review #{idx + 1}
                     </span>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='sm'
-                      className='text-red-500 hover:text-red-700'
-                      disabled={!(content.testimonials?.enabled ?? false)}
-                      onClick={() =>
-                        setContent((prev) => ({
-                          ...prev,
-                          testimonials: {
-                            ...prev.testimonials!,
-                            enabled: prev.testimonials?.enabled ?? false,
-                            items: (prev.testimonials?.items ?? []).filter(
-                              (_, i) => i !== idx,
-                            ),
-                          },
-                        }))
-                      }>
-                      Remove
-                    </Button>
+                    <div className='flex items-center gap-1'>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        aria-label={`Move testimonial ${idx + 1} up`}
+                        disabled={
+                          idx === 0 || !(content.testimonials?.enabled ?? false)
+                        }
+                        onClick={() =>
+                          setContent((prev) => ({
+                            ...prev,
+                            testimonials: {
+                              ...prev.testimonials!,
+                              enabled: prev.testimonials?.enabled ?? false,
+                              items: moveTestimonial(
+                                prev.testimonials?.items ?? [],
+                                idx,
+                                -1,
+                              ),
+                            },
+                          }))
+                        }>
+                        <ArrowUp className='h-4 w-4' />
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        aria-label={`Move testimonial ${idx + 1} down`}
+                        disabled={
+                          idx >= (content.testimonials?.items?.length ?? 0) - 1 ||
+                          !(content.testimonials?.enabled ?? false)
+                        }
+                        onClick={() =>
+                          setContent((prev) => ({
+                            ...prev,
+                            testimonials: {
+                              ...prev.testimonials!,
+                              enabled: prev.testimonials?.enabled ?? false,
+                              items: moveTestimonial(
+                                prev.testimonials?.items ?? [],
+                                idx,
+                                1,
+                              ),
+                            },
+                          }))
+                        }>
+                        <ArrowDown className='h-4 w-4' />
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        className='text-red-500 hover:text-red-700'
+                        disabled={!(content.testimonials?.enabled ?? false)}
+                        onClick={() =>
+                          setContent((prev) => ({
+                            ...prev,
+                            testimonials: {
+                              ...prev.testimonials!,
+                              enabled: prev.testimonials?.enabled ?? false,
+                              items: (prev.testimonials?.items ?? []).filter(
+                                (_, i) => i !== idx,
+                              ),
+                            },
+                          }))
+                        }>
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                   <div className='grid grid-cols-2 gap-3'>
                     <div>
@@ -4136,6 +4251,14 @@ export default function HomepageAdminPage() {
               }>
               + Add Testimonial
             </Button>
+
+            <ImportTestimonialsDialog
+              open={testimonialImportOpen}
+              onOpenChange={setTestimonialImportOpen}
+              templateId={selectedTemplateId}
+              hasUnsavedChanges={hasUnsavedChanges}
+              onImported={refreshContentQuietly}
+            />
           </CardContent>
         </Card>
 

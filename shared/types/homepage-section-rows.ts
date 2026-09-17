@@ -112,6 +112,8 @@ function storefrontHeading(
       return content.whyMach?.title;
     case "certificates":
       return content.certificates?.title;
+    case "testimonials":
+      return content.testimonials?.title ?? undefined;
     case "ugc":
       return content.ugc?.title;
     case "newsletter":
@@ -217,6 +219,10 @@ function statusForSection(
     case "certificates":
       if (!content.certificates?.enabled) return "off";
       return certificatesAreEmpty(content) ? "empty" : "visible";
+
+    case "testimonials":
+      if (!content.testimonials?.enabled) return "off";
+      return (content.testimonials.items ?? []).length > 0 ? "visible" : "empty";
 
     case "ugc":
       // The storefront returns null for this slot unconditionally — the review

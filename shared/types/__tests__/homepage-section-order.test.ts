@@ -32,6 +32,7 @@ describe("resolveSectionOrder", () => {
     const custom = [
       "heroMarquee",
       "whyMach",
+      "testimonials",
       "featuredProducts",
       GROUP_GYM_GEAR,
       "newsletter",
@@ -160,6 +161,7 @@ describe("resolveSectionOrder — dynamic group sections", () => {
       GROUP_GYM_GEAR,
       "discountedProducts",
       "whyMach",
+      "testimonials",
       "certificates",
       "ugc",
       "newsletter",

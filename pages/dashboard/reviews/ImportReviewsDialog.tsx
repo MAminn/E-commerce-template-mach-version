@@ -40,7 +40,7 @@ import {
   REVIEW_IMPORT_COLUMNS,
   REVIEW_IMPORT_LIMITS,
 } from "#root/backend/products/import-reviews/constants";
-import { csvEscape } from "#root/backend/products/import-reviews/csv";
+import { csvEscape } from "#root/shared/utils/csv";
 import { trpc } from "#root/shared/trpc/client";
 
 /**

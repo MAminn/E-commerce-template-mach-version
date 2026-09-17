@@ -5,7 +5,7 @@ import {
   REVIEW_IMPORT_COLUMNS,
   REVIEW_IMPORT_LIMITS,
 } from "./constants";
-import { type CsvRecord, parseCsv } from "./csv";
+import { type CsvRecord, parseCsv } from "#root/shared/utils/csv";
 
 /**
  * Pure validation for the review CSV importer.

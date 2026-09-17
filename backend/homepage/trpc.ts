@@ -1,11 +1,22 @@
 import { z } from "zod";
 import { MEDIA_UPLOAD_PREFIX_MAX_LENGTH } from "#root/shared/types/media-upload";
 import {
+  adminProcedure,
+  provideDatabase,
   publicProcedure,
   router,
   protectedProcedure,
 } from "#root/shared/trpc/server";
+import {
+  runBackendEffect,
+  serializeBackendEffectResult,
+} from "#root/shared/backend/effect";
 import { getHomepageContent } from "./get-homepage-content";
+import {
+  importTestimonials,
+  previewTestimonialImport,
+  testimonialImportInputSchema,
+} from "./import-testimonials/service";
 import { updateHomepageContent } from "./update-homepage-content";
 import { uploadHeroImage } from "./upload-hero-image";
 import { uploadHomepageMedia } from "./upload-media";
@@ -518,6 +529,28 @@ export const homepageRouter = router({
         success: true,
         result: content,
       };
+    }),
+
+  /**
+   * Admin-only CSV import of homepage testimonials (the landing-page
+   * "What our customers say" block) — see import-testimonials/service.ts.
+   * Preview reports; import appends to `content.testimonials` and enables
+   * the section. Neither touches product reviews.
+   */
+  previewTestimonialImport: adminProcedure
+    .input(testimonialImportInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return await runBackendEffect(
+        previewTestimonialImport(input).pipe(provideDatabase(ctx)),
+      ).then(serializeBackendEffectResult);
+    }),
+
+  importTestimonials: adminProcedure
+    .input(testimonialImportInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return await runBackendEffect(
+        importTestimonials(input).pipe(provideDatabase(ctx)),
+      ).then(serializeBackendEffectResult);
     }),
 
   uploadHeroImage: protectedProcedure

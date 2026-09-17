@@ -24,6 +24,7 @@ import { MachCategoryTiles } from "../mach/sections/MachCategoryTiles";
 import { MachCampaignBanner } from "../mach/sections/MachCampaignBanner";
 import { MachWhy } from "../mach/sections/MachWhy";
 import { MachCertificates } from "../mach/sections/MachCertificates";
+import { MachTestimonials } from "../mach/sections/MachTestimonials";
 import { MachNewsletter } from "../mach/sections/MachNewsletter";
 import { MachClosingCta } from "../mach/sections/MachClosingCta";
 import {
@@ -424,6 +425,13 @@ export function LandingTemplateMach({
       case "whyMach":
         return content.whyMach?.enabled ? (
           <MachWhy key={key} content={content.whyMach} />
+        ) : null;
+
+      case "testimonials":
+        // Homepage CMS testimonials (hand-entered or CSV-imported). The
+        // component itself returns null when disabled or empty.
+        return content.testimonials ? (
+          <MachTestimonials key={key} content={content.testimonials} />
         ) : null;
 
       case "certificates":

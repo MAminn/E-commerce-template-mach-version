@@ -2,7 +2,7 @@
 
 Dashboard → **Reviews** → **Import CSV**. Nothing is saved until you click **Import** on the preview.
 
-> These are **product reviews**: after approval they appear on the matching product's page and count towards its star rating. Homepage testimonials are a separate CMS section and are not affected by this importer.
+> These are **product reviews**: after approval they appear on the matching product's page and count towards its star rating. Homepage testimonials are a separate CMS section and are not affected by this importer — for those, use Homepage → Testimonials → **Upload testimonials CSV** (no product IDs needed; see `HOMEPAGE_TESTIMONIALS_CSV_IMPORT.md`).
 
 ## 1. Get the template
 

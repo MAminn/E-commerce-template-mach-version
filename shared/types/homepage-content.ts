@@ -1022,6 +1022,7 @@ export const ORDERABLE_SECTION_KEYS = [
   "featuredShelf",
   "discountedProducts",
   "whyMach",
+  "testimonials",
   "certificates",
   "ugc",
   "newsletter",
@@ -1065,6 +1066,7 @@ export const SECTION_LABELS: Record<OrderableSectionKey, string> = {
   featuredShelf: "Featured",
   discountedProducts: "Offers",
   whyMach: "Why Mach",
+  testimonials: "Testimonials",
   certificates: "Certificates & manufacturing",
   ugc: "Community",
   newsletter: "Newsletter",
@@ -1168,6 +1170,7 @@ export const DEFAULT_SECTION_COMPOSITION: string[] = [
   "featuredShelf",
   "discountedProducts",
   "whyMach",
+  "testimonials",
   `${CAMPAIGN_SECTION_PREFIX}campaign-secondary`,
   "certificates",
   "ugc",
@@ -1256,7 +1259,9 @@ export interface HomepageContent {
   /** Client-defined order of the sections below the hero. */
   sectionOrder?: string[];
 
-  /** CMS-controlled testimonials (minimal template) */
+  /** CMS-controlled testimonials. Rendered by the Minimal/Modern templates
+   * and, as the "testimonials" section, by the Mach landing page. Filled by
+   * hand in Homepage Admin or by the testimonials CSV importer. */
   testimonials?: {
     enabled: boolean;
     title?: string;
