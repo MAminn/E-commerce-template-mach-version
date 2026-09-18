@@ -7,8 +7,39 @@ import { existsSync } from "node:fs";
 export interface UploadLayoutImageInput {
   buffer: Uint8Array;
   mimeType: string;
-  /** "header-logo" | "footer-logo" */
+  /** "header-logo" | "footer-logo" | "favicon" | "share-image" | … */
   prefix: string;
+  /**
+   * Original filename, when the caller has it.
+   *
+   * Browsers are unreliable about `File.type` for `.ico` — Chrome on Windows
+   * commonly reports `""` — and an empty type failed the allow-list below with
+   * "Invalid file type", even though the Favicon control advertises ICO. The
+   * extension is the fallback when the browser gives us nothing to go on.
+   */
+  fileName?: string;
+}
+
+/** Extensions we accept when the browser sends no usable MIME type. */
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+};
+
+/**
+ * Best available type for an upload: what the browser said, or what the
+ * filename implies when the browser said nothing useful.
+ */
+function resolveMimeType(mimeType: string, fileName?: string): string {
+  const declared = (mimeType ?? "").toLowerCase().trim();
+  if (declared && declared !== "application/octet-stream") return declared;
+
+  const extension = (fileName ?? "").toLowerCase().split(".").pop() ?? "";
+  return EXTENSION_MIME_TYPES[extension] ?? declared;
 }
 
 export interface UploadLayoutImageResult {
@@ -25,10 +56,12 @@ export interface UploadLayoutImageResult {
  */
 export const uploadLayoutImage = ({
   buffer,
-  mimeType,
+  mimeType: declaredMimeType,
   prefix,
+  fileName,
 }: UploadLayoutImageInput): Effect.Effect<UploadLayoutImageResult, Error> => {
   return Effect.gen(function* () {
+    const mimeType = resolveMimeType(declaredMimeType, fileName);
     const allowedTypes = [
       "image/jpeg",
       "image/jpg",
@@ -41,7 +74,7 @@ export const uploadLayoutImage = ({
     if (!allowedTypes.includes(mimeType.toLowerCase())) {
       yield* Effect.fail(
         new Error(
-          "Invalid file type. Only JPG, PNG, WebP, and SVG are allowed.",
+          "Invalid file type. Only JPG, PNG, WebP, SVG and ICO are allowed.",
         ),
       );
     }
@@ -89,6 +122,48 @@ export const uploadLayoutImage = ({
     // Raster images are processed with sharp
     const filename = `${prefix}-${fileId}.webp`;
     const filePath = `${uploadsDir}/${filename}`;
+
+    if (prefix === "favicon") {
+      /**
+       * Favicons stay PNG.
+       *
+       * Every other raster upload here becomes a `.webp`, and a favicon did
+       * too — so the Favicon control accepted a PNG, wrote
+       * `favicon-<id>.webp`, and the head then declared it
+       * `type="image/png"` against a file the server serves as
+       * `Content-Type: image/webp`. The control says "PNG, SVG, or ICO"; this
+       * makes that true, and a PNG is the format every browser and every OS
+       * tab strip handles without qualification.
+       *
+       * 180px covers the largest icon slot browsers ask for and keeps the file
+       * a few KB. `fit: "contain"` on a transparent background never crops —
+       * a cropped favicon is an unrecognisable one — and a non-square source
+       * is letterboxed into the square the tab expects.
+       */
+      const pngFilename = `${prefix}-${fileId}.png`;
+      const pngFilePath = `${uploadsDir}/${pngFilename}`;
+
+      yield* Effect.tryPromise({
+        try: async () => {
+          await sharp(Buffer.from(buffer))
+            .resize({
+              width: 180,
+              height: 180,
+              fit: "contain",
+              withoutEnlargement: true,
+              background: { r: 0, g: 0, b: 0, alpha: 0 },
+            })
+            .png({ compressionLevel: 9 })
+            .toFile(pngFilePath);
+        },
+        catch: (err) => new Error(`Failed to process favicon: ${err}`),
+      });
+
+      return {
+        url: `/uploads/layout/${pngFilename}`,
+        filename: pngFilename,
+      };
+    }
 
     if (prefix === "share-image") {
       // The frontend declares this image as exactly 1200x630 in og:image

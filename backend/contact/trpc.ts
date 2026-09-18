@@ -3,7 +3,9 @@ import { publicProcedure, router } from "#root/shared/trpc/server";
 import { Effect } from "effect";
 import { EmailService } from "#root/shared/email/service";
 import { getLayoutSettings } from "#root/backend/layout/get-layout-settings/index";
+import { getTemplateSelectionRaw } from "#root/backend/settings/get-template-selection-raw";
 import { getStoreOwnerId } from "#root/shared/config/store";
+import { resolveContactEmail } from "#root/shared/types/layout-settings";
 
 const contactFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(200),
@@ -17,10 +19,29 @@ export const contactRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { name, email, message } = input;
 
-      // Get the contact email from layout settings
+      // Get the contact email from layout settings.
+      //
+      // This used to be pinned to the Minimal landing template id — the only
+      // storefront that had a contact page at the time. Layout settings are template-scoped, so
+      // on any other storefront that read a row the admin cannot even edit, and
+      // this store (landing-editorial) fell through to the hardcoded defaults,
+      // where `contactEmail` is "" — every submission failing with "Contact
+      // email not configured" no matter what the admin typed. Resolve the
+      // template the storefront is actually running instead; `getLayoutSettings`
+      // still falls back to the legacy "default" row, so the Minimal stores
+      // this was written for are unaffected.
       const merchantId = getStoreOwnerId();
-      const layoutSettings = await getLayoutSettings(merchantId, "landing-minimal");
-      const contactEmail = layoutSettings.header.contactEmail;
+      const templateSelection = await getTemplateSelectionRaw(ctx.db);
+      const activeLandingTemplate = templateSelection.landing;
+      const layoutSettings = await getLayoutSettings(
+        merchantId,
+        activeLandingTemplate,
+      );
+      // Which of the two stored addresses wins depends on the storefront's
+      // chrome — see `resolveContactEmail`. On Mach the footer field is the
+      // only one Layout Settings shows, so it must not lose to a hidden
+      // header value inherited from a Minimal configuration.
+      const contactEmail = resolveContactEmail(layoutSettings);
 
       if (!contactEmail) {
         return {

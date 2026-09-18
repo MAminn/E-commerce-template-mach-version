@@ -144,6 +144,7 @@ export const layoutRouter = router({
           uploadLayoutImage({
             buffer: input.file.buffer,
             mimeType: input.file.type,
+            fileName: input.file.name,
             prefix: input.prefix,
           }),
         );

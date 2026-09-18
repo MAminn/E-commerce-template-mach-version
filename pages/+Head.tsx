@@ -4,6 +4,7 @@ import { usePageContext } from "vike-react/usePageContext";
 import type { LayoutSettings } from "#root/shared/types/layout-settings";
 import { STORE_NAME, STORE_DESCRIPTION } from "#root/shared/config/branding";
 import { getPublicOrigin, toAbsoluteUrl } from "#root/shared/config/site-url";
+import { resolveFavicon } from "#root/shared/types/favicon";
 import { buildTypographyHeadCss } from "#root/shared/typography/build-head-css";
 
 export default function HeadDefault() {
@@ -17,17 +18,11 @@ export default function HeadDefault() {
   );
   const activeGA4PixelId = pageContext.activeGA4PixelId;
 
-  // Dynamic favicon from layout settings
-  const faviconUrl = layoutSettings?.faviconUrl || defaultFaviconUrl;
-  const faviconType = layoutSettings?.faviconUrl
-    ? layoutSettings.faviconUrl.endsWith(".svg")
-      ? "image/svg+xml"
-      : layoutSettings.faviconUrl.endsWith(".png")
-        ? "image/png"
-        : layoutSettings.faviconUrl.endsWith(".ico")
-          ? "image/x-icon"
-          : "image/png"
-    : "image/svg+xml";
+  // Dynamic favicon from template-scoped layout settings. The type is derived
+  // from the file that is actually served (see shared/types/favicon.ts) rather
+  // than guessed — declaring image/png for a .webp is what made a freshly
+  // uploaded favicon fail to take effect.
+  const favicon = resolveFavicon(layoutSettings?.faviconUrl, defaultFaviconUrl);
 
   const siteTitle =
     pageContext.brandName ||
@@ -58,6 +53,34 @@ export default function HeadDefault() {
     }
   }, [layoutSettings?.siteTitle]);
 
+  /**
+   * Keep the live `<link rel="icon">` pointing at the resolved favicon.
+   *
+   * SSR is what actually matters and is handled below — this is the
+   * client-router case. Vike's client routing swaps the page without a
+   * document reload, and a browser that has already committed to an icon will
+   * not re-evaluate one whose href never changed. Rewriting the href in place
+   * (rather than appending a second link) makes a saved favicon take effect on
+   * the next navigation instead of waiting for a hard refresh, and leaves
+   * exactly one icon declaration in the document either way.
+   */
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const link =
+      document.head.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!link) return;
+    if (link.getAttribute("href") !== favicon.href) {
+      link.setAttribute("href", favicon.href);
+    }
+    if (favicon.type) {
+      if (link.getAttribute("type") !== favicon.type) {
+        link.setAttribute("type", favicon.type);
+      }
+    } else {
+      link.removeAttribute("type");
+    }
+  }, [favicon.href, favicon.type]);
+
   // Font loading script to replace the onLoad attribute
   useEffect(() => {
     const fontLink = document.querySelector("link[data-font-preload]");
@@ -68,8 +91,11 @@ export default function HeadDefault() {
 
   return (
     <>
-      {/* Basic favicon */}
-      <link rel='icon' href={faviconUrl} type={faviconType} />
+      {/* The only icon declaration in the app: no touch icon, no web
+          manifest, no second icon link anywhere. Keep it that way — competing
+          icon tags are resolved by browser-specific precedence rules, which is
+          how a CMS favicon quietly loses to a stale one. */}
+      <link rel='icon' href={favicon.href} type={favicon.type} />
 
       {/* Blocking locale/dir sync — runs before first paint to prevent LTR→RTL flicker */}
       <script

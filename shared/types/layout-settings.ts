@@ -322,3 +322,42 @@ export function getDefaultLayoutSettings(templateId?: string): LayoutSettings {
     },
   };
 }
+
+// ─── Contact address ────────────────────────────────────────────────────────
+
+/**
+ * The address `contact.submit` sends a storefront enquiry to.
+ *
+ * There is one contact address per storefront, stored twice, because the two
+ * templates surface it in different places — and Layout Settings only shows the
+ * field its own chrome renders:
+ *
+ *   - `header.contactEmail` drives the Minimal info bar above the navbar, and
+ *     its card is shown only when `navbarStyle === "minimal"`.
+ *   - `footer.contactEmail` drives the footer contact column, and its card is
+ *     shown for both "minimal" and "editorial".
+ *
+ * So on Mach the *only* field an admin can reach is the footer one. Preferring
+ * the header field there means a value inherited from an earlier Minimal
+ * configuration — or from the legacy "default" row — silently wins over the one
+ * the admin can actually see and edit, routing enquiries to an address nobody
+ * can correct from the dashboard.
+ *
+ * Precedence therefore follows the chrome: whichever field that storefront
+ * *shows the admin* is the one that decides, with the other kept as a fallback
+ * so no store that has only ever filled in one of them starts failing.
+ */
+export function resolveContactEmail(
+  settings: LayoutSettings,
+): string | undefined {
+  const header = settings.header.contactEmail?.trim() || undefined;
+  const footer = settings.footer.contactEmail?.trim() || undefined;
+
+  // Mach: the footer field is the editable one.
+  if (settings.header.navbarStyle === "editorial") return footer ?? header;
+
+  // Minimal and the default chrome both keep the historical header-first
+  // order. The default navbar has no contact column and exposes neither
+  // field, so it can only ever be running on an inherited value either way.
+  return header ?? footer;
+}

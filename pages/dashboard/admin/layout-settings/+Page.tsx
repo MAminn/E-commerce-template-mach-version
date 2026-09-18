@@ -578,16 +578,21 @@ export default function LayoutSettingsPage() {
             )}
             <div className='mt-2'>
               <Label htmlFor='favicon-upload' className='text-sm'>
-                Upload favicon (PNG, SVG, or ICO — max 1MB)
+                Upload favicon (PNG, JPG, WebP, SVG, or ICO — max 1MB)
               </Label>
               <Input
                 id='favicon-upload'
                 type='file'
-                accept='image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon'
+                accept='image/png,image/jpeg,image/svg+xml,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico'
                 disabled={isUploadingFavicon}
                 onChange={handleFaviconUpload}
                 className='mt-1'
               />
+              <p className='text-xs text-muted-foreground mt-1'>
+                SVG and ICO files are stored exactly as uploaded. Other formats
+                are converted to a 180×180 PNG. Save below to publish — browsers
+                pick the new icon up on the next full page load.
+              </p>
               {isUploadingFavicon && (
                 <p className='text-xs text-muted-foreground mt-1'>
                   Uploading…

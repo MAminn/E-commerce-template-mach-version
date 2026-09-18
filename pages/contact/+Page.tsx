@@ -1,91 +1,81 @@
-import { useState } from "react";
 import { useData } from "vike-react/useData";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
 import { useMinimalI18n } from "#root/lib/i18n/MinimalI18nContext";
-import { trpc } from "#root/shared/trpc/client";
 import { HeroCarousel } from "#root/components/ui/hero-carousel";
-import { Link } from "#root/components/utils/Link";
+import { MachContactPage } from "#root/components/template-system/mach/pages/MachContactPage";
+import { useContactForm } from "#root/hooks/useContactForm";
+import { resolveContactPage } from "#root/shared/types/content-pages";
 import { ArrowUpRight, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import type { Data } from "./+data";
 
 export { Page };
 
+/**
+ * /contact
+ *
+ * Previously Minimal-only, so on Mach it answered with a hard-coded not-found
+ * notice while the Mach footer's Company column linked straight to it.
+ *
+ * Both templates submit through `useContactForm`, i.e. the existing
+ * `contact.submit` mutation — there is exactly one contact backend and this
+ * change does not add a second. The page always renders: the form is the point
+ * of it, and `contactBanner.enabled` only governs the banner imagery.
+ */
 function Page() {
   const { homepageContent } = useData<Data>();
   const layoutSettings = useLayoutSettings();
-  const { t, locale, dir } = useMinimalI18n();
+  const { locale, dir } = useMinimalI18n();
   const isMinimal = layoutSettings.header.navbarStyle === "minimal";
+  const isAr = locale === "ar";
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const view = resolveContactPage(homepageContent.contactBanner, locale);
 
   if (!isMinimal) {
     return (
-      <div className='min-h-[60vh] flex items-center justify-center'>
-        <p className='text-gray-500'>Page not found</p>
-      </div>
+      <MachContactPage
+        view={view}
+        locale={locale}
+        dir={dir}
+        eyebrow={isAr ? "تواصل معنا" : "Contact"}
+      />
     );
   }
 
-  const contactBanner = homepageContent.contactBanner;
+  return <MinimalContactPage view={view} locale={locale} dir={dir} />;
+}
+
+/**
+ * The Minimal storefront's contact page, unchanged in behaviour and
+ * appearance — only its form wiring moved into the shared hook.
+ */
+function MinimalContactPage({
+  view,
+  locale,
+  dir,
+}: {
+  view: ReturnType<typeof resolveContactPage>;
+  locale: "en" | "ar";
+  dir: "ltr" | "rtl";
+}) {
+  const form = useContactForm(locale);
   const isAr = locale === "ar";
 
-  const heading = isAr
-    ? (contactBanner?.headingAr || contactBanner?.heading || "نود أن نسمع منك")
-    : (contactBanner?.heading || "We Would Love To Hear From You");
-
-  const description = isAr
-    ? (contactBanner?.descriptionAr || contactBanner?.description || "")
-    : (contactBanner?.description || "");
-
-  const directionsUrl = contactBanner?.directionsUrl;
-
-  const bannerSlides = (contactBanner?.slides ?? [])
-    .filter((s) => s.imageUrl)
-    .map((s) => ({
-      imageUrl: s.imageUrl,
-      mobileImageUrl: s.mobileImageUrl,
-      alt: s.alt,
-    }));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !email.trim() || !message.trim()) return;
-
-    setIsSubmitting(true);
-    try {
-      const result = await trpc.contact.submit.mutate({
-        name: name.trim(),
-        email: email.trim(),
-        message: message.trim(),
-      });
-
-      if (result.success) {
-        toast.success(
-          isAr ? "تم إرسال رسالتك بنجاح!" : "Your message has been sent successfully!",
-        );
-        setName("");
-        setEmail("");
-        setMessage("");
-      } else {
-        toast.error(result.error || (isAr ? "فشل إرسال الرسالة" : "Failed to send message"));
-      }
-    } catch {
-      toast.error(isAr ? "فشل إرسال الرسالة" : "Failed to send message");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const bannerSlides = view.images.map((image) => ({
+    imageUrl: image.imageUrl,
+    mobileImageUrl: image.mobileImageUrl ?? undefined,
+    alt: image.alt ?? undefined,
+  }));
 
   return (
     <div className='minimal-template' dir={dir}>
       {/* ── Banner ── */}
       {bannerSlides.length > 0 && (
         <div className='w-full'>
-          <HeroCarousel slides={bannerSlides} interval={6000} className='max-h-[400px]' />
+          <HeroCarousel
+            slides={bannerSlides}
+            interval={6000}
+            className='max-h-[400px]'
+          />
         </div>
       )}
 
@@ -95,18 +85,18 @@ function Page() {
           {/* ── Left Column: Heading + Description ── */}
           <div className='flex flex-col justify-center'>
             <h1 className='text-3xl sm:text-4xl lg:text-[42px] font-bold uppercase leading-tight tracking-tight'>
-              {heading}
+              {view.heading}
             </h1>
 
-            {description && (
+            {view.description && (
               <p className='mt-6 text-sm sm:text-base text-gray-600 leading-relaxed max-w-md'>
-                {description}
+                {view.description}
               </p>
             )}
 
-            {directionsUrl && (
+            {view.directionsUrl && (
               <a
-                href={directionsUrl}
+                href={view.directionsUrl}
                 target='_blank'
                 rel='noopener noreferrer'
                 className='inline-flex items-center gap-1.5 mt-8 text-xs font-semibold uppercase tracking-widest hover:opacity-70 transition-opacity'>
@@ -118,13 +108,13 @@ function Page() {
 
           {/* ── Right Column: Form ── */}
           <div>
-            <form onSubmit={handleSubmit} className='space-y-6'>
+            <form onSubmit={form.handleSubmit} className='space-y-6'>
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-6'>
                 <div>
                   <input
                     type='text'
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    value={form.name}
+                    onChange={(e) => form.setName(e.target.value)}
                     placeholder={isAr ? "الاسم" : "Name"}
                     required
                     maxLength={200}
@@ -135,8 +125,8 @@ function Page() {
                 <div>
                   <input
                     type='email'
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={form.email}
+                    onChange={(e) => form.setEmail(e.target.value)}
                     placeholder={isAr ? "البريد الإلكتروني" : "Email"}
                     required
                     maxLength={200}
@@ -148,8 +138,8 @@ function Page() {
 
               <div>
                 <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  value={form.message}
+                  onChange={(e) => form.setMessage(e.target.value)}
                   placeholder={isAr ? "الرسالة" : "Message"}
                   required
                   maxLength={5000}
@@ -162,13 +152,18 @@ function Page() {
               <div>
                 <button
                   type='submit'
-                  disabled={isSubmitting}
+                  disabled={form.isSubmitting}
                   className='inline-flex items-center justify-center gap-2 border border-black bg-transparent px-8 py-3 text-xs font-semibold uppercase tracking-widest hover:bg-black hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed'>
-                  {isSubmitting && <Loader2 className='w-3.5 h-3.5 animate-spin' />}
-                  {isSubmitting
-                    ? (isAr ? "جاري الإرسال..." : "Sending...")
-                    : (isAr ? "إرسال" : "Submit")
-                  }
+                  {form.isSubmitting && (
+                    <Loader2 className='w-3.5 h-3.5 animate-spin' />
+                  )}
+                  {form.isSubmitting
+                    ? isAr
+                      ? "جاري الإرسال..."
+                      : "Sending..."
+                    : isAr
+                      ? "إرسال"
+                      : "Submit"}
                 </button>
               </div>
             </form>

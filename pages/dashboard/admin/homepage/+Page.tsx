@@ -946,6 +946,15 @@ export default function HomepageAdminPage() {
    * kept when the editorial demo was replaced by the Mach implementation.
    */
   const isMach = selectedTemplateId === "landing-editorial";
+  /**
+   * Templates whose storefront renders /about-us, /contact and /return-policy.
+   *
+   * These three CMS cards edit standalone pages, not homepage sections — no
+   * landing template puts them on the homepage. They were `isMinimal`-only,
+   * in lockstep with the public routes that returned "Page not found"
+   * everywhere else; both halves are now open to Mach.
+   */
+  const hasContentPages = isMinimal || isMach;
 
   // Helper: render an Arabic translation input below an English field
   // Only renders when the minimal template is selected
@@ -3406,8 +3415,12 @@ export default function HomepageAdminPage() {
           </Card>
         )}
 
-        {/* ── Contact Page Banner (Minimal only) ──────────── */}
-        {isMinimal && (
+        {/* ── Contact Page (/contact) ──────────────────────
+            Was gated to the Minimal template, which meant the Mach admin had
+            no control over a page the Mach footer links to. The three
+            standalone content pages below are storefront-agnostic content
+            models — each template only decides how they look. */}
+        {hasContentPages && (
           <Card>
             <CardHeader>
               <div className='flex items-center justify-between'>
@@ -4262,8 +4275,8 @@ export default function HomepageAdminPage() {
           </CardContent>
         </Card>
 
-        {/* ── About Us Section (Minimal only) ──────────── */}
-        {isMinimal && (
+        {/* ── About Us Page (/about-us) ──────────────────── */}
+        {hasContentPages && (
           <Card>
             <CardHeader>
               <div className='flex items-center justify-between'>
@@ -4460,8 +4473,8 @@ export default function HomepageAdminPage() {
           </Card>
         )}
 
-        {/* ── Return Policy Page (Minimal only) ──────────── */}
-        {isMinimal && (
+        {/* ── Return Policy Page (/return-policy) ────────── */}
+        {hasContentPages && (
           <Card>
             <CardHeader>
               <div className='flex items-center justify-between'>
