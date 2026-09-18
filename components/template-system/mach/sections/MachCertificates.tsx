@@ -12,8 +12,8 @@ import {
   CTA_ON_DARK,
   EYEBROW,
   GUTTER,
-  HEADING_FEATURE,
   HEADING_SM,
+  HEADING_TRUST,
   SHELL,
 } from "../machTokens";
 
@@ -73,17 +73,41 @@ function columnsFor(count: number): string {
 }
 
 /**
- * The document's height ceiling, by how many are on the row.
+ * The card's width ceiling, by how many are on the row. This is the bound that
+ * sizes the section: the card is capped and centred inside its grid column
+ * rather than filling it, and the image takes whatever height its aspect ratio
+ * asks for within that cap. Nothing is stretched, cropped or letterboxed.
  *
- * Height rather than width, because height is the dimension a portrait page
- * needs bounded — the width then follows from the file's own aspect ratio. On
- * a phone the viewport height caps it instead, so a tall certificate takes
- * most of the screen's width without running past the fold.
+ * Width rather than height, because width is what the eye reads as the size of
+ * a document on a page. The values include the card's own padding (`p-2`,
+ * `sm:p-3`), so they run 16–24px above the artwork width they produce: the
+ * common two-up case lands at ~250px of artwork on a desktop and ~220px on a
+ * phone. A certificate is supporting evidence — big enough to recognise the
+ * accreditation marks, small enough that the strip is not a screenful.
+ */
+function cardWidthFor(count: number): string {
+  if (count <= 1) return "max-w-[256px] sm:max-w-[280px] lg:max-w-[310px]";
+  if (count === 2) return "max-w-[236px] sm:max-w-[260px] lg:max-w-[274px]";
+  return "max-w-[236px] sm:max-w-[240px] lg:max-w-[250px]";
+}
+
+/**
+ * The document's height ceiling — a backstop, not the working bound.
+ *
+ * These sit just clear of what the current 852x1508 artwork needs at the width
+ * caps above, so they never bind on it. They exist to catch an unusually tall
+ * upload — a 1:3 banner at the same width would otherwise run past 800px and
+ * set the section's height on its own — which simply renders narrower instead.
+ *
+ * Flat pixels, not the viewport-relative ceilings this used to carry: `56vh`
+ * on a phone and `clamp(360px,26vw,480px)` on a desktop meant the documents
+ * grew with the screen, which is what made the strip read as oversized on
+ * exactly the sizes it was meant to feel compact on.
  */
 function heightFor(count: number): string {
-  if (count <= 1) return "max-h-[68vh] lg:max-h-[clamp(420px,40vw,560px)]";
-  if (count === 2) return "max-h-[56vh] lg:max-h-[clamp(360px,26vw,480px)]";
-  return "max-h-[48vh] lg:max-h-[clamp(300px,20vw,400px)]";
+  if (count <= 1) return "max-h-[440px] sm:max-h-[470px] lg:max-h-[520px]";
+  if (count === 2) return "max-h-[400px] sm:max-h-[430px] lg:max-h-[450px]";
+  return "max-h-[400px] sm:max-h-[400px] lg:max-h-[410px]";
 }
 
 /**
@@ -221,17 +245,20 @@ export function MachCertificates({
 
   const openItem = items.find((i) => i.id === openId) ?? null;
   const columns = columnsFor(items.length);
+  const cardWidth = cardWidthFor(items.length);
   const height = heightFor(items.length);
 
   return (
     <section
       id="trust"
       className="bg-[var(--mach-paper)] text-[var(--mach-ink)] scroll-mt-24">
-      <div
-        className={`${SHELL} ${GUTTER} py-14 sm:py-16 lg:py-20`}>
+      <div className={`${SHELL} ${GUTTER} py-8 sm:py-10 lg:py-12`}>
         {/* ── Certificates ── */}
         {items.length > 0 && (
-          <>
+          /* A credibility strip, not a merchandising row: the documents get
+             their own, much narrower measure than the 1600px shell the rest of
+             the page runs on. */
+          <div className="mx-auto w-full max-w-[1100px]">
             {/* The header renders only what the client wrote. With both
                 fields empty the documents stand on their own rather than
                 sitting under an empty heading block. */}
@@ -248,15 +275,20 @@ export function MachCertificates({
                   </p>
                 )}
                 {content.title?.trim() && (
-                  <h2 className={`mt-4 ${HEADING_FEATURE}`}>{content.title}</h2>
+                  <h2 className={`mt-2.5 ${HEADING_TRUST}`}>{content.title}</h2>
                 )}
               </div>
             )}
 
+            {/* `w-fit` so the columns hug the documents instead of splitting
+                the measure in half. Two 240px cards in two 550px columns left
+                a 300px hole down the middle of the strip; fit-content still
+                clamps to the available width, so a wide certificate cannot
+                push the row past the measure. */}
             <StaggerContainer
-              className={`mx-auto grid justify-items-center gap-8 sm:gap-10 ${columns} ${
+              className={`mx-auto grid w-fit justify-items-center gap-x-8 gap-y-6 sm:gap-x-10 sm:gap-y-7 ${columns} ${
                 content.subtitle?.trim() || content.title?.trim()
-                  ? "mt-10 lg:mt-12"
+                  ? "mt-6 lg:mt-7"
                   : ""
               }`}>
               {items.map((item) => {
@@ -265,7 +297,8 @@ export function MachCertificates({
 
                 return (
                   <StaggerItem key={item.id} className="w-full">
-                    <figure className="flex h-full flex-col items-center">
+                    <figure
+                      className={`mx-auto flex h-full w-full flex-col items-center ${cardWidth}`}>
                       {/* The document. A white page on the paper ground with a
                           hairline and a soft lift, so it reads as a physical
                           certificate rather than as an image dropped on the
@@ -295,14 +328,14 @@ export function MachCertificates({
                       )}
 
                       {(item.title?.trim() || item.issuer?.trim()) && (
-                        <figcaption className="mt-5 text-center">
+                        <figcaption className="mt-3 text-center">
                           {item.title?.trim() && (
                             <p className="text-[12px] font-bold uppercase leading-snug tracking-[0.14em]">
                               {item.title}
                             </p>
                           )}
                           {item.issuer?.trim() && (
-                            <p className="mt-1.5 text-[10px] uppercase tracking-[0.14em] text-[var(--mach-mute)]">
+                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-[var(--mach-mute)]">
                               {item.issuer}
                             </p>
                           )}
@@ -313,7 +346,7 @@ export function MachCertificates({
                 );
               })}
             </StaggerContainer>
-          </>
+          </div>
         )}
 
         {/* ── Manufacturing / factory ──
@@ -323,7 +356,7 @@ export function MachCertificates({
         {factoryReady && factory && (
           <div
             className={`grid grid-cols-1 items-stretch gap-px bg-[var(--mach-paper-line)] lg:grid-cols-2 ${
-              items.length > 0 ? "mt-14 lg:mt-16" : ""
+              items.length > 0 ? "mt-10 lg:mt-12" : ""
             }`}>
             <div className="flex flex-col justify-center bg-[var(--mach-ink)] p-8 text-white sm:p-12 lg:p-14">
               {factory.heading && (

@@ -87,6 +87,22 @@ export const HEADING_FEATURE =
   "font-black uppercase leading-[0.95] tracking-[-0.028em] text-[clamp(1.75rem,3.8vw,2.625rem)]";
 
 /**
+ * Trust-strip heading — the certifications block.
+ *
+ * The certificates section is a credibility strip, not a statement: a short
+ * eyebrow, a heading, and two documents. At `HEADING_FEATURE` the title ran
+ * 42px on a desktop and 28px on a phone, which made the block read like a
+ * feature shelf and pushed the documents down the fold. Capped at 36px, with a
+ * 24px floor, it still lands as the loudest thing in the strip without
+ * outweighing the evidence underneath it.
+ *
+ * Its own token rather than a change to `HEADING_FEATURE`, which Stacks &
+ * Bundles shares.
+ */
+export const HEADING_TRUST =
+  "font-black uppercase leading-[0.95] tracking-[-0.028em] text-[clamp(1.5rem,4vw,2.25rem)]";
+
+/**
  * Browsing-page heading — the shop and category mastheads.
  *
  * A collection page is not a campaign: the heading names the page and then
