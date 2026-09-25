@@ -33,6 +33,12 @@ export interface MediaUploadFieldProps {
   onChange: (next: string) => void;
   /** Filename prefix so uploads stay identifiable on disk. */
   prefix?: string;
+  /**
+   * Narrows the file picker below what `kind` allows — never widens it, since
+   * the upload endpoint decides what it takes. Omitted, the picker offers the
+   * shared `ACCEPT_BY_KIND` list exactly as before.
+   */
+  accept?: string;
   disabled?: boolean;
 }
 
@@ -41,6 +47,7 @@ export function MediaUploadField({
   value,
   onChange,
   prefix = "media",
+  accept,
   disabled = false,
 }: MediaUploadFieldProps) {
   const input = useRef<HTMLInputElement>(null);
@@ -129,7 +136,7 @@ export function MediaUploadField({
       <input
         ref={input}
         type='file'
-        accept={ACCEPT_BY_KIND[kind]}
+        accept={accept ?? ACCEPT_BY_KIND[kind]}
         className='hidden'
         onChange={handleUpload}
       />

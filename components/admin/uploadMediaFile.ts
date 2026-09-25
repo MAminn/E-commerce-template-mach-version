@@ -2,6 +2,7 @@ import { trpc } from "#root/shared/trpc/client";
 import {
   DEFAULT_MEDIA_UPLOAD_PREFIX,
   normalizeMediaUploadPrefix,
+  oversizeVideoMessage,
 } from "#root/shared/types/media-upload";
 
 /**
@@ -89,6 +90,11 @@ export async function uploadMediaFile(
   prefix: string | undefined,
 ): Promise<MediaUploadOutcome | null> {
   if (!file) return null;
+
+  // Refused before the file is read: a video past what the transport can
+  // carry would otherwise fail in flight with no useful message.
+  const oversize = oversizeVideoMessage(file);
+  if (oversize) return { ok: false, message: oversize };
 
   try {
     const buffer = new Uint8Array(await file.arrayBuffer());

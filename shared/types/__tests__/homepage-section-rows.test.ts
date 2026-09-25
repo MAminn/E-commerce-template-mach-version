@@ -198,16 +198,27 @@ describe("describeSectionRows — status", () => {
     expect(row(`group:${SUPPLEMENTS_ID}`, content(), GROUPS).status).toBe("off");
   });
 
-  it("reports enabled Community as Not available yet, never Visible", () => {
-    const on = content({
-      ugc: { ...DEFAULT_HOMEPAGE_CONTENT.ugc!, enabled: true },
-    });
-    const off = content({
-      ugc: { ...DEFAULT_HOMEPAGE_CONTENT.ugc!, enabled: false },
-    });
+  it("reports UGC as Visible only when switched on with an uploaded video", () => {
+    const video = { id: "v1", videoUrl: "/uploads/homepage/ugc-1.mp4" };
+    const draft = { id: "v2", videoUrl: "" };
+    const ugc = (enabled: boolean, items: { id: string; videoUrl: string }[]) =>
+      content({ ugc: { ...DEFAULT_HOMEPAGE_CONTENT.ugc!, enabled, items } });
 
-    expect(row("ugc", on).status).toBe("unavailable");
-    expect(row("ugc", off).status).toBe("off");
+    expect(row("ugc", ugc(true, [video])).status).toBe("visible");
+    // Switched on, but nothing uploaded: the storefront renders nothing.
+    expect(row("ugc", ugc(true, [])).status).toBe("empty");
+    expect(row("ugc", ugc(true, [draft])).status).toBe("empty");
+    expect(row("ugc", ugc(false, [video])).status).toBe("off");
+  });
+
+  it("names the UGC row by its section and its storefront heading", () => {
+    const r = row(
+      "ugc",
+      content({ ugc: { ...DEFAULT_HOMEPAGE_CONTENT.ugc!, enabled: true } }),
+    );
+
+    expect(r.label).toBe("UGC / Judge Me");
+    expect(r.meta).toBe("Storefront heading: JUDGE ME");
   });
 
   it("reports an enabled but wordless promotional strip as Empty", () => {

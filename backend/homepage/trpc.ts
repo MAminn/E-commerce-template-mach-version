@@ -479,14 +479,28 @@ const HomepageContentSchema = z.object({
       }),
     })
     .nullish(),
+  // UGC / "Judge Me" customer videos. Only URLs are stored — the files go
+  // through `uploadMedia` like every other CMS asset. Copy fields are nullish
+  // so a client still holding the old reserved stub (title / subtitle) saves
+  // without a validation error; the merge layer fills the defaults back in.
   ugc: z
     .object({
       enabled: z.boolean(),
-      title: z.string(),
-      titleAr: z.string().nullish(),
-      subtitle: z.string(),
-      subtitleAr: z.string().nullish(),
-      reviewIds: z.array(z.string().uuid()).nullish(),
+      eyebrow: z.string().nullish(),
+      heading: z.string().nullish(),
+      subheading: z.string().nullish(),
+      items: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            videoUrl: z.string(),
+            posterUrl: z.string().nullish(),
+            creatorName: z.string().nullish(),
+            creatorHandle: z.string().nullish(),
+            caption: z.string().nullish(),
+          }),
+        )
+        .nullish(),
     })
     .nullish(),
   sectionOrder: z.array(z.string()).nullish(),

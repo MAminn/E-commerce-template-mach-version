@@ -69,6 +69,7 @@ import {
   MachCampaignBannersCard,
   MachWhyCard,
   MachCertificatesCard,
+  MachUgcCard,
   MachNewsletterCard,
   MachClosingCtaCard,
   MachSectionOrderCard,
@@ -2921,6 +2922,7 @@ export default function HomepageAdminPage() {
             <MachCampaignBannersCard content={content} setContent={setContent} />
             <MachWhyCard content={content} setContent={setContent} />
             <MachCertificatesCard content={content} setContent={setContent} />
+            <MachUgcCard content={content} setContent={setContent} />
             <MachNewsletterCard content={content} setContent={setContent} />
             <MachClosingCtaCard content={content} setContent={setContent} />
           </>

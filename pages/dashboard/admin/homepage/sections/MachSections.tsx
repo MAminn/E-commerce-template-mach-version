@@ -50,6 +50,7 @@ import type {
   TextAlign,
   TextTheme,
   TextVerticalAlign,
+  UgcVideoItem,
   WhyMachItem,
 } from "#root/shared/types/homepage-content";
 import {
@@ -73,6 +74,16 @@ import {
   type ResolvedGroupSection,
 } from "#root/shared/types/homepage-group-sections";
 import { useBroadGroups } from "#root/components/admin/useBroadGroups";
+import {
+  UGC_POSTER_UPLOAD_PREFIX,
+  UGC_VIDEO_ACCEPT,
+  UGC_VIDEO_UPLOAD_PREFIX,
+  createUgcItem,
+  moveUgcItem,
+  normalizeUgcContent,
+  patchUgcItem,
+  removeUgcItem,
+} from "#root/shared/types/homepage-ugc";
 
 /**
  * Homepage Admin editors for the Mach storefront sections.
@@ -1905,6 +1916,231 @@ export function MachCertificatesCard({
             value={certificates.factory.media}
             onChange={(media) => patchFactory({ media })}
           />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================== */
+/*  UGC / Judge Me                                                    */
+/* ================================================================== */
+
+/**
+ * The owner's customer videos.
+ *
+ * Every write goes through `setContent`'s updater and addresses the row by
+ * id, rather than rebuilding the list from the `items` this card last
+ * rendered. A phone video takes a while to upload; by the time it resolves the
+ * owner may have typed a caption, reordered, or finished a second upload, and
+ * a write based on the stale list would throw all of that away.
+ */
+export function MachUgcCard({
+  content,
+  setContent,
+}: {
+  content: HomepageContent;
+  setContent: SetContent;
+}) {
+  const ugc = normalizeUgcContent(content.ugc);
+
+  const patch = (next: Partial<typeof ugc>) =>
+    setContent((prev) => ({
+      ...prev,
+      ugc: { ...normalizeUgcContent(prev.ugc), ...next },
+    }));
+
+  const updateItems = (update: (items: UgcVideoItem[]) => UgcVideoItem[]) =>
+    setContent((prev) => {
+      const current = normalizeUgcContent(prev.ugc);
+      return { ...prev, ugc: { ...current, items: update(current.items) } };
+    });
+
+  const patchItem = (id: string, next: Partial<UgcVideoItem>) =>
+    updateItems((items) => patchUgcItem(items, id, next));
+
+  const ready = ugc.items.filter((i) => i.videoUrl.trim()).length;
+
+  return (
+    <Card>
+      <SectionCardHeader
+        title='UGC / Judge Me'
+        description='Real videos from your customers. Upload each clip, credit the creator if you like, and set the order with the arrows. Nothing here ships pre-filled: the section stays off the storefront until it is switched on and has at least one video.'
+        enabled={ugc.enabled}
+        onToggle={(enabled) => patch({ enabled })}
+      />
+      <CardContent className='space-y-6'>
+        <div className='grid gap-3 sm:grid-cols-2'>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Eyebrow</Label>
+            <Input
+              value={ugc.eyebrow ?? ""}
+              onChange={(e) => patch({ eyebrow: e.target.value })}
+              className='h-9'
+            />
+          </div>
+          <div className='space-y-1.5'>
+            <Label className='text-xs'>Heading</Label>
+            <Input
+              value={ugc.heading}
+              onChange={(e) => patch({ heading: e.target.value })}
+              className='h-9'
+            />
+          </div>
+        </div>
+        <div className='space-y-1.5'>
+          <Label className='text-xs'>Subheading (optional)</Label>
+          <Input
+            value={ugc.subheading ?? ""}
+            onChange={(e) => patch({ subheading: e.target.value })}
+            className='h-9'
+          />
+        </div>
+
+        <div className='space-y-4'>
+          <div className='flex items-baseline justify-between gap-3'>
+            <Label className='text-sm font-semibold'>Videos</Label>
+            <span className='text-[11px] text-muted-foreground'>
+              {ready} of {ugc.items.length} ready
+            </span>
+          </div>
+          <p className='text-xs text-muted-foreground'>
+            MP4 (H.264) or WebM, up to 25MB each. Vertical 9:16 clips fill the
+            frame; other shapes are shown whole. iPhone .MOV files often do not
+            play outside Safari, so export or convert them to MP4 first.
+          </p>
+
+          {ugc.items.length === 0 && (
+            <p className='text-sm italic text-muted-foreground'>
+              No videos added yet.
+            </p>
+          )}
+
+          {ugc.items.map((item, index) => (
+            <div
+              key={item.id}
+              data-testid='ugc-admin-item'
+              className='space-y-4 rounded-lg border p-4'>
+              <div className='flex items-center justify-between gap-3'>
+                <span className='truncate text-sm font-semibold'>
+                  {item.creatorName?.trim() || `Video ${index + 1}`}
+                  {!item.videoUrl.trim() && (
+                    <span className='ml-2 text-xs font-normal text-muted-foreground'>
+                      No video yet, not shown on the site
+                    </span>
+                  )}
+                </span>
+                <div className='flex shrink-0 items-center gap-0.5'>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='h-7 w-7'
+                    disabled={index === 0}
+                    onClick={() =>
+                      updateItems((items) => moveUgcItem(items, item.id, -1))
+                    }
+                    aria-label='Move up'>
+                    <ChevronUp className='h-3.5 w-3.5' />
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='h-7 w-7'
+                    disabled={index === ugc.items.length - 1}
+                    onClick={() =>
+                      updateItems((items) => moveUgcItem(items, item.id, 1))
+                    }
+                    aria-label='Move down'>
+                    <ChevronDown className='h-3.5 w-3.5' />
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='h-7 w-7 text-destructive'
+                    onClick={() =>
+                      updateItems((items) => removeUgcItem(items, item.id))
+                    }
+                    aria-label='Remove video'>
+                    <Trash2 className='h-3.5 w-3.5' />
+                  </Button>
+                </div>
+              </div>
+
+              <div className='grid gap-4 sm:grid-cols-2'>
+                <div className='space-y-1.5'>
+                  <Label className='text-xs'>Video</Label>
+                  <MediaUploadField
+                    kind='video'
+                    accept={UGC_VIDEO_ACCEPT}
+                    prefix={UGC_VIDEO_UPLOAD_PREFIX}
+                    value={item.videoUrl}
+                    onChange={(videoUrl) => patchItem(item.id, { videoUrl })}
+                  />
+                </div>
+                <div className='space-y-1.5'>
+                  <Label className='text-xs'>Poster image (optional)</Label>
+                  <MediaUploadField
+                    kind='image'
+                    prefix={UGC_POSTER_UPLOAD_PREFIX}
+                    value={item.posterUrl ?? ""}
+                    onChange={(posterUrl) => patchItem(item.id, { posterUrl })}
+                  />
+                  <p className='text-[11px] text-muted-foreground'>
+                    Shown before the video plays. Without one, the first frame
+                    of the video is used.
+                  </p>
+                </div>
+              </div>
+
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <div className='space-y-1.5'>
+                  <Label className='text-xs'>Creator name (optional)</Label>
+                  <Input
+                    value={item.creatorName ?? ""}
+                    onChange={(e) =>
+                      patchItem(item.id, { creatorName: e.target.value })
+                    }
+                    className='h-9'
+                  />
+                </div>
+                <div className='space-y-1.5'>
+                  <Label className='text-xs'>Creator handle (optional)</Label>
+                  <Input
+                    value={item.creatorHandle ?? ""}
+                    onChange={(e) =>
+                      patchItem(item.id, { creatorHandle: e.target.value })
+                    }
+                    placeholder='@handle'
+                    className='h-9'
+                  />
+                </div>
+              </div>
+
+              <div className='space-y-1.5'>
+                <Label className='text-xs'>Caption (optional)</Label>
+                <Textarea
+                  value={item.caption ?? ""}
+                  rows={2}
+                  onChange={(e) =>
+                    patchItem(item.id, { caption: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+          ))}
+
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={() =>
+              updateItems((items) => [...items, createUgcItem(newId("ugc"))])
+            }>
+            <Plus className='mr-1.5 h-3.5 w-3.5' /> Add video
+          </Button>
         </div>
       </CardContent>
     </Card>

@@ -25,6 +25,7 @@ import { MachCampaignBanner } from "../mach/sections/MachCampaignBanner";
 import { MachWhy } from "../mach/sections/MachWhy";
 import { MachCertificates } from "../mach/sections/MachCertificates";
 import { MachTestimonials } from "../mach/sections/MachTestimonials";
+import { MachUgcSection } from "../mach/sections/MachUgcSection";
 import { MachNewsletter } from "../mach/sections/MachNewsletter";
 import { MachClosingCta } from "../mach/sections/MachClosingCta";
 import {
@@ -440,10 +441,11 @@ export function LandingTemplateMach({
         ) : null;
 
       case "ugc":
-        // Reserved. The review system does not carry media yet, so there is
-        // nothing to render — the slot exists so the composition and the CMS
-        // are ready when it does.
-        return null;
+        // UGC / "Judge Me" customer videos from the homepage CMS. Renders
+        // nothing when switched off or when no video has been uploaded.
+        return content.ugc ? (
+          <MachUgcSection key={key} content={content.ugc} />
+        ) : null;
 
       case "newsletter":
         return content.newsletter.enabled ? (

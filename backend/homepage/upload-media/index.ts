@@ -48,7 +48,14 @@ export const IMAGE_TYPES = [
 export const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 const DOCUMENT_TYPES = ["application/pdf"];
 
-/** Per-kind ceilings. Video is the outlier — a short loop still runs large. */
+/**
+ * Per-kind ceilings. Video is the outlier — a short loop still runs large.
+ *
+ * The 40MB video ceiling is never the binding one for CMS uploads: the file
+ * arrives SuperJSON-encoded inside a 100MiB tRPC request, which carries ~25-
+ * 28MB of video at most. The CMS enforces that real limit before sending —
+ * see `MEDIA_UPLOAD_VIDEO_MAX_BYTES` in shared/types/media-upload.ts.
+ */
 const MAX_BYTES: Record<UploadMediaKind, number> = {
   image: 10 * 1024 * 1024,
   video: 40 * 1024 * 1024,

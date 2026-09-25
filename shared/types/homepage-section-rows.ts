@@ -10,6 +10,7 @@ import {
   isGroupSectionKey,
   type ResolvedGroupSection,
 } from "./homepage-group-sections";
+import { ugcSectionRenders } from "./homepage-ugc";
 
 /**
  * What Homepage Admin shows for one row of Section Order.
@@ -115,7 +116,7 @@ function storefrontHeading(
     case "testimonials":
       return content.testimonials?.title ?? undefined;
     case "ugc":
-      return content.ugc?.title;
+      return content.ugc?.heading;
     case "newsletter":
       return content.newsletter?.title;
     case "footerCta":
@@ -225,10 +226,10 @@ function statusForSection(
       return (content.testimonials.items ?? []).length > 0 ? "visible" : "empty";
 
     case "ugc":
-      // The storefront returns null for this slot unconditionally — the review
-      // system does not carry media yet. Saying "Visible" here would promise a
-      // block that cannot exist.
-      return content.ugc?.enabled ? "unavailable" : "off";
+      // The storefront's own predicate: switched on with at least one
+      // uploaded video. A row still waiting for its upload does not count.
+      if (!content.ugc?.enabled) return "off";
+      return ugcSectionRenders(content.ugc) ? "visible" : "empty";
 
     case "newsletter":
       return content.newsletter?.enabled ? "visible" : "off";

@@ -176,6 +176,36 @@ describe("the upload payload", () => {
     });
   });
 
+  it("refuses an oversize video before reading it or calling the mutation", async () => {
+    // Every CMS video slot uploads through here, so this is the one place the
+    // transport limit is enforced. The file is never read into memory.
+    const big = file("clip.mp4", "video/mp4");
+    Object.defineProperty(big, "size", { value: 30 * 1024 * 1024 });
+    const read = vi.spyOn(big, "arrayBuffer");
+
+    const outcome = await uploadMediaFile(big, "ugc");
+
+    expect(outcome).toEqual({
+      ok: false,
+      message:
+        "Video is 30MB. Videos must be 25MB or smaller — export at 1080p or compress it, then upload again.",
+    });
+    expect(read).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("sends a video at the limit, and never size-checks images here", async () => {
+    mutate.mockResolvedValue({ success: true, data: { url: "/u.mp4" } });
+    const atLimit = file("clip.mp4", "video/mp4");
+    Object.defineProperty(atLimit, "size", { value: 25 * 1024 * 1024 });
+    const bigImage = file("shot.png", "image/png");
+    Object.defineProperty(bigImage, "size", { value: 60 * 1024 * 1024 });
+
+    expect((await uploadMediaFile(atLimit, "ugc"))?.ok).toBe(true);
+    expect((await uploadMediaFile(bigImage, "hero"))?.ok).toBe(true);
+    expect(mutate).toHaveBeenCalledTimes(2);
+  });
+
   it("does nothing at all when no file was chosen", async () => {
     // A cancelled picker fires a change event with an empty selection.
     expect(await uploadMediaFile(undefined, "sec-bg-offers")).toBeNull();

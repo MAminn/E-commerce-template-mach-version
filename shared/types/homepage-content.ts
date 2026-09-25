@@ -983,21 +983,38 @@ export interface HomepageCertificatesContent {
 }
 
 /**
- * Community / UGC section.
+ * One customer video in the UGC / "Judge Me" section.
  *
- * Typed and CMS-editable now so the homepage composition reserves the slot,
- * but it renders nothing until the review system carries media. `reviewIds`
- * will select from the existing product_review data — no separate community
- * store.
+ * `videoUrl` is what `homepage.uploadMedia` returned — never the bytes. Every
+ * other field is optional and renders only when the owner filled it in: there
+ * is no placeholder creator, handle or caption anywhere in the storefront.
+ */
+export interface UgcVideoItem {
+  id: string;
+  videoUrl: string;
+  /** Still frame shown before playback. */
+  posterUrl?: string;
+  creatorName?: string;
+  /** Stored as typed; the storefront shows it with a single leading "@". */
+  creatorHandle?: string;
+  caption?: string;
+}
+
+/**
+ * UGC / "Judge Me" — real customer videos the store owner uploads.
+ *
+ * Replaces the reserved "Community" stub (`title` / `subtitle` /
+ * `reviewIds`), which never rendered and never had an editor. A blob still
+ * carrying those keys merges cleanly: they are ignored on read and dropped by
+ * the save schema.
  */
 export interface HomepageUgcContent {
   enabled: boolean;
-  title: string;
-  titleAr?: string;
-  subtitle: string;
-  subtitleAr?: string;
-  /** Reviews promoted to the homepage, in display order. */
-  reviewIds?: string[];
+  eyebrow?: string;
+  heading: string;
+  subheading?: string;
+  /** In display order. */
+  items: UgcVideoItem[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -1068,7 +1085,7 @@ export const SECTION_LABELS: Record<OrderableSectionKey, string> = {
   whyMach: "Why Mach",
   testimonials: "Testimonials",
   certificates: "Certificates & manufacturing",
-  ugc: "Community",
+  ugc: "UGC / Judge Me",
   newsletter: "Newsletter",
   footerCta: "Closing CTA",
 };
@@ -1254,7 +1271,7 @@ export interface HomepageContent {
   whyMach?: HomepageWhyMachContent;
   /** Certificates + manufacturing trust section. */
   certificates?: HomepageCertificatesContent;
-  /** Community / UGC slot — reserved, renders once reviews carry media. */
+  /** UGC / "Judge Me" customer videos. */
   ugc?: HomepageUgcContent;
   /** Client-defined order of the sections below the hero. */
   sectionOrder?: string[];
@@ -1628,11 +1645,14 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
       linkUrl: "",
     },
   },
+  // Ships off and empty. These are the owner's real customer videos; nothing
+  // is seeded, so the section stays off the page until they upload one.
   ugc: {
     enabled: false,
-    title: "",
-    subtitle: "",
-    reviewIds: [],
+    eyebrow: "UGC",
+    heading: "JUDGE ME",
+    subheading: "",
+    items: [],
   },
   sectionOrder: [...DEFAULT_SECTION_ORDER],
   testimonials: {

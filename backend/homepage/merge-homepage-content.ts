@@ -12,6 +12,7 @@ import {
   migrateLegacySectionOrder,
   normalizeGroupSections,
 } from "#root/shared/types/homepage-group-sections";
+import { normalizeUgcContent } from "#root/shared/types/homepage-ugc";
 
 /**
  * Single source of truth for turning a stored `homepage_content.content` blob
@@ -186,7 +187,9 @@ export function mergeHomepageContentWithDefaults(
       items: clean.whyMach?.items ?? DEFAULT_HOMEPAGE_CONTENT.whyMach!.items,
     },
     certificates: mergeCertificates(clean.certificates),
-    ugc: { ...DEFAULT_HOMEPAGE_CONTENT.ugc!, ...clean.ugc },
+    // Field-picked rather than spread, so a blob saved against the old
+    // reserved stub (title / subtitle / reviewIds) reads as the current shape.
+    ugc: normalizeUgcContent(clean.ugc),
     // Left undefined when unsaved so `resolveSectionOrder` falls through to the
     // default composition rather than locking in an empty order. The two
     // legacy group keys are rewritten to their `group:<categoryId>` keys in
