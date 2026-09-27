@@ -2,12 +2,16 @@ import type { ClientSession } from "#root/backend/auth/shared/entities";
 import { query } from "#root/shared/database/drizzle/db";
 import {
   promoCode,
-  promoCodeProducts,
-  promoCodeCategories,
   product,
   order,
   user,
 } from "#root/shared/database/drizzle/schema";
+import {
+  applyOffersToCart,
+  listActiveOffers,
+} from "#root/backend/offers/service";
+import { computeLinePromoDiscount } from "#root/shared/pricing/cart-math";
+import { resolvePromoEligibleProductIds } from "../promo-eligibility";
 import { ServerError } from "#root/shared/error/server";
 import { Effect } from "effect";
 import { z } from "zod";
@@ -252,57 +256,34 @@ export const validatePromoCode = (
     }
 
     // ── Product / category applicability ──
+    // Prices and categories come from the database, not the cart, so this
+    // matches what order creation will charge.
+    const cartProductIds = cartItems.map((item) => item.id);
+    const productRows = yield* $(
+      query((db) =>
+        db
+          .select({
+            id: product.id,
+            name: product.name,
+            categoryId: product.categoryId,
+            price: product.price,
+            discountPrice: product.discountPrice,
+          })
+          .from(product)
+          .where(inArray(product.id, cartProductIds)),
+      ),
+    );
+
+    const eligibleProductIds = foundPromoCode.appliesToAllProducts
+      ? new Set(productRows.map((p) => p.id))
+      : yield* $(
+          query((db) =>
+            resolvePromoEligibleProductIds(db, foundPromoCode.id, productRows),
+          ),
+        );
+
     if (!foundPromoCode.appliesToAllProducts) {
-      const cartProductIds = cartItems.map((item) => item.id);
-
-      const applicableProducts = yield* $(
-        query((db) =>
-          db
-            .select({ productId: promoCodeProducts.productId })
-            .from(promoCodeProducts)
-            .where(
-              and(
-                eq(promoCodeProducts.promoCodeId, foundPromoCode.id),
-                inArray(promoCodeProducts.productId, cartProductIds),
-              ),
-            ),
-        ),
-      );
-
-      const productCategories = yield* $(
-        query((db) =>
-          db
-            .select({ productId: product.id, categoryId: product.categoryId })
-            .from(product)
-            .where(inArray(product.id, cartProductIds)),
-        ),
-      );
-
-      const categoryIds = productCategories
-        .map((pc) => pc.categoryId)
-        .filter((id): id is string => id !== null);
-
-      const applicableCategories =
-        categoryIds.length > 0
-          ? yield* $(
-              query((db) =>
-                db
-                  .select({ categoryId: promoCodeCategories.categoryId })
-                  .from(promoCodeCategories)
-                  .where(
-                    and(
-                      eq(promoCodeCategories.promoCodeId, foundPromoCode.id),
-                      inArray(promoCodeCategories.categoryId, categoryIds),
-                    ),
-                  ),
-              ),
-            )
-          : [];
-
-      if (
-        applicableProducts.length === 0 &&
-        applicableCategories.length === 0
-      ) {
+      if (eligibleProductIds.size === 0) {
         return yield* $(
           Effect.fail(
             new ServerError({
@@ -319,10 +300,35 @@ export const validatePromoCode = (
     // ── Valid ──
     const discountType = foundPromoCode.discountType;
     const discountValue = Number(foundPromoCode.discountValue);
-    const discountAmount =
-      discountType === "percentage"
-        ? (subtotal * discountValue) / 100
-        : Math.min(discountValue, subtotal);
+
+    // Same lines, offers and formula as create-order, in the same order.
+    const pricedLines = cartItems.flatMap((item) => {
+      const row = productRows.find((p) => p.id === item.id);
+      if (!row) return [];
+      const price = Number.parseFloat(row.discountPrice ?? row.price);
+      return [{ id: item.id, name: row.name, quantity: item.quantity, price }];
+    });
+    const pricedSubtotal = pricedLines.reduce(
+      (s, l) => s + l.price * l.quantity,
+      0,
+    );
+    const activeOffers = yield* $(listActiveOffers());
+    const appliedOffers = applyOffersToCart(
+      activeOffers,
+      pricedLines,
+      pricedSubtotal,
+    );
+    const { eligibleSubtotal, discount: discountAmount } =
+      computeLinePromoDiscount(
+        discountType,
+        discountValue,
+        pricedLines.map((l) => ({
+          price: l.price,
+          quantity: l.quantity,
+          eligible: eligibleProductIds.has(l.id),
+        })),
+        appliedOffers,
+      );
 
     return {
       id: foundPromoCode.id,
@@ -330,7 +336,11 @@ export const validatePromoCode = (
       discountType,
       discountValue,
       appliesToAllProducts: foundPromoCode.appliesToAllProducts,
-      /** Discount this code produces against the submitted subtotal. */
+      /** Which cart products this code discounts, so the cart can price each line. */
+      eligibleProductIds: [...eligibleProductIds],
+      /** Subtotal of those products, at current store prices. */
+      eligibleSubtotal,
+      /** What this code takes off this cart (after automatic offers), as order creation computes it. */
       discountAmount,
       /** e.g. "10% off" / "50.00 EGP off" — ready to show to the shopper. */
       discountLabel: describeDiscount(discountType, discountValue),

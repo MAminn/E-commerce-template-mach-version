@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computePromoDiscount, deriveEffectiveShipping } from "../cart-math";
+import {
+  computeLinePromoDiscount,
+  computePromoDiscount,
+  deriveEffectiveShipping,
+} from "../cart-math";
 
 describe("computePromoDiscount", () => {
   it("applies a percentage discount to the raw subtotal when no offer discount is active", () => {
@@ -58,5 +62,130 @@ describe("deriveEffectiveShipping", () => {
     const applied = [{ freeShipping: true }];
     expect(deriveEffectiveShipping(baseFee, applied)).toBe(0);
     expect(deriveEffectiveShipping(baseFee, applied)).toBe(0);
+  });
+});
+
+describe("computeLinePromoDiscount — which lines a promo code discounts", () => {
+  // Mirrors the Mach case: AGIZA20 (20%) restricted to one category.
+  const straps = (quantity = 1) => ({ price: 399, quantity, eligible: true });
+  const creatine = (quantity = 1) => ({ price: 600, quantity, eligible: false });
+
+  describe("codes that apply to all products (unchanged behaviour)", () => {
+    const all = [
+      { price: 399, quantity: 1, eligible: true },
+      { price: 600, quantity: 2, eligible: true },
+    ];
+
+    it("percentage discounts the whole cart", () => {
+      const r = computeLinePromoDiscount("percentage", 20, all, []);
+      expect(r.eligibleSubtotal).toBe(1599);
+      expect(r.discount).toBeCloseTo(319.8);
+    });
+
+    it("fixed amount discounts the whole cart", () => {
+      expect(computeLinePromoDiscount("fixed_amount", 1000, all, []).discount).toBe(1000);
+      expect(computeLinePromoDiscount("fixed_amount", 5000, all, []).discount).toBe(1599);
+    });
+
+    it("is exactly computePromoDiscount(subtotal, total offer discount), offers included", () => {
+      const offers = [
+        { discountAmount: 150, reward: { type: "fixed_off" } },
+        { discountAmount: 399, reward: { type: "free_items", quantity: 1, which: "cheapest" as const } },
+      ];
+      for (const [type, value] of [["percentage", 20], ["fixed_amount", 300]] as const) {
+        expect(computeLinePromoDiscount(type, value, all, offers).discount).toBe(
+          computePromoDiscount(type, value, 1599, 549),
+        );
+      }
+    });
+  });
+
+  describe("restricted codes", () => {
+    it("eligible item only: discounts that item", () => {
+      const r = computeLinePromoDiscount("percentage", 20, [straps()], []);
+      expect(r.eligibleSubtotal).toBe(399);
+      expect(r.discount).toBeCloseTo(79.8);
+    });
+
+    it("ineligible item only: nothing to discount", () => {
+      const r = computeLinePromoDiscount("percentage", 20, [creatine()], []);
+      expect(r).toEqual({ eligibleSubtotal: 0, discount: 0 });
+      expect(computeLinePromoDiscount("fixed_amount", 100, [creatine()], []).discount).toBe(0);
+    });
+
+    it("mixed cart: only the eligible subtotal is discounted (regression: was the whole 999)", () => {
+      const r = computeLinePromoDiscount("percentage", 20, [straps(), creatine()], []);
+      expect(r.eligibleSubtotal).toBe(399);
+      expect(r.discount).toBeCloseTo(79.8);
+      expect(r.discount).not.toBeCloseTo(199.8);
+    });
+
+    it("fixed discount larger than the eligible subtotal is capped at it", () => {
+      const r = computeLinePromoDiscount("fixed_amount", 500, [straps(), creatine()], []);
+      expect(r.discount).toBe(399);
+    });
+
+    it("fixed discount smaller than the eligible subtotal is taken in full", () => {
+      expect(
+        computeLinePromoDiscount("fixed_amount", 100, [straps(), creatine()], []).discount,
+      ).toBe(100);
+    });
+
+    it("recalculates when quantities change", () => {
+      expect(
+        computeLinePromoDiscount("percentage", 20, [straps(2), creatine(3)], []).discount,
+      ).toBeCloseTo(159.6);
+      expect(
+        computeLinePromoDiscount("percentage", 20, [straps(1), creatine(3)], []).discount,
+      ).toBeCloseTo(79.8);
+      // More of the ineligible item changes nothing.
+      expect(
+        computeLinePromoDiscount("percentage", 20, [straps(1), creatine(9)], []).discount,
+      ).toBeCloseTo(79.8);
+    });
+  });
+
+  describe("restricted codes with automatic offers (promo applies after offers)", () => {
+    const cart = [straps(), creatine()]; // 399 eligible + 600 ineligible = 999
+
+    it("percentage offer: eligible lines keep exactly their own share of it", () => {
+      // 10% off the cart = 99.90, of which 39.90 was on the eligible line.
+      const offers = [{ discountAmount: 99.9, reward: { type: "percentage_off" } }];
+      const r = computeLinePromoDiscount("percentage", 20, cart, offers);
+      expect(r.discount).toBeCloseTo((399 - 39.9) * 0.2);
+    });
+
+    it("fixed offer: attributed to lines in proportion to their value", () => {
+      const offers = [{ discountAmount: 100, reward: { type: "fixed_off" } }];
+      const r = computeLinePromoDiscount("percentage", 20, cart, offers);
+      expect(r.discount).toBeCloseTo((399 - 100 * (399 / 999)) * 0.2);
+    });
+
+    it("free-item offer on an ineligible unit leaves the eligible base alone", () => {
+      const offers = [
+        { discountAmount: 600, reward: { type: "free_items", quantity: 1, which: "most_expensive" as const } },
+      ];
+      expect(computeLinePromoDiscount("percentage", 20, cart, offers).discount).toBeCloseTo(79.8);
+    });
+
+    it("free-item offer on an eligible unit comes off the eligible base", () => {
+      const offers = [
+        { discountAmount: 399, reward: { type: "free_items", quantity: 1, which: "cheapest" as const } },
+      ];
+      const twoStraps = [straps(2), creatine()];
+      expect(computeLinePromoDiscount("percentage", 20, twoStraps, offers).discount).toBeCloseTo(79.8);
+    });
+
+    it("free shipping does not change the promo base", () => {
+      const offers = [{ discountAmount: 0, reward: { type: "free_shipping" } }];
+      expect(computeLinePromoDiscount("percentage", 20, cart, offers).discount).toBeCloseTo(79.8);
+    });
+
+    it("never goes negative when offers exceed the eligible lines", () => {
+      const offers = [
+        { discountAmount: 399, reward: { type: "free_items", quantity: 1, which: "cheapest" as const } },
+      ];
+      expect(computeLinePromoDiscount("fixed_amount", 50, cart, offers).discount).toBe(0);
+    });
   });
 });

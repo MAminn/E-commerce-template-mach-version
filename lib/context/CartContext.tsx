@@ -4,7 +4,7 @@ import type { Product } from "../mock-data/products";
 import { trpc } from "#root/shared/trpc/client";
 import type { AppliedOffer } from "#root/backend/offers/service";
 import { getCartSessionToken } from "#root/lib/cart-session";
-import { computePromoDiscount, deriveEffectiveShipping, computeFreeItemQuantities } from "#root/shared/pricing/cart-math";
+import { computeLinePromoDiscount, deriveEffectiveShipping, computeFreeItemQuantities } from "#root/shared/pricing/cart-math";
 
 export interface CartItem extends Product {
   quantity: number;
@@ -20,7 +20,15 @@ export interface PromoCodeInfo {
   /** Human-readable discount, e.g. "10% off". Absent on older cached copies. */
   discountLabel?: string;
   description?: string | null;
+  /**
+   * Cart products a restricted code discounts, as resolved by the server.
+   * Ignored when `appliesToAllProducts`; absent on older cached copies.
+   */
+  eligibleProductIds?: string[];
 }
+
+const sameIds = (a: readonly string[] = [], b: readonly string[] = []) =>
+  a.length === b.length && a.every((id) => b.includes(id));
 
 /**
  * Outcome of applying a promo code. `message` is always populated with
@@ -184,9 +192,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // can never get stuck at 0 after a free-shipping offer stops applying.
   const shipping = deriveEffectiveShipping(baseShippingFee, appliedOffers);
 
-  // Derived, not state — see shared/pricing/cart-math.ts for why.
+  // Derived, not state — see shared/pricing/cart-math.ts for why. A
+  // restricted code only discounts the lines the server said it applies to.
   const discount = promoCode
-    ? computePromoDiscount(promoCode.discountType, promoCode.discountValue, subtotal, offerDiscount)
+    ? computeLinePromoDiscount(
+        promoCode.discountType,
+        promoCode.discountValue,
+        items.map((item) => ({
+          price: item.price,
+          quantity: item.quantity,
+          eligible:
+            promoCode.appliesToAllProducts ||
+            (promoCode.eligibleProductIds ?? []).includes(item.id),
+        })),
+        appliedOffers,
+      ).discount
     : 0;
 
   // Which specific cart line(s) an offer made free, so the UI can show a
@@ -202,7 +222,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // Re-check the applied promo code against the new cart. Editing the cart
     // can invalidate a code (dropping below its minimum, or removing the only
     // eligible product), and it's far better to surface that here than to let
-    // checkout fail. Only failures act, so this can't loop.
+    // checkout fail. A success only refreshes which products the code covers
+    // (a newly added item may be eligible), and only when that set changed,
+    // so this can't loop.
     if (promoCode && items.length > 0) {
       const promoCartItems = items.map((item) => ({
         id: item.id,
@@ -220,7 +242,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
           subtotal: promoSubtotal,
         })
         .then((result) => {
-          if (!result.success || !result.result) {
+          if (result.success && result.result) {
+            const eligibleProductIds = result.result.eligibleProductIds;
+            setPromoCode((current) =>
+              current &&
+              current.code === promoCode.code &&
+              !sameIds(current.eligibleProductIds, eligibleProductIds)
+                ? { ...current, eligibleProductIds }
+                : current,
+            );
+          } else {
             const reason = promoErrorMessage(result);
             setPromoCode(null);
             setPromoCodeNotice(

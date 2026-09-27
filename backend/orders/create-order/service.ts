@@ -6,8 +6,6 @@ import {
   user,
   type orderStatus,
   promoCode,
-  promoCodeProducts,
-  promoCodeCategories,
   cartOffer,
 } from "#root/shared/database/drizzle/schema";
 import { and, asc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
@@ -23,7 +21,8 @@ import { getEmailBranding } from "#root/backend/emails/branding";
 import axios from "axios";
 import { validatePromoCode } from "#root/backend/promo-codes/validate-promo-code/validate-promo-code";
 import { applyOffersToCart } from "#root/backend/offers/service";
-import { computePromoDiscount } from "#root/shared/pricing/cart-math";
+import { computeLinePromoDiscount } from "#root/shared/pricing/cart-math";
+import { resolvePromoEligibleProductIds } from "#root/backend/promo-codes/promo-eligibility";
 import { getStoreOwnerId } from "#root/shared/config/store";
 import { getShippingFeeRaw } from "#root/backend/settings/get-shipping-fee";
 import { isBostaEnabled } from "#root/backend/orders/bosta/service";
@@ -522,63 +521,37 @@ export const createOrder = (
               }
             }
 
-            // Product / category applicability — this was previously skipped
-            // at order time, letting a restricted code through on any cart.
-            if (!promoCodeData.appliesToAllProducts) {
-              const cartProductIds = input.items.map((item) => item.productId);
+            // Product / category applicability, resolved from the database
+            // rows fetched above — the same rule the cart's validation uses.
+            const eligibleProductIds = promoCodeData.appliesToAllProducts
+              ? new Set(products.map((p) => p.id))
+              : await resolvePromoEligibleProductIds(
+                  tx,
+                  promoCodeData.id,
+                  products,
+                );
 
-              const applicableProducts = await tx
-                .select({ productId: promoCodeProducts.productId })
-                .from(promoCodeProducts)
-                .where(
-                  and(
-                    eq(promoCodeProducts.promoCodeId, promoCodeData.id),
-                    inArray(promoCodeProducts.productId, cartProductIds),
-                  ),
-                )
-                .execute();
-
-              const cartCategoryIds = products
-                .map((p) => p.categoryId)
-                .filter((id): id is string => !!id);
-
-              const applicableCategories =
-                cartCategoryIds.length > 0
-                  ? await tx
-                      .select({ categoryId: promoCodeCategories.categoryId })
-                      .from(promoCodeCategories)
-                      .where(
-                        and(
-                          eq(promoCodeCategories.promoCodeId, promoCodeData.id),
-                          inArray(
-                            promoCodeCategories.categoryId,
-                            cartCategoryIds,
-                          ),
-                        ),
-                      )
-                      .execute()
-                  : [];
-
-              if (
-                applicableProducts.length === 0 &&
-                applicableCategories.length === 0
-              ) {
-                throw new ServerError({
-                  tag: "PromoCodeValidationFailed",
-                  statusCode: 400,
-                  clientMessage:
-                    "This promo code doesn't apply to any of the items in your cart.",
-                });
-              }
+            if (eligibleProductIds.size === 0) {
+              throw new ServerError({
+                tag: "PromoCodeValidationFailed",
+                statusCode: 400,
+                clientMessage:
+                  "This promo code doesn't apply to any of the items in your cart.",
+              });
             }
 
-            // Calculate discount from the code's own values, never the client's.
-            discount = computePromoDiscount(
+            // Calculate discount from the code's own values, never the
+            // client's — and for a restricted code, only on eligible lines.
+            discount = computeLinePromoDiscount(
               promoCodeData.discountType,
               Number(promoCodeData.discountValue),
-              subtotal,
-              offerDiscount,
-            );
+              cartItemsForOffers.map((line) => ({
+                price: line.price,
+                quantity: line.quantity,
+                eligible: eligibleProductIds.has(line.id),
+              })),
+              appliedOffers,
+            ).discount;
 
             // Increment used count for the promo code
             await tx
