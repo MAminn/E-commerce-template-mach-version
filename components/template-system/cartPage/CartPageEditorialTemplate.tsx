@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Button } from "#root/components/ui/button";
 import { Input } from "#root/components/ui/input";
 import { Skeleton } from "#root/components/ui/skeleton";
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type {
   CartPageCartItem,
+  CartPageModernTemplateProps,
   CartPageTotals,
 } from "./CartPageModernTemplate";
 import { EditorialChrome } from "../editorial/EditorialChrome";
@@ -23,7 +24,17 @@ import { StaggerContainer, StaggerItem } from "../motion/Stagger";
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
 
-export interface CartPageEditorialTemplateProps {
+// The promo-code props are shared with the Modern template so pages/cart
+// feeds every cart template the same apply result, applied code and notice.
+export interface CartPageEditorialTemplateProps
+  extends Pick<
+    CartPageModernTemplateProps,
+    | "onApplyCoupon"
+    | "appliedCoupon"
+    | "onRemoveCoupon"
+    | "couponNotice"
+    | "onDismissCouponNotice"
+  > {
   items: CartPageCartItem[];
   totals: CartPageTotals;
   isLoading?: boolean;
@@ -31,7 +42,6 @@ export interface CartPageEditorialTemplateProps {
   currency?: string;
   onQuantityChange?: (id: string, quantity: number) => void;
   onRemoveItem?: (id: string) => void;
-  onApplyCoupon?: (code: string) => void;
   onProceedToCheckout?: () => void;
 }
 
@@ -57,14 +67,53 @@ export function CartPageEditorialTemplate({
   onRemoveItem,
   onApplyCoupon,
   onProceedToCheckout,
+  appliedCoupon,
+  onRemoveCoupon,
+  couponNotice,
+  onDismissCouponNotice,
 }: CartPageEditorialTemplateProps) {
   const [couponCode, setCouponCode] = useState("");
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [couponFeedback, setCouponFeedback] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  // State alone can't stop an Enter + click landing in the same tick, before
+  // the disabled button has re-rendered.
+  const applyInFlight = useRef(false);
 
-  const handleApplyCoupon = () => {
-    if (couponCode.trim() && onApplyCoupon) {
-      onApplyCoupon(couponCode.trim());
-      setCouponCode("");
+  const handleApplyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code || !onApplyCoupon || applyInFlight.current) return;
+
+    applyInFlight.current = true;
+    setCouponFeedback(null);
+    onDismissCouponNotice?.();
+    setIsApplyingCoupon(true);
+    try {
+      const result = await onApplyCoupon(code);
+      if (result) {
+        setCouponFeedback(result);
+        // Only clear the field on success, so a typo stays editable.
+        if (result.success) setCouponCode("");
+      } else {
+        setCouponCode("");
+      }
+    } catch {
+      setCouponFeedback({
+        success: false,
+        message: "We couldn't apply that promo code. Please try again.",
+      });
+    } finally {
+      applyInFlight.current = false;
+      setIsApplyingCoupon(false);
     }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponFeedback(null);
+    onDismissCouponNotice?.();
+    onRemoveCoupon?.();
   };
 
   /* ---- Loading State ---- */
@@ -256,7 +305,9 @@ export function CartPageEditorialTemplate({
                 </div>
                 {totals.discount != null && totals.discount > 0 && (
                   <div className="flex justify-between text-stone-600">
-                    <span>Discount</span>
+                    <span>
+                      Discount{appliedCoupon ? ` (${appliedCoupon.code})` : ""}
+                    </span>
                     <span className="text-green-700">
                       −{formatPrice(totals.discount, currency)}
                     </span>
@@ -303,12 +354,23 @@ export function CartPageEditorialTemplate({
                       <Input
                         type="text"
                         placeholder="Promo code"
+                        aria-label="Promo code"
                         value={couponCode}
-                        onChange={(e) => setCouponCode(e.target.value)}
-                        className="h-9 rounded-full ps-9 text-sm border-stone-200"
+                        onChange={(e) => {
+                          setCouponCode(e.target.value);
+                          if (couponFeedback) setCouponFeedback(null);
+                        }}
+                        className={`h-9 rounded-full ps-9 text-sm ${
+                          couponFeedback && !couponFeedback.success
+                            ? "border-red-300"
+                            : "border-stone-200"
+                        }`}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleApplyCoupon();
                         }}
+                        disabled={isApplyingCoupon}
+                        aria-invalid={couponFeedback?.success === false}
+                        aria-describedby="promo-code-feedback"
                       />
                     </div>
                     <Button
@@ -316,11 +378,59 @@ export function CartPageEditorialTemplate({
                       size="sm"
                       className="h-9 rounded-full px-4 text-xs tracking-wide border-stone-200"
                       onClick={handleApplyCoupon}
-                      disabled={!couponCode.trim()}
+                      disabled={!couponCode.trim() || isApplyingCoupon}
                     >
-                      Apply
+                      {isApplyingCoupon ? "Checking…" : "Apply"}
                     </Button>
                   </div>
+
+                  <div id="promo-code-feedback" aria-live="polite">
+                    {/* A code that stopped being valid on its own (cart
+                        edited, code expired between visits, etc.) */}
+                    {couponNotice && (
+                      <p className="mt-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        {couponNotice}
+                      </p>
+                    )}
+
+                    {couponFeedback && (
+                      <p
+                        className={`mt-2 px-1 text-xs ${
+                          couponFeedback.success
+                            ? "text-green-700"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {couponFeedback.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Currently applied code, with a way to take it off */}
+                  {appliedCoupon && (
+                    <div
+                      data-testid="applied-promo-code"
+                      className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-green-100 bg-green-50 px-3 py-2"
+                    >
+                      <p className="min-w-0 text-xs text-green-700">
+                        <span className="font-semibold tracking-wide">
+                          {appliedCoupon.code}
+                        </span>
+                        {appliedCoupon.discountLabel
+                          ? ` — ${appliedCoupon.discountLabel}`
+                          : ""}
+                      </p>
+                      {onRemoveCoupon && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveCoupon}
+                          className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-green-700 underline underline-offset-2 hover:text-green-900"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
