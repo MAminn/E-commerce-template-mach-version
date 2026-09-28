@@ -6,7 +6,7 @@ import type {
 import type { CategoryStripItem } from "#root/components/shop/CategoryStrip";
 import { StaggerContainer, StaggerItem } from "../../motion/Stagger";
 import { normalizeMediaUrl } from "../MachMedia";
-import { GROUND_PAPER, GUTTER, HEADING_SM } from "../machTokens";
+import { GROUND_INK, GUTTER, HEADING_SM, TEXT_MUTE_ON_DARK } from "../machTokens";
 
 /**
  * The header's measure.
@@ -34,10 +34,12 @@ const HEAD_SHELL = "mx-auto w-full max-w-[1920px]";
  *
  *   desktop   one row, as many columns as there are groups, capped by the
  *             client's "tiles per row" setting so a tile is never a sliver
- *   mobile    a two-up grid; with an odd count the first tile spans the full
- *             width and leads, which is what turns three groups into the
- *             compact lead-plus-pair composition rather than three tall
- *             full-width cards
+ *   tablet    (sm up to lg) a two-up grid; with an odd count the first tile
+ *             spans the full width and leads, which is what turns three
+ *             groups into the compact lead-plus-pair composition
+ *   phone     (below sm) one tile per row, full width, in the lead tile's
+ *             16:9 shape so a long selection stays a band rather than a
+ *             column of full-width squares
  *
  * **The artwork carries the section.** Tiles render at full colour — this is
  * campaign photography and it is the only source of energy in the block. (The
@@ -113,8 +115,9 @@ export function MachCategoryTiles({
 
   const variant = content.layoutVariant ?? "tiles-4";
   const columns = Math.min(VARIANT_COLUMNS[variant], visible.length);
-  // An odd selection leads with one wide tile on phones. An even one is a
-  // plain two-up grid, which already balances.
+  // An odd selection leads with one wide tile in the two-up (sm–lg) grid. An
+  // even one is a plain two-up grid, which already balances. Phones are one
+  // column, so every tile is already full width there.
   const leads = visible.length % 2 === 1 && visible.length > 1;
 
   const heading = content.title?.trim();
@@ -124,7 +127,7 @@ export function MachCategoryTiles({
   const actionLabel = content.ctaText?.trim();
 
   return (
-    <section id="categories" className={`${GROUND_PAPER} scroll-mt-24`}>
+    <section id="categories" className={`${GROUND_INK} scroll-mt-24`}>
       {/* The header is optional on purpose. The reference composition puts the
           tiles straight under the hero with nothing above them, and this
           section is navigation rather than a merchandising shelf — so it gets
@@ -133,12 +136,12 @@ export function MachCategoryTiles({
       {(heading || subtitle) && (
         <div className={`${HEAD_SHELL} ${GUTTER} pb-6 pt-12 sm:pt-14 lg:pb-7`}>
           {heading && (
-            <h2 className={`${HEADING_SM} text-[var(--mach-ink)]`}>
+            <h2 className={`${HEADING_SM} text-white`}>
               {heading}
             </h2>
           )}
           {subtitle && (
-            <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-[var(--mach-mute)] sm:text-[15px]">
+            <p className={`mt-3 max-w-xl text-[14px] leading-relaxed sm:text-[15px] ${TEXT_MUTE_ON_DARK}`}>
               {subtitle}
             </p>
           )}
@@ -150,7 +153,7 @@ export function MachCategoryTiles({
           to read as one object, the way the reference stores' category bands
           do, rather than as three floating cards on a page. */}
       <StaggerContainer
-        className={`grid w-full grid-cols-2 gap-px bg-[var(--mach-ink)] ${
+        className={`grid w-full grid-cols-1 gap-px sm:grid-cols-2 bg-[var(--mach-ink)] ${
           LG_COLUMNS[columns] ?? "lg:grid-cols-3"
         }`}>
         {visible.map((category, index) => {
@@ -163,11 +166,11 @@ export function MachCategoryTiles({
           return (
             <StaggerItem
               key={category.id}
-              className={isLead ? "col-span-2 lg:col-span-1" : ""}>
+              className={isLead ? "sm:col-span-2 lg:col-span-1" : ""}>
               <a
                 href={`/categories/${category.slug}`}
                 className={`group relative flex w-full items-end justify-center overflow-hidden bg-[var(--mach-ink)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white lg:aspect-auto lg:h-[clamp(360px,30vw,560px)] ${
-                  isLead ? "aspect-16/9" : "aspect-square"
+                  isLead ? "aspect-16/9" : "aspect-16/9 sm:aspect-square"
                 }`}>
                 {img ? (
                   <>

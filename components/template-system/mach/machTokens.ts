@@ -31,6 +31,37 @@ export const GROUND_INK_SOFT = "bg-[var(--mach-ink-soft)] text-white";
 export const GROUND_PAPER = "bg-[var(--mach-paper)] text-[var(--mach-ink)]";
 /** Pure white — the brightest step, for product-forward rows. */
 export const GROUND_WHITE = "bg-white text-[var(--mach-ink)]";
+/** Raised charcoal — the step above `GROUND_INK_SOFT`, for panels and cards. */
+export const GROUND_INK_RAISED = "bg-[var(--mach-ink-raised)] text-white";
+
+/* ── Dark theme ────────────────────────────────────────────────────────────
+   The storefront is dark by default. Any Mach surface that has no image or
+   video of its own sits on one of the three ink steps above; `GROUND_PAPER`
+   and `GROUND_WHITE` stay exported for the few places that are deliberately
+   light (a document mat, a product photo's stage), not as page grounds.
+
+   Media is never recoloured: a section with a CMS background keeps its own
+   picture, wash and text theme, and product photography keeps its white
+   stage. These tokens only describe the ground *around* that media. */
+
+/** Secondary copy on a dark ground — captions, meta, helper text. */
+export const TEXT_MUTE_ON_DARK = "text-[var(--mach-mute-invert)]";
+/** Hairline rule / divider colour on a dark ground. */
+export const RULE_ON_DARK = "border-[var(--mach-ink-line)]";
+/**
+ * A top hairline drawn as an inset shadow, for a dark section that needs an
+ * edge against a dark neighbour. It paints inside the box, so the section's
+ * height is exactly what it was before it had one.
+ */
+export const EDGE_TOP_ON_DARK = "shadow-[inset_0_1px_0_var(--mach-ink-line)]";
+
+/**
+ * A text field on a dark ground: hairline box, light type, a placeholder
+ * quiet enough to read as a hint, and a focus state that brightens the edge
+ * rather than introducing a colour.
+ */
+export const FIELD_ON_DARK =
+  "border border-white/20 bg-transparent text-white placeholder:text-white/40 transition-colors focus:border-white focus:outline-none focus-visible:ring-1 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50";
 
 /* ── Rhythm ────────────────────────────────────────────────────────────── */
 

@@ -51,9 +51,9 @@ export const MACH_SORT_OPTIONS: SortOption[] = [
 const CELL = "flex h-11 items-center border-b transition-colors duration-200";
 
 /** Resting hairline. */
-const RULE = "border-[var(--mach-ink)]/20";
+const RULE = "border-white/20";
 /** Worked, or holding state. */
-const RULE_ON = "border-[var(--mach-ink)]";
+const RULE_ON = "border-white";
 
 /** Micro-label type, one step tighter on phones so nothing has to truncate. */
 const LABEL =
@@ -80,10 +80,10 @@ export const MachShopToolbar = memo(function MachShopToolbar({
     <div className="flex flex-col gap-4 sm:gap-5 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
       {/* ── Search — full width on phones, a third of the row on desktop ── */}
       <div
-        className={`${CELL} ${RULE} relative w-full focus-within:border-[var(--mach-ink)] lg:max-w-[360px]`}>
+        className={`${CELL} ${RULE} relative w-full focus-within:border-white lg:max-w-[360px]`}>
         <Search
           aria-hidden="true"
-          className="pointer-events-none absolute start-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--mach-mute)]"
+          className="pointer-events-none absolute start-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--mach-mute-invert)]"
         />
         <input
           type="search"
@@ -91,14 +91,14 @@ export const MachShopToolbar = memo(function MachShopToolbar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search products"
           aria-label="Search products"
-          className="h-full w-full min-w-0 border-0 bg-transparent ps-7 pe-8 text-[13px] text-[var(--mach-ink)] outline-none placeholder:text-[var(--mach-mute)] sm:text-sm"
+          className="h-full w-full min-w-0 border-0 bg-transparent ps-7 pe-8 text-[13px] text-white outline-none placeholder:text-white/40 sm:text-sm"
         />
         {searchValue && (
           <button
             type="button"
             onClick={() => onSearchChange("")}
             aria-label="Clear search"
-            className="absolute end-0 top-1/2 -translate-y-1/2 p-1.5 text-[var(--mach-mute)] transition-colors hover:text-[var(--mach-ink)]">
+            className="absolute end-0 top-1/2 -translate-y-1/2 p-1.5 text-[var(--mach-mute-invert)] transition-colors hover:text-white">
             <X className="h-3.5 w-3.5" />
           </button>
         )}
@@ -115,11 +115,11 @@ export const MachShopToolbar = memo(function MachShopToolbar({
           aria-expanded={filtersOpen}
           className={`${CELL} ${LABEL} ${
             filtersOpen || activeFilterCount > 0 ? RULE_ON : RULE
-          } shrink-0 gap-2 text-[var(--mach-ink)] hover:border-[var(--mach-ink)]`}>
+          } shrink-0 gap-2 text-white hover:border-white`}>
           <SlidersHorizontal className="h-3.5 w-3.5" />
           Filters
           {activeFilterCount > 0 && (
-            <span className="ms-0.5 inline-flex h-4 min-w-4 items-center justify-center bg-[var(--mach-ink)] px-1 text-[10px] font-bold leading-none text-white">
+            <span className="ms-0.5 inline-flex h-4 min-w-4 items-center justify-center bg-white px-1 text-[10px] font-bold leading-none text-[var(--mach-ink)]">
               {activeFilterCount}
             </span>
           )}
@@ -129,17 +129,17 @@ export const MachShopToolbar = memo(function MachShopToolbar({
           Sort products
         </label>
         <div
-          className={`${CELL} ${RULE} relative min-w-0 flex-1 gap-2 hover:border-[var(--mach-ink)] focus-within:border-[var(--mach-ink)] lg:flex-none`}>
+          className={`${CELL} ${RULE} relative min-w-0 flex-1 gap-2 hover:border-white focus-within:border-white lg:flex-none`}>
           <span
             aria-hidden="true"
-            className={`${LABEL} shrink-0 text-[var(--mach-mute)]`}>
+            className={`${LABEL} shrink-0 text-[var(--mach-mute-invert)]`}>
             Sort
           </span>
           <select
             id="mach-shop-sort"
             value={sortValue}
             onChange={(e) => onSortChange(e.target.value)}
-            className={`${LABEL} h-full w-full min-w-0 cursor-pointer appearance-none truncate border-0 bg-transparent pe-5 text-[var(--mach-ink)] outline-none`}>
+            className={`${LABEL} h-full w-full min-w-0 cursor-pointer appearance-none truncate border-0 bg-transparent pe-5 text-white outline-none`}>
             {MACH_SORT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -148,7 +148,7 @@ export const MachShopToolbar = memo(function MachShopToolbar({
           </select>
           <ChevronDown
             aria-hidden="true"
-            className="pointer-events-none absolute end-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--mach-mute)]"
+            className="pointer-events-none absolute end-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--mach-mute-invert)]"
           />
         </div>
       </div>

@@ -69,11 +69,11 @@ export function MachSocialProofCard({
       // flattened back to 1px by utility ordering. The hover darkening is
       // likewise scoped to the hairline edges — it must not lighten the black
       // rule that grounds the card.
-      className={`group relative w-full border-x border-t border-b-2 border-[var(--mach-ink)]/15 border-b-[var(--mach-ink)] bg-[var(--mach-paper)] shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition-colors duration-300 hover:border-x-[var(--mach-ink)]/35 hover:border-t-[var(--mach-ink)]/35 motion-reduce:transition-none sm:w-[390px] ${className}`}>
+      className={`group relative w-full border-x border-t border-b-2 border-[var(--mach-ink)]/15 border-b-[var(--mach-ink)] bg-[var(--mach-paper)] shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition-colors duration-300 hover:border-x-[var(--mach-ink)]/35 hover:border-t-[var(--mach-ink)]/35 mach-dark:border-white/15 mach-dark:border-b-white mach-dark:bg-[var(--mach-ink-raised)] mach-dark:shadow-[0_18px_48px_rgba(0,0,0,0.5)] mach-dark:hover:border-x-white/35 mach-dark:hover:border-t-white/35 motion-reduce:transition-none sm:w-[390px] ${className}`}>
       {interactive && (
         <a
           href={href}
-          className='absolute inset-0 z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mach-ink)]'>
+          className='absolute inset-0 z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mach-ink)] mach-dark:focus-visible:ring-white'>
           <span className='sr-only'>{`${context} ${productName}. View product.`}</span>
         </a>
       )}
@@ -85,13 +85,13 @@ export function MachSocialProofCard({
           type='button'
           onClick={onDismiss}
           aria-label='Dismiss recent order notifications'
-          className='absolute right-1 top-1 z-20 flex h-[30px] w-[30px] items-center justify-center text-[var(--mach-mute)] transition-colors hover:text-[var(--mach-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mach-ink)]'>
+          className='absolute right-1 top-1 z-20 flex h-[30px] w-[30px] items-center justify-center text-[var(--mach-mute)] transition-colors hover:text-[var(--mach-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mach-ink)] mach-dark:text-[var(--mach-mute-invert)] mach-dark:hover:text-white mach-dark:focus-visible:ring-white'>
           <X className='h-4 w-4' strokeWidth={2.25} />
         </button>
       ) : (
         <span
           aria-hidden='true'
-          className='absolute right-1 top-1 z-20 flex h-[30px] w-[30px] items-center justify-center text-[var(--mach-mute)]'>
+          className='absolute right-1 top-1 z-20 flex h-[30px] w-[30px] items-center justify-center text-[var(--mach-mute)] mach-dark:text-[var(--mach-mute-invert)]'>
           <X className='h-4 w-4' strokeWidth={2.25} />
         </span>
       )}
@@ -116,13 +116,13 @@ export function MachSocialProofCard({
             run underneath it. */}
         <div className='flex min-w-0 flex-1 flex-col justify-center pr-7'>
           <div className='flex items-center gap-2.5'>
-            <span className='shrink-0 text-[9px] font-bold uppercase leading-none tracking-[0.26em] text-[var(--mach-mute)] sm:text-[10px]'>
+            <span className='shrink-0 text-[9px] font-bold uppercase leading-none tracking-[0.26em] text-[var(--mach-mute)] mach-dark:text-[var(--mach-mute-invert)] sm:text-[10px]'>
               Recent order
             </span>
             {/* Editorial rule closing the eyebrow, as on the section headings. */}
             <span
               aria-hidden='true'
-              className='h-px min-w-0 flex-1 bg-[var(--mach-ink)]/15'
+              className='h-px min-w-0 flex-1 bg-[var(--mach-ink)]/15 mach-dark:bg-white/15'
             />
           </div>
 
@@ -138,7 +138,7 @@ export function MachSocialProofCard({
             renders byte-for-byte as stored. Nothing here changes what the
             server sanitises or what the database holds.
           */}
-          <p className='mt-2 truncate text-[12px] font-medium leading-tight text-[var(--mach-ink)]/70'>
+          <p className='mt-2 truncate text-[12px] font-medium leading-tight text-[var(--mach-ink)]/70 mach-dark:text-white/70'>
             <span className='capitalize'>{displayName}</span>
             {location ? (
               <>
@@ -150,12 +150,12 @@ export function MachSocialProofCard({
           </p>
 
           {/* The loudest element on the card. Two lines, then ellipsis. */}
-          <p className='mt-1 line-clamp-2 text-[13px] font-bold uppercase leading-[1.3] tracking-[0.03em] text-[var(--mach-ink)] sm:text-[14px]'>
+          <p className='mt-1 line-clamp-2 text-[13px] font-bold uppercase leading-[1.3] tracking-[0.03em] text-[var(--mach-ink)] mach-dark:text-white sm:text-[14px]'>
             {productName}
           </p>
 
           {relativeTime && (
-            <p className='mt-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase leading-none tracking-[0.18em] text-[var(--mach-mute)]'>
+            <p className='mt-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase leading-none tracking-[0.18em] text-[var(--mach-mute)] mach-dark:text-[var(--mach-mute-invert)]'>
               {relativeTime}
               <ArrowUpRight
                 className='h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0 motion-reduce:group-hover:translate-y-0'

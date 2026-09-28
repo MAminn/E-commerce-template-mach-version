@@ -20,11 +20,13 @@ import { MachSectionHead } from "./MachSectionHead";
  * becomes a horizontal snap-scroller rather than a cramped two-up grid — which
  * is how both reference stores keep product prominence on a phone.
  *
- * `ground` is what produces the page's black/white rhythm: consecutive rows
- * alternate paper / white / ink so the eye gets a hard tonal edge between
- * merchandising blocks instead of one continuous light scroll. Two adjacent
- * light rows also get a hairline top rule, so the break reads even where the
- * tonal step is small.
+ * `ground` is what produces the page's tonal rhythm. The storefront is dark
+ * by default: consecutive rows alternate the two lifted charcoals (`ink-soft`
+ * / `ink-raised`) so the eye still gets an edge between merchandising blocks,
+ * and Offers keeps true black as the page's anchor. Every alternating row also
+ * carries a hairline top rule, so the break reads even where the tonal step
+ * is small. `paper` and `white` remain as grounds a caller can still ask for,
+ * but nothing on the Mach homepage assigns them any more.
  *
  * `dense` selects the current merchandising treatment: four products across,
  * a restrained heading that names the shelf instead of competing with it, and
@@ -47,7 +49,12 @@ import { MachSectionHead } from "./MachSectionHead";
  * "coming soon".
  */
 
-export type MachRowGround = "white" | "paper" | "ink";
+export type MachRowGround = "white" | "paper" | "ink" | "ink-soft" | "ink-raised";
+
+/** Grounds that carry light type. */
+export function isDarkRowGround(ground: MachRowGround): boolean {
+  return ground === "ink" || ground === "ink-soft" || ground === "ink-raised";
+}
 
 /**
  * The ground each row treatment paints, shared with the carousel arrangement.
@@ -60,6 +67,8 @@ export const MACH_ROW_GROUND_CLASSES: Record<MachRowGround, string> = {
   white: "bg-white text-[var(--mach-ink)]",
   paper: "bg-[var(--mach-paper)] text-[var(--mach-ink)]",
   ink: "bg-[var(--mach-ink)] text-white",
+  "ink-soft": "bg-[var(--mach-ink-soft)] text-white",
+  "ink-raised": "bg-[var(--mach-ink-raised)] text-white",
 };
 
 /**
@@ -76,6 +85,25 @@ export const MACH_ROW_GROUND_TEXT: Record<MachRowGround, string> = {
   white: "text-[var(--mach-ink)]",
   paper: "text-[var(--mach-ink)]",
   ink: "text-white",
+  "ink-soft": "text-white",
+  "ink-raised": "text-white",
+};
+
+/**
+ * The top rule each ground draws when the section has no background.
+ *
+ * The alternating rows always carried a hairline where they met the row above;
+ * on the dark grounds it is drawn in the dark hairline token rather than
+ * removed, so the rows keep their exact height and a row can never butt
+ * against a neighbour of the same tone without an edge. Offers (`ink`) never
+ * had one and still does not.
+ */
+export const MACH_ROW_GROUND_RULE: Record<MachRowGround, string> = {
+  white: "border-t border-[var(--mach-ink)]/10",
+  paper: "border-t border-[var(--mach-ink)]/10",
+  ink: "",
+  "ink-soft": "border-t border-[var(--mach-ink-line)]",
+  "ink-raised": "border-t border-[var(--mach-ink-line)]",
 };
 
 export function MachProductRow({
@@ -100,7 +128,7 @@ export function MachProductRow({
   actionHref?: string;
   products: MachProduct[];
   isLoading?: boolean;
-  /** Legacy shorthand for `ground="ink"`. */
+  /** Legacy shorthand for `ground="ink"`. Without it the row is on the dark default. */
   onDark?: boolean;
   ground?: MachRowGround;
   /** Current shelf treatment — four-up, compact header, tight rhythm. */
@@ -112,7 +140,7 @@ export function MachProductRow({
   // never flashes an empty section and then reflows once products arrive.
   if (isLoading || products.length === 0) return null;
 
-  const resolved: MachRowGround = ground ?? (onDark ? "ink" : "white");
+  const resolved: MachRowGround = ground ?? (onDark ? "ink" : "ink-soft");
 
   // With no background configured this is the ground class the row has always
   // carried, an empty wrapper class and `ground === "ink"`, so the markup
@@ -123,14 +151,10 @@ export function MachProductRow({
   const backdrop = machSectionBackdrop(resolved, background);
   const isDark = backdrop.onDark;
 
-  // A light row butting against another light row needs an edge; a dark row
-  // already has one.
-  const rule = isDark ? "" : "border-t border-[var(--mach-ink)]/10";
-
   return (
     <section
       id={id}
-      className={`${backdrop.sectionCls} ${rule} scroll-mt-24`}>
+      className={`${backdrop.sectionCls} ${backdrop.ruleCls} scroll-mt-24`}>
       <MachSectionBackdrop background={background} />
       <div
         className={`${backdrop.contentCls} ${SHELL} ${GUTTER} ${

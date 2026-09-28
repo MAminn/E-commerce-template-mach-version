@@ -57,14 +57,14 @@ describe("isAlternatingRowKey", () => {
 });
 
 describe("resolveRowGrounds", () => {
-  it("alternates paper and white across the merchandising rows", () => {
+  it("alternates the two lifted charcoals across the merchandising rows", () => {
     const grounds = resolveRowGrounds(ORDER, ALL_VISIBLE);
 
-    expect(grounds.get(SUPPLEMENTS)).toBe("paper");
-    expect(grounds.get(STACKS)).toBe("white");
-    expect(grounds.get("newArrivals")).toBe("paper");
-    expect(grounds.get("featuredProducts")).toBe("white");
-    expect(grounds.get(GYM_GEAR)).toBe("paper");
+    expect(grounds.get(SUPPLEMENTS)).toBe("ink-soft");
+    expect(grounds.get(STACKS)).toBe("ink-raised");
+    expect(grounds.get("newArrivals")).toBe("ink-soft");
+    expect(grounds.get("featuredProducts")).toBe("ink-raised");
+    expect(grounds.get(GYM_GEAR)).toBe("ink-soft");
   });
 
   it("does not let a hidden row consume an alternation slot", () => {
@@ -76,9 +76,9 @@ describe("resolveRowGrounds", () => {
     });
 
     expect(grounds.has(STACKS)).toBe(false);
-    expect(grounds.get(SUPPLEMENTS)).toBe("paper");
-    expect(grounds.get("newArrivals")).toBe("white");
-    expect(grounds.get("featuredProducts")).toBe("paper");
+    expect(grounds.get(SUPPLEMENTS)).toBe("ink-soft");
+    expect(grounds.get("newArrivals")).toBe("ink-raised");
+    expect(grounds.get("featuredProducts")).toBe("ink-soft");
   });
 
   it("gives a group that is off, new or empty no ground at all", () => {
@@ -92,7 +92,7 @@ describe("resolveRowGrounds", () => {
 
     expect(grounds.has(SUPPLEMENTS)).toBe(false);
     expect(grounds.has(GYM_GEAR)).toBe(false);
-    expect(grounds.get(STACKS)).toBe("paper");
+    expect(grounds.get(STACKS)).toBe("ink-soft");
   });
 
   it("keeps two visible rows separated by a hidden group alternating", () => {
@@ -101,8 +101,8 @@ describe("resolveRowGrounds", () => {
       { ...ALL_VISIBLE, [SUPPLEMENTS]: false },
     );
 
-    expect(grounds.get("featuredProducts")).toBe("paper");
-    expect(grounds.get("newArrivals")).toBe("white");
+    expect(grounds.get("featuredProducts")).toBe("ink-soft");
+    expect(grounds.get("newArrivals")).toBe("ink-raised");
     expect(grounds.get("featuredProducts")).not.toBe(grounds.get("newArrivals"));
   });
 
@@ -112,9 +112,9 @@ describe("resolveRowGrounds", () => {
       ALL_VISIBLE,
     );
 
-    expect(grounds.get("featuredProducts")).toBe("paper");
-    expect(grounds.get("newArrivals")).toBe("white");
-    expect(grounds.get("featuredShelf")).toBe("paper");
+    expect(grounds.get("featuredProducts")).toBe("ink-soft");
+    expect(grounds.get("newArrivals")).toBe("ink-raised");
+    expect(grounds.get("featuredShelf")).toBe("ink-soft");
   });
 
   it("follows the client's order rather than a fixed per-section ground", () => {
@@ -123,8 +123,8 @@ describe("resolveRowGrounds", () => {
       ALL_VISIBLE,
     );
 
-    expect(moved.get(GYM_GEAR)).toBe("paper");
-    expect(moved.get(STACKS)).toBe("white");
+    expect(moved.get(GYM_GEAR)).toBe("ink-soft");
+    expect(moved.get(STACKS)).toBe("ink-raised");
   });
 
   it("ignores rows that are not part of the rhythm", () => {
@@ -145,7 +145,7 @@ describe("resolveRowGrounds", () => {
       { ...ALL_VISIBLE, [added]: true },
     );
 
-    expect(grounds.get(added)).toBe("white");
-    expect(grounds.get("newArrivals")).toBe("paper");
+    expect(grounds.get(added)).toBe("ink-raised");
+    expect(grounds.get("newArrivals")).toBe("ink-soft");
   });
 });

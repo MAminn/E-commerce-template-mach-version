@@ -7,7 +7,7 @@ import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { Input } from "#root/components/ui/input";
 import { Link } from "#root/components/utils/Link";
 import { authClient } from "#root/lib/auth-client.js";
-import { CTA_ON_LIGHT, HEADING_SHOP } from "./machTokens";
+import { CTA_ON_DARK, HEADING_SHOP } from "./machTokens";
 import {
   AUTH_FIELD,
   AUTH_FIELD_INVALID,
@@ -131,7 +131,7 @@ export function MachResetPasswordPage() {
           onClick={() => {
             window.location.href = "/login";
           }}
-          className={`${CTA_ON_LIGHT} ${AUTH_SUBMIT} mt-6`}>
+          className={`${CTA_ON_DARK} ${AUTH_SUBMIT} mt-6`}>
           Go to login
         </button>
       </MachAuthShell>
@@ -140,7 +140,7 @@ export function MachResetPasswordPage() {
 
   return (
     <MachAuthShell eyebrow="Password reset">
-      <h1 className={`${HEADING_SHOP} text-[var(--mach-ink)]`}>New password</h1>
+      <h1 className={`${HEADING_SHOP} text-white`}>New password</h1>
       <p className={AUTH_LEAD}>Choose a strong password for your account.</p>
 
       <AuthRule className="mt-8" />
@@ -216,7 +216,7 @@ export function MachResetPasswordPage() {
           type="submit"
           disabled={isSubmitting}
           aria-busy={isSubmitting}
-          className={`${CTA_ON_LIGHT} ${AUTH_SUBMIT}`}>
+          className={`${CTA_ON_DARK} ${AUTH_SUBMIT}`}>
           {isSubmitting && (
             <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
           )}

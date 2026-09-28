@@ -6,7 +6,12 @@ import {
 } from "#root/shared/types/homepage-content";
 import { normalizeMediaUrl } from "../MachMedia";
 import type { MachRowGround } from "./MachProductRow";
-import { MACH_ROW_GROUND_CLASSES, MACH_ROW_GROUND_TEXT } from "./MachProductRow";
+import {
+  MACH_ROW_GROUND_CLASSES,
+  MACH_ROW_GROUND_RULE,
+  MACH_ROW_GROUND_TEXT,
+  isDarkRowGround,
+} from "./MachProductRow";
 
 /**
  * The optional image or video behind one product section, and the wash that
@@ -70,6 +75,13 @@ export interface MachSectionBackdropState {
   active: boolean;
   sectionCls: string;
   contentCls: string;
+  /**
+   * The section's top rule. With no background it is the ground's own
+   * (`MACH_ROW_GROUND_RULE`); with one it is exactly what it always was — a
+   * hairline only under dark type — so a media section's height and edge do
+   * not move with the page theme.
+   */
+  ruleCls: string;
   /** Whether the section's own type renders light. */
   onDark: boolean;
 }
@@ -84,7 +96,8 @@ export function machSectionBackdrop(
       active,
       sectionCls: MACH_ROW_GROUND_CLASSES[ground],
       contentCls: "",
-      onDark: ground === "ink",
+      ruleCls: MACH_ROW_GROUND_RULE[ground],
+      onDark: isDarkRowGround(ground),
     };
   }
 
@@ -99,6 +112,7 @@ export function machSectionBackdrop(
       MACH_ROW_GROUND_TEXT[onDark ? "ink" : "white"]
     } relative isolate overflow-hidden`,
     contentCls: "relative z-10",
+    ruleCls: onDark ? "" : "border-t border-[var(--mach-ink)]/10",
     onDark,
   };
 }

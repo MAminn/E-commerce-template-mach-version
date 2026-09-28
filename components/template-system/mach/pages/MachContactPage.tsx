@@ -1,7 +1,7 @@
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import { useContactForm } from "#root/hooks/useContactForm";
 import type { ContactPageView } from "#root/shared/types/content-pages";
-import { BODY, CTA_ON_LIGHT } from "../machTokens";
+import { BODY, CTA_ON_DARK } from "../machTokens";
 import { MachPageShell } from "./MachPageShell";
 
 /**
@@ -33,7 +33,7 @@ export function MachContactPage({
   const masthead = view.images[0] ?? null;
 
   const fieldCls =
-    "w-full border-0 border-b border-[var(--mach-ink)]/20 bg-transparent px-0 py-3 text-sm text-[var(--mach-ink)] transition-colors duration-300 placeholder:text-[var(--mach-ink)]/35 focus:border-[var(--mach-ink)] focus:outline-none";
+    "w-full border-0 border-b border-white/20 bg-transparent px-0 py-3 text-sm text-white transition-colors duration-300 placeholder:text-white/35 focus:border-white focus:outline-none";
 
   return (
     <MachPageShell eyebrow={eyebrow} title={view.heading}>
@@ -41,7 +41,7 @@ export function MachContactPage({
         {/* ── Left: what the client wants to say ── */}
         <div className='flex flex-col'>
           {view.description && (
-            <p className={`${BODY} max-w-[52ch] text-[var(--mach-ink)]/70`}>
+            <p className={`${BODY} max-w-[52ch] text-white/70`}>
               {view.description}
             </p>
           )}
@@ -51,14 +51,14 @@ export function MachContactPage({
               href={view.directionsUrl}
               target='_blank'
               rel='noopener noreferrer'
-              className='mt-8 inline-flex items-center gap-1.5 self-start text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--mach-ink)] transition-opacity duration-300 hover:opacity-60'>
+              className='mt-8 inline-flex items-center gap-1.5 self-start text-[11px] font-bold uppercase tracking-[0.22em] text-white transition-opacity duration-300 hover:opacity-60'>
               {isAr ? "احصل على الاتجاهات" : "Get Directions"}
               <ArrowUpRight className='h-3.5 w-3.5' />
             </a>
           )}
 
           {masthead && (
-            <div className='mt-10 aspect-[3/2] overflow-hidden bg-[var(--mach-ink)]/5'>
+            <div className='mt-10 aspect-[3/2] overflow-hidden bg-white/5'>
               <img
                 src={masthead.imageUrl}
                 alt={masthead.alt ?? view.heading}
@@ -126,7 +126,7 @@ export function MachContactPage({
           <button
             type='submit'
             disabled={form.isSubmitting}
-            className={`${CTA_ON_LIGHT} gap-2 disabled:cursor-not-allowed disabled:opacity-50`}>
+            className={`${CTA_ON_DARK} gap-2 disabled:cursor-not-allowed disabled:opacity-50`}>
             {form.isSubmitting && <Loader2 className='h-3.5 w-3.5 animate-spin' />}
             {form.isSubmitting
               ? isAr

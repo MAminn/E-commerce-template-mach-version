@@ -16,7 +16,14 @@ import {
   renderableUgcItems,
 } from "#root/shared/types/homepage-ugc";
 import { normalizeMediaUrl } from "../MachMedia";
-import { EYEBROW, GROUND_WHITE, GUTTER, SHELL } from "../machTokens";
+import {
+  EYEBROW,
+  GROUND_INK_SOFT,
+  GUTTER,
+  RULE_ON_DARK,
+  SHELL,
+  TEXT_MUTE_ON_DARK,
+} from "../machTokens";
 import {
   RING_OFFSET,
   TRACK_GUTTER,
@@ -222,14 +229,14 @@ function UgcCard({
               {name && (
                 <span
                   dir='auto'
-                  className='text-[12px] font-bold uppercase leading-snug tracking-[0.14em] text-[var(--mach-ink)]'>
+                  className='text-[12px] font-bold uppercase leading-snug tracking-[0.14em] text-white'>
                   {name}
                 </span>
               )}
               {handle && (
                 <span
                   dir='auto'
-                  className='text-[12px] leading-snug text-[var(--mach-mute)]'>
+                  className={`text-[12px] leading-snug ${TEXT_MUTE_ON_DARK}`}>
                   {handle}
                 </span>
               )}
@@ -238,7 +245,7 @@ function UgcCard({
           {caption && (
             <p
               dir='auto'
-              className={`line-clamp-3 text-[13px] leading-[1.55] text-[var(--mach-ink)]/75 ${
+              className={`line-clamp-3 text-[13px] leading-[1.55] text-white/75 ${
                 name || handle ? "mt-1.5" : ""
               }`}>
               {caption}
@@ -334,11 +341,11 @@ export function MachUgcSection({ content }: { content: HomepageUgcContent }) {
 
   const controlCls = [
     "relative inline-flex h-11 w-11 items-center justify-center border",
-    "border-[var(--mach-ink)]/25 text-[var(--mach-ink)] transition-colors duration-200",
+    "border-white/30 text-white transition-colors duration-200",
     "hover:z-10 focus-visible:z-10",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2",
-    RING_OFFSET.white,
-    "enabled:hover:border-[var(--mach-ink)] enabled:hover:bg-[var(--mach-ink)] enabled:hover:text-white",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2",
+    RING_OFFSET["ink-soft"],
+    "enabled:hover:border-white enabled:hover:bg-white enabled:hover:text-[var(--mach-ink)]",
     "disabled:cursor-not-allowed disabled:opacity-30",
   ].join(" ");
 
@@ -371,7 +378,7 @@ export function MachUgcSection({ content }: { content: HomepageUgcContent }) {
       id='ugc'
       aria-label={regionLabel}
       data-testid='mach-ugc'
-      className={`${GROUND_WHITE} scroll-mt-24 border-t border-[var(--mach-ink)]/10`}>
+      className={`${GROUND_INK_SOFT} scroll-mt-24 border-t ${RULE_ON_DARK}`}>
       <div className={`${SHELL} ${GUTTER} py-12 sm:py-14 lg:py-16`}>
         {heading ? (
           <MachSectionHead
@@ -379,6 +386,7 @@ export function MachUgcSection({ content }: { content: HomepageUgcContent }) {
             title={heading}
             subtitle={subheading || undefined}
             size='sm'
+            onDark
             actions={controls}
           />
         ) : (
@@ -388,16 +396,16 @@ export function MachUgcSection({ content }: { content: HomepageUgcContent }) {
             <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
               <div className='min-w-0'>
                 {eyebrow && (
-                  <p className={`${EYEBROW} text-[var(--mach-ink)]/70`}>
+                  <p className={`${EYEBROW} text-white/70`}>
                     <span
                       aria-hidden='true'
-                      className='inline-block h-[2px] w-6 shrink-0 bg-[var(--mach-ink)]'
+                      className='inline-block h-[2px] w-6 shrink-0 bg-white'
                     />
                     {eyebrow}
                   </p>
                 )}
                 {subheading && (
-                  <p className='mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--mach-mute)] sm:text-[14px]'>
+                  <p className={`mt-2 max-w-xl text-[13px] leading-relaxed sm:text-[14px] ${TEXT_MUTE_ON_DARK}`}>
                     {subheading}
                   </p>
                 )}
@@ -418,7 +426,7 @@ export function MachUgcSection({ content }: { content: HomepageUgcContent }) {
           tabIndex={0}
           onKeyDown={onTrackKeyDown}
           data-testid='mach-ugc-track'
-          className={`mach-scroll-hide mt-7 flex snap-x snap-mandatory items-start overflow-x-auto overscroll-x-contain py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-white lg:mt-8 ${TRACK_GUTTER} ${CARD_GAP}`}>
+          className={`mach-scroll-hide mt-7 flex snap-x snap-mandatory items-start overflow-x-auto overscroll-x-contain py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-ink-soft)] lg:mt-8 ${TRACK_GUTTER} ${CARD_GAP}`}>
           {items.map((item, index) => (
             <UgcCard
               key={item.id}

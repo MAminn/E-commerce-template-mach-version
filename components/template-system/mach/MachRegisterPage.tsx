@@ -7,7 +7,7 @@ import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import { Input } from "#root/components/ui/input";
 import { Link } from "#root/components/utils/Link";
 import { authClient } from "#root/lib/auth-client.js";
-import { CTA_ON_LIGHT, HEADING_SHOP } from "./machTokens";
+import { CTA_ON_DARK, HEADING_SHOP } from "./machTokens";
 import {
   AUTH_FIELD,
   AUTH_FIELD_INVALID,
@@ -122,7 +122,7 @@ export function MachRegisterPage() {
 
   return (
     <MachAuthShell eyebrow="New account" contentClassName="max-w-[560px]">
-      <h1 className={`${HEADING_SHOP} text-[var(--mach-ink)]`}>
+      <h1 className={`${HEADING_SHOP} text-white`}>
         Create account
       </h1>
       <p className={AUTH_LEAD}>
@@ -274,7 +274,7 @@ export function MachRegisterPage() {
           type="submit"
           disabled={isSubmitting}
           aria-busy={isSubmitting}
-          className={`${CTA_ON_LIGHT} ${AUTH_SUBMIT}`}>
+          className={`${CTA_ON_DARK} ${AUTH_SUBMIT}`}>
           {isSubmitting && (
             <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
           )}
@@ -285,7 +285,7 @@ export function MachRegisterPage() {
       <AuthRule className="mt-10" />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-mute)]">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-mute-invert)]">
           Already have an account?
         </p>
         <Link href="/login" className={AUTH_LINK}>

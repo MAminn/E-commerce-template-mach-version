@@ -247,11 +247,12 @@ export function LandingTemplateMach({
    * Grounds for the merchandising rows, assigned by position rather than
    * pinned per section.
    *
-   * The page's black/white rhythm has to survive the client reordering the
-   * sections — hard-coding "Stacks is paper, Gym Gear is paper" would put two
-   * identical grounds side by side the moment one of them moves. So the group
-   * and product rows simply alternate paper / white in whatever order they end
-   * up in, and Offers stays on ink as the page's dark merchandising anchor.
+   * The page's tonal rhythm has to survive the client reordering the
+   * sections — hard-coding "Stacks is ink-soft, Gym Gear is ink-soft" would
+   * put two identical grounds side by side the moment one of them moves. So
+   * the group and product rows simply alternate the two lifted charcoals in
+   * whatever order they end up in, and Offers stays on true black as the
+   * page's merchandising anchor.
    *
    * Only rows that render take a turn: a hidden one used to consume an
    * alternation slot and hand two visible neighbours the same ground.
@@ -474,7 +475,7 @@ export function LandingTemplateMach({
           the section order below applies to it. */}
       <MachPromoBanner content={content.promoBanner} />
       <div
-        className={`landing-template-mach overflow-x-clip bg-[var(--mach-paper)] ${className}`}>
+        className={`landing-template-mach overflow-x-clip bg-[var(--mach-ink)] ${className}`}>
         {content.hero.enabled && (
           <MachHero content={content.hero} onCtaClick={onCtaClick} />
         )}

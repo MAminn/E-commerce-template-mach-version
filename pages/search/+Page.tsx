@@ -110,7 +110,7 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white pt-8 md:pt-12">
+    <div className="min-h-screen bg-white mach-dark:bg-[var(--mach-ink)] pt-8 md:pt-12">
       <Template.component
         searchQuery={queryParam}
         products={products}

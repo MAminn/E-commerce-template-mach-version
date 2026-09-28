@@ -105,7 +105,7 @@ describe("ground alternation", () => {
 
   it("counts a carousel row as rendering", () => {
     // Arrangement is not visibility. A section that puts products on the page
-    // takes its turn in the paper / white rhythm either way.
+    // takes its turn in the alternating dark rhythm either way.
     const renders = {
       featuredProducts: true,
       [`group:${STACKS}`]: true,
@@ -114,9 +114,9 @@ describe("ground alternation", () => {
 
     expect(resolveRowGrounds(ORDER, renders)).toEqual(
       new Map([
-        ["featuredProducts", "paper"],
-        [`group:${STACKS}`, "white"],
-        ["newArrivals", "paper"],
+        ["featuredProducts", "ink-soft"],
+        [`group:${STACKS}`, "ink-raised"],
+        ["newArrivals", "ink-soft"],
       ]),
     );
   });
@@ -150,9 +150,9 @@ describe("ground alternation", () => {
     });
 
     expect(grounds.has(`group:${STACKS}`)).toBe(false);
-    expect(grounds.get("featuredProducts")).toBe("paper");
+    expect(grounds.get("featuredProducts")).toBe("ink-soft");
     // Still the hard tonal edge: the next visible row takes the next turn.
-    expect(grounds.get("newArrivals")).toBe("white");
+    expect(grounds.get("newArrivals")).toBe("ink-raised");
   });
 
   it("keeps Offers on ink, carousel or not", () => {

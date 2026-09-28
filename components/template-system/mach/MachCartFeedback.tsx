@@ -94,7 +94,7 @@ export function MachCartToastContainer() {
       style={{ top: topOffset }}
       role="status"
       aria-live="polite">
-      <div className="pointer-events-auto w-full max-w-[340px] animate-mach-toast-enter border border-[var(--mach-ink)] bg-white shadow-[0_18px_44px_rgba(0,0,0,0.16)]">
+      <div className="pointer-events-auto w-full max-w-[340px] animate-mach-toast-enter border border-white/15 bg-[var(--mach-ink-raised)] shadow-[0_18px_44px_rgba(0,0,0,0.5)]">
         {/* Confirmation strip — inverted, so the state reads before the copy */}
         <div className="flex items-center justify-between gap-3 bg-[var(--mach-ink)] px-4 py-2.5">
           <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-white">
@@ -122,10 +122,10 @@ export function MachCartToastContainer() {
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-bold uppercase leading-tight tracking-[0.04em] text-[var(--mach-ink)]">
+            <p className="truncate text-[12px] font-bold uppercase leading-tight tracking-[0.04em] text-white">
               {item.name}
             </p>
-            <p className="mt-1 text-[11px] font-semibold text-[var(--mach-mute)]">
+            <p className="mt-1 text-[11px] font-semibold text-[var(--mach-mute-invert)]">
               {item.quantity > 1 ? `${item.quantity} × ` : ""}
               {STORE_CURRENCY} {lineTotal.toFixed(2)}
             </p>
@@ -134,7 +134,7 @@ export function MachCartToastContainer() {
 
         <a
           href="/cart"
-          className="block border-t border-[var(--mach-ink)]/15 px-4 py-3 text-center text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--mach-ink)] transition-colors hover:bg-[var(--mach-ink)] hover:text-white">
+          className="block border-t border-white/15 px-4 py-3 text-center text-[10px] font-bold uppercase tracking-[0.22em] text-white transition-colors hover:bg-white hover:text-[var(--mach-ink)]">
           View bag
         </a>
       </div>

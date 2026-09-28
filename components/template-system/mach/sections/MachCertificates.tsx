@@ -58,18 +58,20 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * How many documents run across a desktop row.
+ * How many documents run across a row.
  *
  * A single certificate is centred and given the most room — one document is a
  * statement, and splitting the width to keep it in a grid would shrink it for
  * no reason. Beyond that the row fills out, capped at four so a page stays a
- * page rather than becoming a contact sheet.
+ * page rather than becoming a contact sheet. Phones keep two across rather
+ * than stacking: a pair of full-height documents one above the other was a
+ * screen and a half of scrolling for what is a supporting trust strip.
  */
 function columnsFor(count: number): string {
   if (count <= 1) return "grid-cols-1";
-  if (count === 2) return "grid-cols-1 sm:grid-cols-2";
-  if (count === 3) return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
-  return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
+  if (count === 2) return "grid-cols-2";
+  if (count === 3) return "grid-cols-2 lg:grid-cols-3";
+  return "grid-cols-2 lg:grid-cols-4";
 }
 
 /**
@@ -81,14 +83,16 @@ function columnsFor(count: number): string {
  * Width rather than height, because width is what the eye reads as the size of
  * a document on a page. The values include the card's own padding (`p-2`,
  * `sm:p-3`), so they run 16–24px above the artwork width they produce: the
- * common two-up case lands at ~250px of artwork on a desktop and ~220px on a
- * phone. A certificate is supporting evidence — big enough to recognise the
- * accreditation marks, small enough that the strip is not a screenful.
+ * common two-up case lands at ~250px of artwork on a desktop and at most
+ * ~144px per column on a phone, where the pair shares the row and the 1fr
+ * columns shrink it further on narrow screens. A certificate is supporting
+ * evidence — big enough to recognise the accreditation marks, small enough
+ * that the strip is not a screenful.
  */
 function cardWidthFor(count: number): string {
   if (count <= 1) return "max-w-[256px] sm:max-w-[280px] lg:max-w-[310px]";
-  if (count === 2) return "max-w-[236px] sm:max-w-[260px] lg:max-w-[274px]";
-  return "max-w-[236px] sm:max-w-[240px] lg:max-w-[250px]";
+  if (count === 2) return "max-w-[160px] sm:max-w-[260px] lg:max-w-[274px]";
+  return "max-w-[160px] sm:max-w-[240px] lg:max-w-[250px]";
 }
 
 /**
@@ -106,8 +110,8 @@ function cardWidthFor(count: number): string {
  */
 function heightFor(count: number): string {
   if (count <= 1) return "max-h-[440px] sm:max-h-[470px] lg:max-h-[520px]";
-  if (count === 2) return "max-h-[400px] sm:max-h-[430px] lg:max-h-[450px]";
-  return "max-h-[400px] sm:max-h-[400px] lg:max-h-[410px]";
+  if (count === 2) return "max-h-[280px] sm:max-h-[430px] lg:max-h-[450px]";
+  return "max-h-[280px] sm:max-h-[400px] lg:max-h-[410px]";
 }
 
 /**
@@ -251,7 +255,7 @@ export function MachCertificates({
   return (
     <section
       id="trust"
-      className="bg-[var(--mach-paper)] text-[var(--mach-ink)] scroll-mt-24">
+      className="bg-[var(--mach-ink)] text-white scroll-mt-24">
       <div className={`${SHELL} ${GUTTER} py-8 sm:py-10 lg:py-12`}>
         {/* ── Certificates ── */}
         {items.length > 0 && (
@@ -266,10 +270,10 @@ export function MachCertificates({
               <div className="mx-auto max-w-2xl text-center">
                 {content.subtitle?.trim() && (
                   <p
-                    className={`${EYEBROW} justify-center text-[var(--mach-ink)]/70`}>
+                    className={`${EYEBROW} justify-center text-white/70`}>
                     <span
                       aria-hidden="true"
-                      className="inline-block h-[2px] w-6 shrink-0 bg-[var(--mach-ink)]"
+                      className="inline-block h-[2px] w-6 shrink-0 bg-white"
                     />
                     {content.subtitle}
                   </p>
@@ -286,7 +290,7 @@ export function MachCertificates({
                 clamps to the available width, so a wide certificate cannot
                 push the row past the measure. */}
             <StaggerContainer
-              className={`mx-auto grid w-fit justify-items-center gap-x-8 gap-y-6 sm:gap-x-10 sm:gap-y-7 ${columns} ${
+              className={`mx-auto grid w-fit justify-items-center gap-x-4 gap-y-5 sm:gap-x-10 sm:gap-y-7 ${columns} ${
                 content.subtitle?.trim() || content.title?.trim()
                   ? "mt-6 lg:mt-7"
                   : ""
@@ -299,16 +303,18 @@ export function MachCertificates({
                   <StaggerItem key={item.id} className="w-full">
                     <figure
                       className={`mx-auto flex h-full w-full flex-col items-center ${cardWidth}`}>
-                      {/* The document. A white page on the paper ground with a
-                          hairline and a soft lift, so it reads as a physical
-                          certificate rather than as an image dropped on the
-                          section. */}
+                      {/* The document. A white page on the ink ground with a
+                          soft lift, so it reads as a physical certificate
+                          rather than as an image dropped on the section. The
+                          white mat is the document's own paper — it stays
+                          white on the dark theme, like a product photo's
+                          stage. */}
                       {thumb ? (
                         <button
                           type="button"
                           onClick={() => setOpenId(item.id)}
                           aria-label={label}
-                          className="group relative block cursor-zoom-in border border-[var(--mach-paper-line)] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_-12px_rgba(0,0,0,0.18)] outline-none transition-shadow duration-300 hover:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_20px_44px_-14px_rgba(0,0,0,0.26)] focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-paper)] sm:p-3">
+                          className="group relative block cursor-zoom-in border border-[var(--mach-paper-line)] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_-12px_rgba(0,0,0,0.18)] outline-none transition-shadow duration-300 hover:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_20px_44px_-14px_rgba(0,0,0,0.26)] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-ink)] sm:p-3">
                           {/* Full colour, natural aspect, never cropped: the
                               height is bounded and the width follows the
                               file. */}
@@ -323,7 +329,7 @@ export function MachCertificates({
                       ) : (
                         <span
                           aria-hidden="true"
-                          className="block h-40 w-32 border border-[var(--mach-ink)]/20 bg-white"
+                          className="block h-40 w-32 border border-white/20 bg-[var(--mach-ink-raised)]"
                         />
                       )}
 
@@ -335,7 +341,7 @@ export function MachCertificates({
                             </p>
                           )}
                           {item.issuer?.trim() && (
-                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-[var(--mach-mute)]">
+                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-[var(--mach-mute-invert)]">
                               {item.issuer}
                             </p>
                           )}
@@ -355,7 +361,7 @@ export function MachCertificates({
             empty half-width panel. */}
         {factoryReady && factory && (
           <div
-            className={`grid grid-cols-1 items-stretch gap-px bg-[var(--mach-paper-line)] lg:grid-cols-2 ${
+            className={`grid grid-cols-1 items-stretch gap-px bg-[var(--mach-ink-line)] lg:grid-cols-2 ${
               items.length > 0 ? "mt-10 lg:mt-12" : ""
             }`}>
             <div className="flex flex-col justify-center bg-[var(--mach-ink)] p-8 text-white sm:p-12 lg:p-14">
@@ -382,13 +388,13 @@ export function MachCertificates({
               )}
             </div>
 
-            <div className="relative min-h-[280px] overflow-hidden bg-[var(--mach-paper-soft)] lg:min-h-[420px]">
+            <div className="relative min-h-[280px] overflow-hidden bg-[var(--mach-ink-raised)] lg:min-h-[420px]">
               {!isMediaSlotEmpty(factory.media) ? (
                 <MachMedia slot={factory.media} className="grayscale" />
               ) : (
                 <div
                   aria-hidden="true"
-                  className="absolute inset-0 bg-[var(--mach-paper-soft)]"
+                  className="absolute inset-0 bg-[var(--mach-ink-raised)]"
                 />
               )}
             </div>

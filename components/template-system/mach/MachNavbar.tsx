@@ -34,6 +34,7 @@ import { isPlaceholderLink } from "#root/shared/types/layout-settings";
 import type { NavigationLink } from "#root/shared/types/layout-settings";
 import { useNavbarMode } from "#root/components/globals/NavbarContext";
 import { HeaderLogo } from "#root/components/globals/HeaderLogo";
+import { MACH_THEME_CLASS } from "./machTheme";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -397,12 +398,17 @@ export function MachNavbar() {
                     )}
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-10001 w-52">
-                  <div className="border-b border-stone-100 px-3 py-2">
-                    <p className="truncate text-sm font-medium text-stone-900">
+                {/* Portalled to <body>, outside the storefront's dark scope,
+                    so it carries the scope class itself: the menu's surface,
+                    hover and separator tokens resolve dark like the page. */}
+                <DropdownMenuContent
+                  align="end"
+                  className={`${MACH_THEME_CLASS} z-10001 w-52`}>
+                  <div className="border-b border-[var(--mach-ink-line)] px-3 py-2">
+                    <p className="truncate text-sm font-medium text-white">
                       {session.name || "Account"}
                     </p>
-                    <p className="truncate text-xs text-stone-400">
+                    <p className="truncate text-xs text-[var(--mach-mute-invert)]">
                       {session.email}
                     </p>
                   </div>
@@ -410,21 +416,21 @@ export function MachNavbar() {
                     <Link
                       href="/account"
                       className="flex cursor-pointer items-center gap-2.5">
-                      <User className="h-4 w-4 text-stone-500" /> My Account
+                      <User className="h-4 w-4 text-white/55" /> My Account
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link
                       href="/account?tab=orders"
                       className="flex cursor-pointer items-center gap-2.5">
-                      <Package className="h-4 w-4 text-stone-500" /> Orders
+                      <Package className="h-4 w-4 text-white/55" /> Orders
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link
                       href="/account?tab=wishlist"
                       className="flex cursor-pointer items-center gap-2.5">
-                      <Heart className="h-4 w-4 text-stone-500" /> Wishlist
+                      <Heart className="h-4 w-4 text-white/55" /> Wishlist
                     </Link>
                   </DropdownMenuItem>
                   {(session.role === "admin" ||
@@ -435,7 +441,7 @@ export function MachNavbar() {
                         <Link
                           href="/dashboard"
                           className="flex cursor-pointer items-center gap-2.5">
-                          <LayoutDashboard className="h-4 w-4 text-stone-500" />{" "}
+                          <LayoutDashboard className="h-4 w-4 text-white/55" />{" "}
                           Dashboard
                         </Link>
                       </DropdownMenuItem>
@@ -444,7 +450,7 @@ export function MachNavbar() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={logout}
-                    className="flex cursor-pointer items-center gap-2.5 text-red-600 focus:text-red-600">
+                    className="flex cursor-pointer items-center gap-2.5 text-red-400 focus:text-red-400">
                     <LogOut className="h-4 w-4" /> Sign Out
                   </DropdownMenuItem>
                 </DropdownMenuContent>

@@ -141,6 +141,8 @@ export const RING_OFFSET: Record<MachRowGround, string> = {
   white: "focus-visible:ring-offset-white",
   paper: "focus-visible:ring-offset-[var(--mach-paper)]",
   ink: "focus-visible:ring-offset-[var(--mach-ink)]",
+  "ink-soft": "focus-visible:ring-offset-[var(--mach-ink-soft)]",
+  "ink-raised": "focus-visible:ring-offset-[var(--mach-ink-raised)]",
 };
 
 /**
@@ -286,13 +288,12 @@ export function MachProductCarousel({
   // actually on screen.
   if (isLoading || products.length === 0) return null;
 
-  const resolved: MachRowGround = ground ?? "white";
+  const resolved: MachRowGround = ground ?? "ink-soft";
   // Same helper the grid row uses, so a section keeps its background — and
   // keeps reading the same way on it — through a change of arrangement. The
   // controls, the header and the cards all take their treatment from here.
   const backdrop = machSectionBackdrop(resolved, background);
   const isDark = backdrop.onDark;
-  const rule = isDark ? "" : "border-t border-[var(--mach-ink)]/10";
   const labels = machCarouselControlLabels(title);
   const hasAction = machSectionActionVisible(actionLabel, actionHref);
 
@@ -330,7 +331,7 @@ export function MachProductCarousel({
   return (
     <section
       id={id}
-      className={`${backdrop.sectionCls} ${rule} scroll-mt-24`}>
+      className={`${backdrop.sectionCls} ${backdrop.ruleCls} scroll-mt-24`}>
       <MachSectionBackdrop background={background} />
       <div
         className={`${backdrop.contentCls} ${SHELL} ${GUTTER} py-12 sm:py-14 lg:py-16`}>

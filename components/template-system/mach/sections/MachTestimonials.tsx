@@ -9,7 +9,13 @@ import {
   useState,
 } from "react";
 import type { HomepageContent } from "#root/shared/types/homepage-content";
-import { GUTTER, SHELL } from "../machTokens";
+import {
+  EDGE_TOP_ON_DARK,
+  GROUND_INK_SOFT,
+  GUTTER,
+  SHELL,
+  TEXT_MUTE_ON_DARK,
+} from "../machTokens";
 
 type TestimonialsContent = NonNullable<HomepageContent["testimonials"]>;
 type Item = TestimonialsContent["items"][number];
@@ -60,8 +66,8 @@ function Stars({ rating }: { rating: number }) {
           aria-hidden="true"
           className={
             i <= r
-              ? "h-3.5 w-3.5 fill-[var(--mach-ink)] text-[var(--mach-ink)]"
-              : "h-3.5 w-3.5 text-[var(--mach-ink)]/25"
+              ? "h-3.5 w-3.5 fill-white text-white"
+              : "h-3.5 w-3.5 text-white/25"
           }
         />
       ))}
@@ -109,7 +115,7 @@ function Quote({
         ref={ref}
         id={id}
         {...langProps}
-        className={`whitespace-pre-line text-[0.9375rem] leading-[1.6] text-[var(--mach-ink)]/85 sm:text-base ${
+        className={`whitespace-pre-line text-[0.9375rem] leading-[1.6] text-white/85 sm:text-base ${
           rtl ? "text-right" : ""
         } ${expanded ? "" : "line-clamp-5"}`}>
         {text}
@@ -121,7 +127,7 @@ function Quote({
           aria-controls={id}
           onClick={onToggle}
           {...langProps}
-          className={`mt-2 text-[0.8125rem] font-semibold text-[var(--mach-ink)] underline underline-offset-4 decoration-[var(--mach-ink)]/40 hover:decoration-[var(--mach-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2 ${
+          className={`mt-2 text-[0.8125rem] font-semibold text-white underline underline-offset-4 decoration-white/40 hover:decoration-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-ink-raised)] ${
             rtl ? "block w-full text-right" : ""
           }`}>
           {expanded ? (rtl ? "عرض أقل" : "Show less") : rtl ? "اقرأ المزيد" : "Read more"}
@@ -144,7 +150,7 @@ function TestimonialCard({ item, lang, index }: { item: Item; lang: Lang; index:
 
   return (
     <li
-      className="flex min-h-[220px] shrink-0 basis-[84%] snap-start flex-col rounded-lg border border-[var(--mach-paper-line)] bg-white p-5 sm:basis-[calc((100%-1rem)/2)] sm:p-6 lg:basis-[calc((100%-2rem)/3)]"
+      className="flex min-h-[220px] shrink-0 basis-[84%] snap-start flex-col rounded-lg border border-[var(--mach-ink-line)] bg-[var(--mach-ink-raised)] p-5 sm:basis-[calc((100%-1rem)/2)] sm:p-6 lg:basis-[calc((100%-2rem)/3)]"
       aria-label={`Testimonial ${index + 1}`}>
       <Stars rating={item.rating} />
       <div className="mt-3">
@@ -162,8 +168,8 @@ function TestimonialCard({ item, lang, index }: { item: Item; lang: Lang; index:
           lang={nameRtl ? "ar" : undefined}
           className={
             nameRtl
-              ? "text-right text-[0.875rem] font-semibold text-[var(--mach-ink)]"
-              : "text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-[var(--mach-ink)]"
+              ? "text-right text-[0.875rem] font-semibold text-white"
+              : "text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-white"
           }>
           {name}
         </p>
@@ -252,23 +258,23 @@ export function MachTestimonials({ content }: { content: TestimonialsContent }) 
   const count = items.length;
 
   const navBtn =
-    "inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--mach-paper-line)] bg-white text-[var(--mach-ink)] transition-colors hover:bg-[var(--mach-ink)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-paper)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white disabled:hover:text-[var(--mach-ink)]";
+    "inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/25 bg-transparent text-white transition-colors hover:border-white hover:bg-white hover:text-[var(--mach-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-ink-soft)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-white/25 disabled:hover:bg-transparent disabled:hover:text-white";
   const langBtn = (active: boolean) =>
-    `rounded-md px-2.5 py-1 text-[0.75rem] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-paper)] ${
+    `rounded-md px-2.5 py-1 text-[0.75rem] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-ink-soft)] ${
       active
-        ? "bg-[var(--mach-ink)] text-white"
-        : "text-[var(--mach-ink)]/70 hover:text-[var(--mach-ink)]"
+        ? "bg-white text-[var(--mach-ink)]"
+        : "text-white/70 hover:text-white"
     }`;
 
   return (
     <section
       id="testimonials"
       data-testid="mach-testimonials"
-      className="scroll-mt-24 bg-[var(--mach-paper)] text-[var(--mach-ink)]">
+      className={`scroll-mt-24 ${GROUND_INK_SOFT} ${EDGE_TOP_ON_DARK}`}>
       <div className={`${SHELL} ${GUTTER} py-8 sm:py-12`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <div className="min-w-0">
-            <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-[var(--mach-mute)]">
+            <p className={`text-[0.6875rem] font-semibold uppercase tracking-[0.2em] ${TEXT_MUTE_ON_DARK}`}>
               {count} {count === 1 ? "testimonial" : "testimonials"}
             </p>
             <h2
@@ -287,7 +293,7 @@ export function MachTestimonials({ content }: { content: TestimonialsContent }) 
             {hasBilingual ? (
               <fieldset
                 data-testid="testimonials-lang"
-                className="inline-flex items-center rounded-md border border-[var(--mach-paper-line)] bg-white p-0.5">
+                className="inline-flex items-center rounded-md border border-white/20 bg-transparent p-0.5">
                 <legend className="sr-only">Testimonial language</legend>
                 <button
                   type="button"
@@ -350,7 +356,7 @@ export function MachTestimonials({ content }: { content: TestimonialsContent }) 
           tabIndex={0}
           onKeyDown={onKeyDown}
           data-testid="testimonials-scroller"
-          className="mach-scroll-hide mt-5 flex snap-x snap-proximity gap-4 overflow-x-auto overscroll-x-contain scroll-smooth pb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--mach-paper)] motion-reduce:scroll-auto sm:mt-6">
+          className="mach-scroll-hide mt-5 flex snap-x snap-proximity gap-4 overflow-x-auto overscroll-x-contain scroll-smooth pb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--mach-ink-soft)] motion-reduce:scroll-auto sm:mt-6">
           {items.map((item, index) => (
             <TestimonialCard
               key={`${index}-${item.name}`}

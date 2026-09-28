@@ -31,8 +31,8 @@ function Stars({
           key={i}
           className={
             i <= Math.round(value)
-              ? "h-3.5 w-3.5 fill-[var(--mach-ink)] text-[var(--mach-ink)]"
-              : "h-3.5 w-3.5 text-[var(--mach-ink)]/25"
+              ? "h-3.5 w-3.5 fill-white text-white"
+              : "h-3.5 w-3.5 text-white/25"
           }
         />
       ))}
@@ -54,7 +54,7 @@ export function ProductRatingSummary({
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <Stars value={rating} />
-      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--mach-mute)]">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--mach-mute-invert)]">
         {rating.toFixed(1)} ({reviewCount}
         {reviewCount === 1 ? " review" : " reviews"})
       </span>
@@ -81,9 +81,9 @@ export function ProductReviewsSection({
 
   return (
     <section
-      className={`border-t border-[var(--mach-ink)]/12 pt-12 ${className}`}>
+      className={`border-t border-white/12 pt-12 ${className}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-4">
-        <h2 className="text-[clamp(1.5rem,3vw,2.25rem)] font-black uppercase leading-[0.95] tracking-[-0.02em] text-[var(--mach-ink)]">
+        <h2 className="text-[clamp(1.5rem,3vw,2.25rem)] font-black uppercase leading-[0.95] tracking-[-0.02em] text-white">
           {heading}
         </h2>
         <ProductRatingSummary rating={rating} reviewCount={reviewCount} />
@@ -94,15 +94,15 @@ export function ProductReviewsSection({
         {items.map((r) => (
           <li
             key={r.id}
-            className="border-b border-[var(--mach-ink)]/12 py-5 first:pt-0 sm:first:pt-5 sm:[&:nth-child(2)]:pt-0">
+            className="border-b border-white/12 py-5 first:pt-0 sm:first:pt-5 sm:[&:nth-child(2)]:pt-0">
             <div className="flex items-center gap-2.5">
               <Stars value={r.rating} />
-              <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[var(--mach-ink)]">
+              <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-white">
                 {r.userName}
               </span>
             </div>
             {r.comment && (
-              <p className="mt-2.5 whitespace-pre-line text-sm leading-relaxed text-[var(--mach-mute)]">
+              <p className="mt-2.5 whitespace-pre-line text-sm leading-relaxed text-[var(--mach-mute-invert)]">
                 {r.comment}
               </p>
             )}

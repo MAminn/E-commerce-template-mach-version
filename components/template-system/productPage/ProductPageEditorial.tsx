@@ -119,7 +119,7 @@ function formatPrice(v: number): string {
  * every one of those sections can render nothing at all — putting the rule on
  * the container draws a line above whatever is left, including above nothing.
  */
-const SECTION_RULE = "border-t border-[var(--mach-ink)]/12 pt-12 lg:pt-14";
+const SECTION_RULE = "border-t border-white/12 pt-12 lg:pt-14";
 
 /**
  * Column count for the related-products shelf, chosen from what the catalogue
@@ -166,7 +166,7 @@ function relatedBlockClasses(count: number): string {
 
 /** Neutral placeholder bar. Hard-edged and monochrome, like everything else. */
 function Bar({ className = "" }: { className?: string }) {
-  return <div className={`bg-[var(--mach-ink)]/[0.07] ${className}`} />;
+  return <div className={`bg-white/[0.08] ${className}`} />;
 }
 
 /**
@@ -195,7 +195,7 @@ function ProductPageSkeleton({ className = "" }: { className?: string }) {
       role='status'
       aria-busy='true'
       aria-live='polite'
-      className={`product-page-mach min-h-screen animate-pulse bg-white ${className}`}>
+      className={`product-page-mach min-h-screen animate-pulse bg-[var(--mach-ink)] ${className}`}>
       <span className='sr-only'>Loading product</span>
 
       <div className={`${SHELL} ${GUTTER} pb-14 pt-5 lg:pb-20 lg:pt-6`}>
@@ -205,7 +205,7 @@ function ProductPageSkeleton({ className = "" }: { className?: string }) {
         {/* Same 7/5 split, same gaps, same square stage as the real hero. */}
         <div className='grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10 xl:gap-14'>
           <div className='lg:col-span-7'>
-            <div className='aspect-square w-full bg-[var(--mach-paper-soft)] ring-1 ring-inset ring-[var(--mach-ink)]/12' />
+            <div className='aspect-square w-full bg-white/[0.08]' />
           </div>
 
           <div className='lg:col-span-5'>
@@ -223,7 +223,7 @@ function ProductPageSkeleton({ className = "" }: { className?: string }) {
               <Bar className='h-3 w-3/4' />
             </div>
 
-            <div className='mt-7 h-px w-full bg-[var(--mach-ink)]/12' />
+            <div className='mt-7 h-px w-full bg-white/12' />
 
             {/* Quantity row */}
             <div className='mt-7 flex items-center gap-4'>
@@ -239,7 +239,7 @@ function ProductPageSkeleton({ className = "" }: { className?: string }) {
             <Bar className='mt-3 h-[52px] w-full' />
 
             {/* Trust strip */}
-            <div className='mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--mach-ink)]/12 pt-5'>
+            <div className='mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/12 pt-5'>
               <Bar className='h-2.5 w-20' />
               <Bar className='h-2.5 w-24' />
               <Bar className='h-2.5 w-20' />
@@ -428,15 +428,15 @@ function ProductPageEditorialResolved({
 
   const priceBlock = hasDiscount ? (
     <>
-      <span className="text-[28px] font-black leading-none tracking-tight text-[var(--mach-ink)] sm:text-[32px]">
+      <span className="text-[28px] font-black leading-none tracking-tight text-white sm:text-[32px]">
         {formatPrice(Number(product.discountPrice))}
       </span>
-      <span className="text-[15px] text-[var(--mach-mute)] line-through">
+      <span className="text-[15px] text-[var(--mach-mute-invert)] line-through">
         {formatPrice(Number(product.price))}
       </span>
     </>
   ) : (
-    <span className="text-[28px] font-black leading-none tracking-tight text-[var(--mach-ink)] sm:text-[32px]">
+    <span className="text-[28px] font-black leading-none tracking-tight text-white sm:text-[32px]">
       {formatPrice(Number(product.price))}
     </span>
   );
@@ -448,7 +448,7 @@ function ProductPageEditorialResolved({
   return (
     <MachChrome>
       <div
-        className={`product-page-mach min-h-screen bg-white text-[var(--mach-ink)] ${className}`}>
+        className={`product-page-mach min-h-screen bg-[var(--mach-ink)] text-white ${className}`}>
         {/* ============================================================ */}
         {/*  HERO — media left, purchase right                           */}
         {/* ============================================================ */}
@@ -457,26 +457,26 @@ function ProductPageEditorialResolved({
               Compact and quiet: it orients, it is not a page header. */}
           <nav
             aria-label='Breadcrumb'
-            className='mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mach-mute)] lg:mb-8'>
+            className='mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mach-mute-invert)] lg:mb-8'>
             <a
               href='/'
-              className='transition-colors hover:text-[var(--mach-ink)]'>
+              className='transition-colors hover:text-white'>
               Home
             </a>
-            <span aria-hidden='true' className='text-[var(--mach-ink)]/25'>
+            <span aria-hidden='true' className='text-white/25'>
               /
             </span>
             <a
               href='/shop'
-              className='transition-colors hover:text-[var(--mach-ink)]'>
+              className='transition-colors hover:text-white'>
               Shop
             </a>
             {product.categoryName && (
               <>
-                <span aria-hidden='true' className='text-[var(--mach-ink)]/25'>
+                <span aria-hidden='true' className='text-white/25'>
                   /
                 </span>
-                <span className='text-[var(--mach-ink)]'>
+                <span className='text-white'>
                   {product.categoryName}
                 </span>
               </>
@@ -614,12 +614,12 @@ function ProductPageEditorialResolved({
                   navbar chrome with a little air above the title. */}
               <div className='lg:sticky lg:top-28'>
                 {eyebrow && (
-                  <p className='text-[10px] font-semibold uppercase tracking-[0.3em] text-[var(--mach-mute)]'>
+                  <p className='text-[10px] font-semibold uppercase tracking-[0.3em] text-[var(--mach-mute-invert)]'>
                     {eyebrow}
                   </p>
                 )}
 
-                <h1 className='mt-3 text-[26px] font-black uppercase leading-[1.08] tracking-[-0.015em] text-[var(--mach-ink)] sm:text-[32px] lg:text-[34px]'>
+                <h1 className='mt-3 text-[26px] font-black uppercase leading-[1.08] tracking-[-0.015em] text-white sm:text-[32px] lg:text-[34px]'>
                   {product.name}
                 </h1>
 
@@ -635,12 +635,12 @@ function ProductPageEditorialResolved({
                 </div>
 
                 {product.description && (
-                  <p className='mt-5 max-w-prose text-[15px] leading-relaxed text-[var(--mach-mute)]'>
+                  <p className='mt-5 max-w-prose text-[15px] leading-relaxed text-[var(--mach-mute-invert)]'>
                     {product.description}
                   </p>
                 )}
 
-                <div className='mt-7 h-px w-full bg-[var(--mach-ink)]/12' />
+                <div className='mt-7 h-px w-full bg-white/12' />
 
                 {/* Selection comes before quantity: how many of *what* is the
                     order the shopper actually decides in. */}
@@ -663,18 +663,18 @@ function ProductPageEditorialResolved({
                     exactly when these leave the screen. */}
                 <div ref={purchaseRef} className='mt-7'>
                   <div className='flex items-center gap-4'>
-                    <span className='text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--mach-mute)]'>
+                    <span className='text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--mach-mute-invert)]'>
                       Quantity
                     </span>
-                    <div className='inline-flex items-center border border-[var(--mach-ink)]/20 bg-white'>
+                    <div className='inline-flex items-center border border-white/20 bg-transparent'>
                       <button
                         type='button'
                         onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                        className='flex h-11 w-11 items-center justify-center text-[var(--mach-ink)] transition-colors hover:bg-[var(--mach-ink)] hover:text-white'
+                        className='flex h-11 w-11 items-center justify-center text-white transition-colors hover:bg-white hover:text-[var(--mach-ink)]'
                         aria-label='Decrease quantity'>
                         <Minus className='h-3.5 w-3.5' />
                       </button>
-                      <span className='w-10 text-center text-sm font-bold text-[var(--mach-ink)]'>
+                      <span className='w-10 text-center text-sm font-bold text-white'>
                         {quantity}
                       </span>
                       <button
@@ -684,20 +684,21 @@ function ProductPageEditorialResolved({
                             Math.min(product.stock || 99, q + 1),
                           )
                         }
-                        className='flex h-11 w-11 items-center justify-center text-[var(--mach-ink)] transition-colors hover:bg-[var(--mach-ink)] hover:text-white'
+                        className='flex h-11 w-11 items-center justify-center text-white transition-colors hover:bg-white hover:text-[var(--mach-ink)]'
                         aria-label='Increase quantity'>
                         <Plus className='h-3.5 w-3.5' />
                       </button>
                     </div>
                   </div>
 
-                  {/* Primary action: hard-edged, full-width, black. The
+                  {/* Primary action: hard-edged, full-width, and the one
+                      solid white block on the dark page. The
                       wishlist is a square beside it rather than a second
                       full-width button — it is not a purchase. */}
                   <div className='mt-4 flex items-stretch gap-3'>
                     <Button
                       size='lg'
-                      className='h-[52px] flex-1 rounded-none bg-[var(--mach-ink)] text-[12px] font-bold uppercase tracking-[0.2em] text-white hover:bg-[var(--mach-ink-soft)]'
+                      className='h-[52px] flex-1 rounded-none border-white bg-white text-[12px] font-bold uppercase tracking-[0.2em] text-[var(--mach-ink)] hover:bg-white/85'
                       disabled={isSoldOut || !allVariantsSelected}
                       onClick={handleAddToCart}>
                       {addToBagLabel}
@@ -706,7 +707,7 @@ function ProductPageEditorialResolved({
                       <button
                         type='button'
                         onClick={() => onAddToWishlist?.(product)}
-                        className='flex h-[52px] w-[52px] shrink-0 items-center justify-center border border-[var(--mach-ink)]/20 bg-white text-[var(--mach-ink)] transition-colors hover:border-[var(--mach-ink)]'
+                        className='flex h-[52px] w-[52px] shrink-0 items-center justify-center border border-white/20 bg-transparent text-white transition-colors hover:border-white'
                         aria-label='Add to wishlist'>
                         <Heart className='h-4 w-4' />
                       </button>
@@ -719,7 +720,7 @@ function ProductPageEditorialResolved({
                     <Button
                       size='lg'
                       variant='outline'
-                      className='mt-3 h-[52px] w-full rounded-none border-[var(--mach-ink)] text-[12px] font-bold uppercase tracking-[0.2em] text-[var(--mach-ink)] hover:bg-[var(--mach-ink)] hover:text-white'
+                      className='mt-3 h-[52px] w-full rounded-none border-white bg-transparent text-[12px] font-bold uppercase tracking-[0.2em] text-white hover:border-white hover:bg-white hover:text-[var(--mach-ink)] mach-dark:border-white mach-dark:hover:bg-white mach-dark:hover:text-[var(--mach-ink)]'
                       disabled={isSoldOut || !allVariantsSelected}
                       onClick={handleBuyNow}>
                       Buy It Now
@@ -730,14 +731,14 @@ function ProductPageEditorialResolved({
                 {/* Trust strip — one quiet line. It reassures; it does not
                     merchandise, so it gets no boxes and no fill. Wording is
                     unchanged. */}
-                <div className='mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--mach-ink)]/12 pt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mach-mute)]'>
+                <div className='mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/12 pt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mach-mute-invert)]'>
                   <span className='inline-flex items-center gap-2'>
                     <Truck className='h-3.5 w-3.5' aria-hidden='true' />
                     Free Ship
                   </span>
                   <span
                     aria-hidden='true'
-                    className='h-3 w-px bg-[var(--mach-ink)]/15'
+                    className='h-3 w-px bg-white/15'
                   />
                   <span className='inline-flex items-center gap-2'>
                     <Shield className='h-3.5 w-3.5' aria-hidden='true' />
@@ -745,7 +746,7 @@ function ProductPageEditorialResolved({
                   </span>
                   <span
                     aria-hidden='true'
-                    className='h-3 w-px bg-[var(--mach-ink)]/15'
+                    className='h-3 w-px bg-white/15'
                   />
                   <span className='inline-flex items-center gap-2'>
                     <RotateCcw className='h-3.5 w-3.5' aria-hidden='true' />
@@ -762,11 +763,11 @@ function ProductPageEditorialResolved({
                 {shippingReturnsParts.length > 0 && (
                   <Accordion type='multiple' className='mt-2'>
                     <AccordionItem value='shipping' className='border-b-0'>
-                      <AccordionTrigger className='text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--mach-ink)] hover:no-underline'>
+                      <AccordionTrigger className='text-[11px] font-bold uppercase tracking-[0.16em] text-white hover:no-underline'>
                         {content?.shippingSectionHeading?.trim() ||
                           "Shipping & Returns"}
                       </AccordionTrigger>
-                      <AccordionContent className='space-y-2 text-sm leading-relaxed text-[var(--mach-mute)]'>
+                      <AccordionContent className='space-y-2 text-sm leading-relaxed text-[var(--mach-mute-invert)]'>
                         {shippingReturnsParts.map((part) => (
                           <p key={part} className='whitespace-pre-line'>
                             {part}
@@ -826,7 +827,7 @@ function ProductPageEditorialResolved({
         {/*  YOU MAY ALSO LIKE                                           */}
         {/* ============================================================ */}
         {shelf.length > 0 && (
-          <section className='border-t border-[var(--mach-ink)]/10 bg-[var(--mach-paper)] pb-20 pt-14 lg:pb-24 lg:pt-16'>
+          <section className='border-t border-[var(--mach-ink-line)] bg-[var(--mach-ink-soft)] pb-20 pt-14 lg:pb-24 lg:pt-16'>
             <div className={`${SHELL} ${GUTTER}`}>
               {/* Heading, action and cards share one measure, set by how many
                   products there actually are. The block stays flush with the
@@ -854,15 +855,16 @@ function ProductPageEditorialResolved({
                 </Reveal>
 
                 {/* The same card the homepage rows use — one product card for
-                    the whole storefront, untouched, at its own size. Only the
-                    track it sits in responds to the count. */}
+                    the whole storefront, untouched, at its own size, with its
+                    type lit for the dark shelf. Only the track it sits in
+                    responds to the count. */}
                 <StaggerContainer
                   className={`mt-9 grid gap-x-4 gap-y-12 sm:gap-x-6 lg:mt-10 ${relatedGridClasses(
                     shelf.length,
                   )}`}>
                   {shelf.map((rp) => (
                     <StaggerItem key={rp.id}>
-                      <MachProductCard product={rp} />
+                      <MachProductCard product={rp} onDark />
                     </StaggerItem>
                   ))}
                 </StaggerContainer>
@@ -879,22 +881,22 @@ function ProductPageEditorialResolved({
         {/*  MOBILE STICKY PURCHASE BAR                                  */}
         {/* ============================================================ */}
         <div
-          className={`fixed inset-x-0 bottom-0 z-50 border-t border-[var(--mach-ink)]/15 bg-white/95 p-3 backdrop-blur-sm transition-transform duration-300 lg:hidden ${
+          className={`fixed inset-x-0 bottom-0 z-50 border-t border-[var(--mach-ink-line)] bg-[var(--mach-ink)]/95 p-3 backdrop-blur-sm transition-transform duration-300 lg:hidden ${
             showStickyBuy ? "translate-y-0" : "translate-y-full"
           }`}>
           <div className='flex items-center gap-3'>
             <div className='min-w-0 flex-1'>
-              <p className='truncate text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--mach-ink)]'>
+              <p className='truncate text-[11px] font-bold uppercase tracking-[0.1em] text-white'>
                 {product.name}
               </p>
-              <p className='text-sm font-black text-[var(--mach-ink)]'>
+              <p className='text-sm font-black text-white'>
                 {hasDiscount
                   ? formatPrice(Number(product.discountPrice))
                   : formatPrice(Number(product.price))}
               </p>
             </div>
             <Button
-              className='h-12 rounded-none bg-[var(--mach-ink)] px-6 text-[11px] font-bold uppercase tracking-[0.18em] text-white hover:bg-[var(--mach-ink-soft)]'
+              className='h-12 rounded-none border-white bg-white px-6 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-ink)] hover:bg-white/85'
               disabled={isSoldOut || !allVariantsSelected}
               tabIndex={showStickyBuy ? 0 : -1}
               onClick={handleAddToCart}>

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { authClient } from "#root/lib/auth-client";
 import { useSearchParams } from "#root/hooks/useSearchParams";
-import { CTA_ON_LIGHT } from "./machTokens";
+import { CTA_ON_DARK } from "./machTokens";
 import {
   AUTH_SUBMIT,
   AuthNotice,
@@ -94,7 +94,7 @@ export function MachVerifyEmailPage() {
 
           <AuthRule className="mt-10" />
 
-          <a href="/login" className={`${CTA_ON_LIGHT} ${AUTH_SUBMIT} mt-6`}>
+          <a href="/login" className={`${CTA_ON_DARK} ${AUTH_SUBMIT} mt-6`}>
             Continue to login
           </a>
         </>
@@ -113,7 +113,7 @@ export function MachVerifyEmailPage() {
 
           <AuthRule className="mt-10" />
 
-          <a href="/login" className={`${CTA_ON_LIGHT} ${AUTH_SUBMIT} mt-6`}>
+          <a href="/login" className={`${CTA_ON_DARK} ${AUTH_SUBMIT} mt-6`}>
             Return to login
           </a>
         </>

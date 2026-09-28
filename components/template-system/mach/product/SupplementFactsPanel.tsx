@@ -21,10 +21,10 @@ function hasText(v?: string): v is string {
   return typeof v === "string" && v.trim().length > 0;
 }
 
-const MUTE = "text-[var(--mach-mute)]";
-const INK = "text-[var(--mach-ink)]";
+const MUTE = "text-[var(--mach-mute-invert)]";
+const INK = "text-white";
 const LABEL =
-  "text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--mach-ink)]";
+  "text-[11px] font-bold uppercase tracking-[0.2em] text-white";
 
 /**
  * Reading measures.
@@ -59,10 +59,10 @@ export function SupplementFactsPanel({
     // by — it closes the data off from the page without putting a card around
     // it, which is the treatment a printed label uses too.
     <div
-      className={`overflow-x-auto border-b-2 border-t-2 border-[var(--mach-ink)] ${className}`}>
+      className={`overflow-x-auto border-b-2 border-t-2 border-white ${className}`}>
       <table className="w-full min-w-[17rem] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-[var(--mach-ink)]/25">
+          <tr className="border-b border-white/25">
             <th
               className={`py-2.5 pe-3 text-start text-[10px] font-bold uppercase tracking-[0.16em] ${INK}`}>
               Amount Per Serving
@@ -81,7 +81,7 @@ export function SupplementFactsPanel({
             <tr
               // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and may repeat labels
               key={idx}
-              className="border-b border-[var(--mach-ink)]/12 last:border-0">
+              className="border-b border-white/12 last:border-0">
               <td
                 className={`py-2.5 pe-3 ${INK} ${
                   row.indent ? "ps-5 font-normal" : "font-semibold"
@@ -118,7 +118,7 @@ export function SupplementBadges({ badges }: { badges?: string[] }) {
       {visible.map((b) => (
         <span
           key={b}
-          className="border border-[var(--mach-ink)]/25 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--mach-ink)]">
+          className="border border-white/25 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
           {b}
         </span>
       ))}
@@ -163,7 +163,7 @@ function DetailBlock({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="border-t border-[var(--mach-ink)]/12 lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-x-8 lg:py-8 xl:grid-cols-[13rem_minmax(0,1fr)] xl:gap-x-10">
+    <div className="border-t border-white/12 lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-x-8 lg:py-8 xl:grid-cols-[13rem_minmax(0,1fr)] xl:gap-x-10">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -172,7 +172,7 @@ function DetailBlock({
         {title}
         <ChevronDown
           aria-hidden="true"
-          className={`h-4 w-4 shrink-0 text-[var(--mach-ink)]/45 transition-transform duration-200 ${
+          className={`h-4 w-4 shrink-0 text-white/45 transition-transform duration-200 ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -290,13 +290,13 @@ export function SupplementDetailsPanel({
   return (
     <section className={className}>
       {hasText(sectionHeading) && (
-        <h2 className="text-[clamp(1.5rem,3vw,2.25rem)] font-black uppercase leading-[0.95] tracking-[-0.02em] text-[var(--mach-ink)]">
+        <h2 className="text-[clamp(1.5rem,3vw,2.25rem)] font-black uppercase leading-[0.95] tracking-[-0.02em] text-white">
           {sectionHeading}
         </h2>
       )}
 
       {hasText(info?.detailsHeading) && (
-        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.28em] text-[var(--mach-mute)]">
+        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.28em] text-[var(--mach-mute-invert)]">
           {info?.detailsHeading}
         </p>
       )}
@@ -310,7 +310,7 @@ export function SupplementDetailsPanel({
       {/* The bottom rule closes the mobile disclosure list. On desktop the
           blocks are open spec-sheet rows and the last one needs no terminator
           beyond the section rule that follows. */}
-      <div className="mt-7 border-b border-[var(--mach-ink)]/12 lg:mt-8 lg:border-b-0">
+      <div className="mt-7 border-b border-white/12 lg:mt-8 lg:border-b-0">
         {detailRows.length > 0 && (
           <DetailBlock title="Product Details" defaultOpen={firstOpen()}>
             <SpecList rows={detailRows} />
@@ -359,7 +359,7 @@ export function SupplementDetailsPanel({
                 or a panel making it look like an alert. The text itself is
                 rendered exactly as entered. */}
             <p
-              className={`whitespace-pre-line border-s-2 border-[var(--mach-ink)]/25 ps-4 text-[15px] leading-relaxed text-[var(--mach-ink)]/80 ${MEASURE_PROSE}`}>
+              className={`whitespace-pre-line border-s-2 border-white/25 ps-4 text-[15px] leading-relaxed text-white/80 ${MEASURE_PROSE}`}>
               {prose.warnings}
             </p>
           </DetailBlock>
@@ -397,7 +397,7 @@ function SpecList({ rows }: { rows: { label: string; value: string }[] }) {
       {rows.map((spec) => (
         <div
           key={spec.label}
-          className="flex items-baseline justify-between gap-4 border-b border-[var(--mach-ink)]/10 py-2 first:pt-0 last:border-0 last:pb-0">
+          className="flex items-baseline justify-between gap-4 border-b border-white/10 py-2 first:pt-0 last:border-0 last:pb-0">
           <dt
             className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${MUTE}`}>
             {spec.label}

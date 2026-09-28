@@ -8,8 +8,9 @@ import { EYEBROW } from "./machTokens";
  * Shared chrome for the Mach customer auth journey.
  *
  * Sign in, create account, forgot password and reset password are four screens
- * of one journey, so they share one frame: a full-bleed two-panel split, ink
- * identity panel against paper form panel, divided by a single hairline. No
+ * of one journey, so they share one frame: a full-bleed two-panel split, a
+ * true-black identity panel against the lifted-charcoal form panel (the
+ * storefront is dark by default), divided by a single hairline. No
  * card, no radius, no shadow, no accent hue — the monochrome shell rules the
  * rest of the Mach storefront runs on (machTokens.ts).
  *
@@ -27,9 +28,9 @@ import { EYEBROW } from "./machTokens";
 
 /* ── Field chrome ──────────────────────────────────────────────────────── */
 
-/** Sharp hairline box, 48px tall, ink focus ring. */
+/** Sharp hairline box, 48px tall, white focus ring on the dark column. */
 export const AUTH_FIELD =
-  "h-12 w-full rounded-none border border-[var(--mach-paper-line)] bg-white px-4 text-[15px] text-[var(--mach-ink)] shadow-none transition-colors duration-200 placeholder:text-[var(--mach-mute)]/70 hover:border-[var(--mach-ink)]/35 focus-visible:border-[var(--mach-ink)] focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-paper)] disabled:opacity-45 md:text-[15px]";
+  "h-12 w-full rounded-none border border-white/20 bg-transparent px-4 text-[15px] text-white shadow-none transition-colors duration-200 placeholder:text-[var(--mach-mute-invert)]/70 hover:border-white/35 focus-visible:border-white focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-ink-soft)] disabled:opacity-45 md:text-[15px]";
 
 /**
  * Invalid-field override.
@@ -39,23 +40,23 @@ export const AUTH_FIELD =
  * state never depends on colour alone.
  */
 export const AUTH_FIELD_INVALID =
-  "border-red-700 hover:border-red-700 focus-visible:border-red-700 focus-visible:ring-red-700";
+  "border-red-400 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-400";
 
 /** Small, heavy, wide-tracked field label — the Mach label idiom. */
 export const AUTH_LABEL =
-  "block text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--mach-mute)]";
+  "block text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--mach-mute-invert)]";
 
 /** Underlined tertiary action, sized to a 44px touch target. */
 export const AUTH_LINK =
-  "inline-flex min-h-11 items-center text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-ink)] underline decoration-[var(--mach-ink)]/30 decoration-1 underline-offset-4 transition-colors duration-200 hover:decoration-[var(--mach-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-paper)]";
+  "inline-flex min-h-11 items-center text-[11px] font-bold uppercase tracking-[0.18em] text-white underline decoration-white/30 decoration-1 underline-offset-4 transition-colors duration-200 hover:decoration-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mach-ink-soft)]";
 
-/** Disabled/busy handling for a `CTA_ON_LIGHT` submit block. */
+/** Disabled/busy handling for a `CTA_ON_DARK` submit block. */
 export const AUTH_SUBMIT =
-  "mt-1 min-h-[52px] w-full gap-3 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[var(--mach-ink)] disabled:hover:text-white";
+  "mt-1 min-h-[52px] w-full gap-3 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-white disabled:hover:text-[var(--mach-ink)]";
 
 /** Supporting line under a screen's heading. */
 export const AUTH_LEAD =
-  "mt-5 max-w-sm text-[14px] leading-relaxed text-[var(--mach-mute)] sm:text-[15px]";
+  "mt-5 max-w-sm text-[14px] leading-relaxed text-[var(--mach-mute-invert)] sm:text-[15px]";
 
 /* ── Primitives ────────────────────────────────────────────────────────── */
 
@@ -64,7 +65,7 @@ export function AuthRule({ className = "" }: { className?: string }) {
   return (
     <div
       aria-hidden="true"
-      className={`h-px w-full bg-[var(--mach-paper-line)] ${className}`}
+      className={`h-px w-full bg-[var(--mach-ink-line)] ${className}`}
     />
   );
 }
@@ -81,7 +82,7 @@ export function AuthFieldError({
     <p
       id={id}
       role="alert"
-      className="mt-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-700">
+      className="mt-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-400">
       {children}
     </p>
   );
@@ -106,7 +107,7 @@ export function AuthPasswordToggle({
       onClick={onToggle}
       aria-label={shown ? `Hide ${label}` : `Show ${label}`}
       aria-pressed={shown}
-      className="absolute end-0 top-0 flex h-12 w-12 items-center justify-center text-[var(--mach-mute)] transition-colors duration-200 hover:text-[var(--mach-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mach-ink)] focus-visible:ring-inset disabled:opacity-45"
+      className="absolute end-0 top-0 flex h-12 w-12 items-center justify-center text-[var(--mach-mute-invert)] transition-colors duration-200 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-inset disabled:opacity-45"
       disabled={disabled}>
       {shown ? (
         <EyeOff className="h-[17px] w-[17px]" />
@@ -144,20 +145,20 @@ export function AuthNotice({
     <div role={tone} aria-live={tone === "alert" ? "assertive" : "polite"}>
       <span
         aria-hidden="true"
-        className="inline-flex h-11 w-11 items-center justify-center bg-[var(--mach-ink)] text-white">
+        className="inline-flex h-11 w-11 items-center justify-center bg-white text-[var(--mach-ink)]">
         {icon}
       </span>
       {/* The eyebrow names the outcome in words, so the state never rests on
           colour alone. */}
-      <p className={`${EYEBROW} mt-7 text-[var(--mach-mute)]`}>
-        <span aria-hidden="true" className="h-px w-8 bg-[var(--mach-ink)]/30" />
+      <p className={`${EYEBROW} mt-7 text-[var(--mach-mute-invert)]`}>
+        <span aria-hidden="true" className="h-px w-8 bg-white/30" />
         {eyebrow}
       </p>
-      <h1 className="mt-5 text-[clamp(1.75rem,3.4vw,2.375rem)] font-black uppercase leading-[0.95] tracking-[-0.025em] text-[var(--mach-ink)]">
+      <h1 className="mt-5 text-[clamp(1.75rem,3.4vw,2.375rem)] font-black uppercase leading-[0.95] tracking-[-0.025em] text-white">
         {title}
       </h1>
       {children && (
-        <div className="mt-5 max-w-sm text-[14px] leading-relaxed text-[var(--mach-mute)] sm:text-[15px]">
+        <div className="mt-5 max-w-sm text-[14px] leading-relaxed text-[var(--mach-mute-invert)] sm:text-[15px]">
           {children}
         </div>
       )}
@@ -185,7 +186,7 @@ export function MachAuthShell({
   contentClassName?: string;
 }) {
   return (
-    <section className="w-full bg-[var(--mach-paper)]">
+    <section className="w-full bg-[var(--mach-ink-soft)]">
       <div className="grid grid-cols-1 lg:min-h-[100svh] lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         {/* ─── Identity panel ───
             A compact masthead band on a phone, a full-height column on a
@@ -243,7 +244,7 @@ export function MachAuthShell({
         </aside>
 
         {/* ─── Form panel ─── */}
-        <div className="flex items-center justify-center border-t border-[var(--mach-paper-line)] px-5 py-12 sm:px-8 sm:py-16 lg:border-t-0 lg:border-l lg:px-12 lg:py-20 xl:px-16">
+        <div className="flex items-center justify-center border-t border-[var(--mach-ink-line)] px-5 py-12 sm:px-8 sm:py-16 lg:border-t-0 lg:border-l lg:px-12 lg:py-20 xl:px-16">
           <div className={`w-full ${contentClassName}`}>{children}</div>
         </div>
       </div>

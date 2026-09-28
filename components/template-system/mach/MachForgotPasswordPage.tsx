@@ -7,7 +7,7 @@ import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import { Input } from "#root/components/ui/input";
 import { Link } from "#root/components/utils/Link";
 import { authClient } from "#root/lib/auth-client.js";
-import { CTA_ON_LIGHT, HEADING_SHOP } from "./machTokens";
+import { CTA_ON_DARK, HEADING_SHOP } from "./machTokens";
 import {
   AUTH_FIELD,
   AUTH_FIELD_INVALID,
@@ -93,7 +93,7 @@ export function MachForgotPasswordPage() {
 
   return (
     <MachAuthShell eyebrow="Password reset">
-      <h1 className={`${HEADING_SHOP} text-[var(--mach-ink)]`}>
+      <h1 className={`${HEADING_SHOP} text-white`}>
         Forgot password
       </h1>
       <p className={AUTH_LEAD}>
@@ -132,7 +132,7 @@ export function MachForgotPasswordPage() {
           type="submit"
           disabled={isSubmitting}
           aria-busy={isSubmitting}
-          className={`${CTA_ON_LIGHT} ${AUTH_SUBMIT}`}>
+          className={`${CTA_ON_DARK} ${AUTH_SUBMIT}`}>
           {isSubmitting && (
             <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
           )}

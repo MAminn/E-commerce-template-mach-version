@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Input } from "#root/components/ui/input";
 import { Link } from "#root/components/utils/Link";
 import { authClient } from "#root/lib/auth-client.js";
-import { CTA_ON_LIGHT, HEADING_SHOP } from "./machTokens";
+import { CTA_ON_DARK, HEADING_SHOP } from "./machTokens";
 import {
   AUTH_FIELD,
   AUTH_FIELD_INVALID,
@@ -101,7 +101,7 @@ export function MachLoginPage() {
 
   return (
     <MachAuthShell eyebrow="Customer account">
-      <h1 className={`${HEADING_SHOP} text-[var(--mach-ink)]`}>Sign in</h1>
+      <h1 className={`${HEADING_SHOP} text-white`}>Sign in</h1>
       <p className={AUTH_LEAD}>
         Sign in to track your orders and check out faster.
       </p>
@@ -145,7 +145,7 @@ export function MachLoginPage() {
             </label>
             <Link
               href="/forgot-password"
-              className={`${AUTH_LINK} text-[10px] tracking-[0.16em] text-[var(--mach-mute)] hover:text-[var(--mach-ink)]`}>
+              className={`${AUTH_LINK} text-[10px] tracking-[0.16em] text-[var(--mach-mute-invert)] hover:text-white`}>
               Forgot?
             </Link>
           </div>
@@ -179,7 +179,7 @@ export function MachLoginPage() {
           type="submit"
           disabled={isSubmitting}
           aria-busy={isSubmitting}
-          className={`${CTA_ON_LIGHT} ${AUTH_SUBMIT}`}>
+          className={`${CTA_ON_DARK} ${AUTH_SUBMIT}`}>
           {isSubmitting && (
             <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
           )}
@@ -190,7 +190,7 @@ export function MachLoginPage() {
       <AuthRule className="mt-10" />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-mute)]">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-mute-invert)]">
           No account yet?
         </p>
         <Link href="/register" className={AUTH_LINK}>

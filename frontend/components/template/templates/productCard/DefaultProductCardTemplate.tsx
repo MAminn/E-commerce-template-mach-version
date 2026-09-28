@@ -86,7 +86,7 @@ const DefaultProductCardTemplate: React.FC<DefaultProductCardTemplateProps> = ({
 
   return (
     <div
-      className='group relative bg-white rounded-lg border overflow-hidden transition-all duration-300 hover:shadow-md'
+      className='group relative bg-white mach-dark:bg-[var(--mach-ink-soft)] rounded-lg border overflow-hidden transition-all duration-300 hover:shadow-md'
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}>
       {/* Product Image */}
@@ -179,7 +179,7 @@ const DefaultProductCardTemplate: React.FC<DefaultProductCardTemplateProps> = ({
       <div className='p-4'>
         {/* Product Name */}
         <Link href={productLink}>
-          <h3 className='font-medium text-gray-900 mb-1 line-clamp-2 hover:text-primary transition-colors'>
+          <h3 className='font-medium text-gray-900 mach-dark:text-white mb-1 line-clamp-2 hover:text-primary transition-colors'>
             {product.name}
           </h3>
         </Link>
@@ -188,15 +188,15 @@ const DefaultProductCardTemplate: React.FC<DefaultProductCardTemplateProps> = ({
         <div className='flex items-center gap-2'>
           {product.discountPrice ? (
             <>
-              <span className='font-semibold text-primary'>
+              <span className='font-semibold text-primary mach-dark:text-white'>
                 {product.discountPrice} EGP
               </span>
-              <span className='text-sm text-gray-500 line-through'>
+              <span className='text-sm text-gray-500 mach-dark:text-white/55 line-through'>
                 {product.price} EGP
               </span>
             </>
           ) : (
-            <span className='font-semibold text-primary'>
+            <span className='font-semibold text-primary mach-dark:text-white'>
               {product.price} EGP
             </span>
           )}

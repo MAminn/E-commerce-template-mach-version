@@ -28,23 +28,23 @@ export function MachReturnPolicyPage({
     <MachPageShell eyebrow={eyebrow} title={view.title}>
       <div dir={dir} className='space-y-16 sm:space-y-20'>
         {view.intro && (
-          <p className={`${BODY} max-w-[68ch] text-[var(--mach-ink)]/75`}>
+          <p className={`${BODY} max-w-[68ch] text-white/75`}>
             {view.intro}
           </p>
         )}
 
         {view.steps.length > 0 && (
-          <section className='grid grid-cols-1 gap-10 border-t border-[var(--mach-ink)]/10 pt-12 sm:grid-cols-2 xl:grid-cols-4 xl:gap-8'>
+          <section className='grid grid-cols-1 gap-10 border-t border-white/10 pt-12 sm:grid-cols-2 xl:grid-cols-4 xl:gap-8'>
             {view.steps.map((step, index) => (
               <div key={`${index}-${step.title}`} className='flex flex-col'>
                 <ValuePropIcon
                   icon={step.icon}
-                  className='mb-6 h-8 w-8 stroke-[1.25] text-[var(--mach-ink)]'
+                  className='mb-6 h-8 w-8 stroke-[1.25] text-white'
                 />
-                <h2 className='mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--mach-ink)]'>
+                <h2 className='mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white'>
                   {step.title}
                 </h2>
-                <p className={`${BODY_SM} text-[var(--mach-ink)]/65`}>
+                <p className={`${BODY_SM} text-white/65`}>
                   {step.description}
                 </p>
               </div>
@@ -53,13 +53,13 @@ export function MachReturnPolicyPage({
         )}
 
         {view.detailSections.length > 0 && (
-          <section className='grid grid-cols-1 gap-10 border-t border-[var(--mach-ink)]/10 pt-12 md:grid-cols-2 md:gap-16'>
+          <section className='grid grid-cols-1 gap-10 border-t border-white/10 pt-12 md:grid-cols-2 md:gap-16'>
             {view.detailSections.map((section, index) => (
               <div key={`${index}-${section.title}`}>
-                <h2 className='mb-4 text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--mach-ink)]'>
+                <h2 className='mb-4 text-[11px] font-bold uppercase tracking-[0.2em] text-white'>
                   {section.title}
                 </h2>
-                <p className={`${BODY_SM} text-[var(--mach-ink)]/65`}>
+                <p className={`${BODY_SM} text-white/65`}>
                   {section.body}
                 </p>
               </div>
@@ -68,8 +68,8 @@ export function MachReturnPolicyPage({
         )}
 
         {view.help && (
-          <section className='border-t border-[var(--mach-ink)]/10 pt-12'>
-            <p className={`${BODY_SM} text-[var(--mach-ink)]/65`}>
+          <section className='border-t border-white/10 pt-12'>
+            <p className={`${BODY_SM} text-white/65`}>
               {view.help.prefix}
               {view.help.supportEmail && (
                 <>

@@ -5,8 +5,14 @@ import { isGroupSectionKey } from "#root/shared/types/homepage-group-sections";
  *
  * The page's black/white rhythm is assigned by position rather than pinned per
  * section, so it survives the client reordering Section Order. The rule is
- * simply "these rows alternate paper / white in whatever order they end up
- * in", with Offers staying on ink as the dark merchandising anchor.
+ * simply "these rows alternate the two lifted charcoals in whatever order
+ * they end up in", with Offers staying on true black as the merchandising
+ * anchor.
+ *
+ * The storefront is dark by default, so the alternation is `ink-soft` /
+ * `ink-raised` rather than the paper / white it used to be. Neither is `ink`,
+ * which is what keeps an alternating row from ever landing on the same ground
+ * as Offers, wherever the client moves it.
  *
  * The bug this module exists to fix: the alternation used to be counted over
  * the whole saved order, including rows that render nothing. A row that is
@@ -40,7 +46,7 @@ export type StaticAlternatingRowKey =
 
 const STATIC_ALTERNATING = new Set<string>(STATIC_ALTERNATING_ROW_KEYS);
 
-/** Whether a section-order entry takes a turn in the paper / white rhythm. */
+/** Whether a section-order entry takes a turn in the alternating rhythm. */
 export function isAlternatingRowKey(key: string): boolean {
   return STATIC_ALTERNATING.has(key) || isGroupSectionKey(key);
 }
@@ -56,20 +62,24 @@ export function isAlternatingRowKey(key: string): boolean {
  */
 export type MachRowRenderState = Record<string, boolean>;
 
+/** The two grounds the merchandising rows alternate between. */
+export type AlternatingRowGround = "ink-soft" | "ink-raised";
+
 /**
- * Assigns paper / white to the merchandising rows that will render, in page
- * order. Rows that render nothing are absent from the map entirely.
+ * Assigns the alternating dark grounds to the merchandising rows that will
+ * render, in page order. Rows that render nothing are absent from the map
+ * entirely.
  */
 export function resolveRowGrounds(
   order: string[],
   renders: MachRowRenderState,
-): Map<string, "paper" | "white"> {
-  const grounds = new Map<string, "paper" | "white">();
+): Map<string, AlternatingRowGround> {
+  const grounds = new Map<string, AlternatingRowGround>();
   let position = 0;
   for (const key of order) {
     if (!isAlternatingRowKey(key)) continue;
     if (!renders[key]) continue;
-    grounds.set(key, position % 2 === 0 ? "paper" : "white");
+    grounds.set(key, position % 2 === 0 ? "ink-soft" : "ink-raised");
     position += 1;
   }
   return grounds;

@@ -10,6 +10,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* `mach-dark:` — applies only inside the Mach storefront's dark scope (see
+   `.mach-theme-dark` below). For the shared templates Mach renders through —
+   the editorial cart and checkout — whose stone palette is written as literal
+   classes rather than tokens: they take their dark treatment from this
+   variant and are unchanged anywhere the Mach chrome is not on screen. */
+@custom-variant mach-dark (&:is(.mach-theme-dark *));
+
 /* ── LaRojaTV font — minimal template only ── */
 @font-face {
   font-family: "LaRojaTV";
@@ -473,6 +480,54 @@ input[type="number"] {
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-mach-toast-enter { animation: none; }
+}
+
+/* ── Mach dark theme ─────────────────────────────────────────────────────────
+   The Mach storefront is dark by default. `.mach-theme-dark` is set on the
+   storefront <main> by LayoutDefault whenever the Mach chrome is on screen
+   (server-rendered, so there is no light flash before hydration), and
+   `html[data-mach-theme="dark"]` is mirrored onto the document after mount so
+   the overscroll area behind the page is ink as well.
+
+   It works by re-pointing the shared shadcn tokens, not by overriding
+   utilities: `bg-background`, `bg-card`, `text-muted-foreground`,
+   `border-border`, inputs and buttons resolve dark inside the scope, while any
+   explicit colour class — a product photo's white stage, CMS media, a section's
+   own ground — is left exactly as authored. Dashboard routes never carry the
+   class, and no other template sets it.
+
+   The token scope stops at <main> on purpose. The consent banner and other
+   shared overlays mounted beside it are built on the light tokens *and* on
+   hard-coded stone button variants; re-pointing only half of that inside them
+   would leave dark text on a dark bar. They keep their own light treatment. */
+.mach-theme-dark {
+  --background: var(--mach-ink);
+  --foreground: #ffffff;
+  --card: var(--mach-ink-soft);
+  --card-foreground: #ffffff;
+  --popover: var(--mach-ink-raised);
+  --popover-foreground: #ffffff;
+  --primary: #ffffff;
+  --primary-foreground: var(--mach-ink);
+  --secondary: var(--mach-ink-raised);
+  --secondary-foreground: #ffffff;
+  --muted: var(--mach-ink-raised);
+  --muted-foreground: var(--mach-mute-invert);
+  --accent: var(--mach-ink-raised);
+  --accent-foreground: #ffffff;
+  --border: var(--mach-ink-line);
+  --input: rgba(255, 255, 255, 0.22);
+  --ring: rgba(255, 255, 255, 0.55);
+  color-scheme: dark;
+}
+html[data-mach-theme="dark"],
+html[data-mach-theme="dark"] body {
+  background-color: var(--mach-ink);
+}
+/* The navigation veil fades in over the page between routes; on a dark
+   storefront a near-white veil is a flash, not a transition. */
+.mach-theme-dark .page-transition-overlay {
+  background: rgba(0, 0, 0, 0.96);
 }
 
 /* Mach chrome toggle — hide the global footer when the Mach footer is active */

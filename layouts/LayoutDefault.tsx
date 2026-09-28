@@ -14,6 +14,11 @@ import { EntryPopup } from "#root/components/EntryPopup";
 import { StickyCartBar } from "#root/components/ui/StickyCartBar";
 import { MachCartToastContainer } from "#root/components/template-system/mach/MachCartFeedback";
 import { MachSocialProofToast } from "#root/components/template-system/mach/MachSocialProofToast";
+import {
+  MACH_THEME_ATTRIBUTE,
+  MACH_THEME_CLASS,
+  isMachDarkTheme,
+} from "#root/components/template-system/mach/machTheme";
 import type { ClientSession } from "#root/backend/auth/shared/entities.js";
 import { usePageContext } from "vike-react/usePageContext";
 import { AuthContext } from "#root/context/AuthContext.js";
@@ -215,6 +220,26 @@ function LayoutShell({
    */
   const isMachStorefront = isSupplementStore() && !isMinimal;
 
+  /**
+   * Mach renders dark by default — see `machTheme.ts`. The class goes on
+   * <main> during render so the first server paint is already dark; the
+   * attribute is mirrored onto <html> after mount so portalled UI and the
+   * overscroll area follow, and is removed again on the way into the
+   * dashboard.
+   */
+  const isMachDark = isMachDarkTheme({
+    navbarStyle: layoutSettings.header.navbarStyle,
+    isDashboardRoute,
+  });
+  useEffect(() => {
+    if (!isMachDark) return;
+    const root = document.documentElement;
+    root.dataset[MACH_THEME_ATTRIBUTE] = "dark";
+    return () => {
+      delete root.dataset[MACH_THEME_ATTRIBUTE];
+    };
+  }, [isMachDark]);
+
   // ── Coming-soon gate (minimal template only) ──────────────────────────────
   const { session } = useContext(AuthContext);
   const isAdmin = session?.role === "admin" || session?.role === "superadmin";
@@ -276,7 +301,7 @@ function LayoutShell({
         <TrackingProvider>
           <main
             id='page-content'
-            className={`bg-background h-full text-foreground w-full font-poppins${!isDashboardRoute ? " storefront-shell" : ""}${isMinimal && !isDashboardRoute ? " minimal-template pb-20 lg:pb-0" : ""}`}>
+            className={`bg-background h-full text-foreground w-full font-poppins${!isDashboardRoute ? " storefront-shell" : ""}${isMinimal && !isDashboardRoute ? " minimal-template pb-20 lg:pb-0" : ""}${isMachDark ? ` ${MACH_THEME_CLASS}` : ""}`}>
             {!isDashboardRoute && (
               <GlobalNavbarChrome navbarMode={navbarMode}>
                 {renderNavbar()}

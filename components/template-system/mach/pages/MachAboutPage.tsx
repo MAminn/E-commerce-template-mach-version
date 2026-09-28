@@ -30,7 +30,7 @@ export function MachAboutPage({
         }`}>
         {view.imageUrl && (
           <div className='w-full shrink-0 lg:w-[44%]'>
-            <div className='aspect-[4/5] overflow-hidden bg-[var(--mach-ink)]/5'>
+            <div className='aspect-[4/5] overflow-hidden bg-white/5'>
               <img
                 src={view.imageUrl}
                 alt={view.title}
@@ -48,7 +48,7 @@ export function MachAboutPage({
           {view.paragraphs.map((paragraph, index) => (
             <p
               key={`${index}-${paragraph.slice(0, 24)}`}
-              className={`${BODY} text-[var(--mach-ink)]/75`}>
+              className={`${BODY} text-white/75`}>
               {paragraph}
             </p>
           ))}

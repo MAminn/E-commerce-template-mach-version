@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import { MachChrome } from "../MachChrome";
 import {
   BODY,
+  EDGE_TOP_ON_DARK,
   GROUND_INK,
-  GROUND_PAPER,
+  GROUND_INK_SOFT,
   GUTTER,
   HEADING_SHOP,
   EYEBROW,
@@ -16,9 +17,10 @@ import {
  * The frame every Mach content page (/about-us, /contact, /return-policy)
  * sits in.
  *
- * Mach's editorial pages open on an ink masthead and drop onto paper for the
- * reading column — the same two-ground rhythm the shop and product pages use,
- * which is what keeps these three from looking like a different website. The
+ * Mach's editorial pages open on a true-black masthead and drop onto the
+ * lifted charcoal for the reading column — a tonal step on the storefront's
+ * dark default, so the two blocks still read as masthead and body without a
+ * light ground anywhere on the page. The
  * navbar is *not* rendered here: LayoutDefault picks it from
  * `header.navbarStyle` for every route. `MachChrome` supplies the Mach footer
  * and suppresses the global one, exactly as it does for the homepage, shop and
@@ -50,7 +52,7 @@ export function MachPageShell({
           <h1 className={`${HEADING_SHOP} mt-5 text-white`}>{title}</h1>
         </header>
       </div>
-      <div className={GROUND_PAPER}>
+      <div className={`${GROUND_INK_SOFT} ${EDGE_TOP_ON_DARK}`}>
         <div className={`${SHELL} ${GUTTER} ${SECTION_Y}`}>{children}</div>
       </div>
     </MachChrome>
@@ -77,15 +79,15 @@ export function MachPageUnavailable({
 }) {
   return (
     <MachChrome>
-      <div className={`${GROUND_PAPER} flex min-h-[55vh] items-center`}>
+      <div className={`${GROUND_INK} flex min-h-[55vh] items-center`}>
         <div className={`${SHELL} ${GUTTER} ${SECTION_Y} text-center`}>
-          <h1 className={`${HEADING_SHOP} text-[var(--mach-ink)]`}>{title}</h1>
-          <p className={`${BODY} mx-auto mt-6 max-w-md text-[var(--mach-ink)]/60`}>
+          <h1 className={`${HEADING_SHOP} text-white`}>{title}</h1>
+          <p className={`${BODY} mx-auto mt-6 max-w-md text-white/60`}>
             {message}
           </p>
           <a
             href='/shop'
-            className='mt-10 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--mach-ink)] underline underline-offset-[6px] transition-opacity duration-300 hover:opacity-60'>
+            className='mt-10 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white underline underline-offset-[6px] transition-opacity duration-300 hover:opacity-60'>
             Continue shopping
           </a>
         </div>

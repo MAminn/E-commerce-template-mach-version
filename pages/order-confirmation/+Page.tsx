@@ -191,34 +191,34 @@ export default function OrderConfirmationPage() {
   }, [orderId, orderTotal, isPaymentSuccess, trackEvent]);
 
   return (
-    <div className='min-h-screen bg-gray-50 flex items-center justify-center px-4 py-16'>
+    <div className='min-h-screen bg-gray-50 mach-dark:bg-[var(--mach-ink)] flex items-center justify-center px-4 py-16'>
       <div
-        className='max-w-2xl w-full bg-white rounded-2xl shadow-sm border border-gray-100 text-center flex flex-col'
+        className='max-w-2xl w-full bg-white mach-dark:bg-[var(--mach-ink-soft)] rounded-2xl shadow-sm border border-gray-100 mach-dark:border-white/10 text-center flex flex-col'
         style={{ padding: '2rem 2rem 3.5rem', }}>
         {/* Icon */}
         {isPaymentSuccess && (
-          <div className='mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6'>
-            <CheckCircle className='w-8 h-8 text-green-600' />
+          <div className='mx-auto w-16 h-16 bg-green-100 mach-dark:bg-green-400/15 rounded-full flex items-center justify-center mb-6'>
+            <CheckCircle className='w-8 h-8 text-green-600 mach-dark:text-green-400' />
           </div>
         )}
         {isPaymentPending && (
-          <div className='mx-auto w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-6'>
-            <Clock className='w-8 h-8 text-amber-600' />
+          <div className='mx-auto w-16 h-16 bg-amber-100 mach-dark:bg-amber-400/15 rounded-full flex items-center justify-center mb-6'>
+            <Clock className='w-8 h-8 text-amber-600 mach-dark:text-amber-400' />
           </div>
         )}
         {isPaymentFailed && (
-          <div className='mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6'>
-            <XCircle className='w-8 h-8 text-red-600' />
+          <div className='mx-auto w-16 h-16 bg-red-100 mach-dark:bg-red-400/15 rounded-full flex items-center justify-center mb-6'>
+            <XCircle className='w-8 h-8 text-red-600 mach-dark:text-red-400' />
           </div>
         )}
 
         {/* Heading */}
         {isPaymentSuccess && (
           <>
-            <h1 className='text-2xl md:text-3xl font-semibold text-gray-900 mb-2'>
+            <h1 className='text-2xl md:text-3xl font-semibold text-gray-900 mach-dark:text-white mb-2'>
               Order Confirmed!
             </h1>
-            <p className='text-gray-500 mb-6'>
+            <p className='text-gray-500 mach-dark:text-white/55 mb-6'>
               Thank you for your purchase. Your order has been placed
               successfully.
               {paymentState === "success" && verifiedPaymentStatus === "paid" && " Payment received."}
@@ -227,10 +227,10 @@ export default function OrderConfirmationPage() {
         )}
         {isPaymentPending && (
           <>
-            <h1 className='text-2xl md:text-3xl font-semibold text-gray-900 mb-2'>
+            <h1 className='text-2xl md:text-3xl font-semibold text-gray-900 mach-dark:text-white mb-2'>
               Payment Pending
             </h1>
-            <p className='text-gray-500 mb-6'>
+            <p className='text-gray-500 mach-dark:text-white/55 mb-6'>
               Your order has been created, but payment is still being processed.
               You'll receive a confirmation email once payment is complete.
             </p>
@@ -238,10 +238,10 @@ export default function OrderConfirmationPage() {
         )}
         {isPaymentFailed && (
           <>
-            <h1 className='text-2xl md:text-3xl font-semibold text-amber-900 mb-2'>
+            <h1 className='text-2xl md:text-3xl font-semibold text-amber-900 mach-dark:text-amber-300 mb-2'>
               Payment {paymentState === "cancelled" ? "Cancelled" : "Failed"}
             </h1>
-            <p className='text-gray-500 mb-6'>
+            <p className='text-gray-500 mach-dark:text-white/55 mb-6'>
               {paymentState === "cancelled"
                 ? "You cancelled the payment. Your order has been saved — you can retry payment or contact support."
                 : "There was an issue processing your payment. Your order has been saved — please try again or contact support."}
@@ -250,47 +250,47 @@ export default function OrderConfirmationPage() {
         )}
 
         {/* Order Details Card */}
-        <div className='bg-gray-50 rounded-xl p-6 mb-8 text-left space-y-3 overflow-x-auto'>
+        <div className='bg-gray-50 mach-dark:bg-[var(--mach-ink)] rounded-xl p-6 mb-8 text-left space-y-3 overflow-x-auto'>
           {shortId && (
             <div className='flex justify-between items-center flex-wrap gap-2'>
-              <span className='text-sm text-gray-500'>Order Number</span>
-              <span className='text-sm font-mono font-medium text-gray-900'>
+              <span className='text-sm text-gray-500 mach-dark:text-white/55'>Order Number</span>
+              <span className='text-sm font-mono font-medium text-gray-900 mach-dark:text-white'>
                 #{shortId}
               </span>
             </div>
           )}
           {orderTotal && (
             <div className='flex justify-between items-center flex-wrap gap-2'>
-              <span className='text-sm text-gray-500'>Total</span>
-              <span className='text-sm font-semibold text-gray-900'>
+              <span className='text-sm text-gray-500 mach-dark:text-white/55'>Total</span>
+              <span className='text-sm font-semibold text-gray-900 mach-dark:text-white'>
                 {Number.parseFloat(orderTotal).toFixed(2)} EGP
               </span>
             </div>
           )}
           {customerEmail && (
             <div className='flex justify-between items-center flex-wrap gap-2 '>
-              <span className='text-sm text-gray-500'>
+              <span className='text-sm text-gray-500 mach-dark:text-white/55'>
                 Confirmation sent to
               </span>
-              <span className='text-sm text-gray-900 whitespace-nowrap '>{customerEmail}</span>
+              <span className='text-sm text-gray-900 mach-dark:text-white whitespace-nowrap '>{customerEmail}</span>
             </div>
           )}
           <div className='flex justify-between items-center flex-wrap gap-2'>
-            <span className='text-sm text-gray-500'>Status</span>
+            <span className='text-sm text-gray-500 mach-dark:text-white/55'>Status</span>
             {isPaymentSuccess && (
-              <span className='inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full'>
+              <span className='inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 mach-dark:text-amber-300 bg-amber-50 mach-dark:bg-amber-400/10 px-2.5 py-0.5 rounded-full'>
                 <Package className='w-3.5 h-3.5' />
                 Processing
               </span>
             )}
             {isPaymentPending && (
-              <span className='inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full whitespace-nowrap'>
+              <span className='inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 mach-dark:text-amber-300 bg-amber-50 mach-dark:bg-amber-400/10 px-2.5 py-0.5 rounded-full whitespace-nowrap'>
                 <Clock className='w-3.5 h-3.5' />
                 Awaiting Payment
               </span>
             )}
             {isPaymentFailed && (
-              <span className='inline-flex items-center gap-1.5 text-sm font-medium text-red-700 bg-red-50 px-2.5 py-0.5 rounded-full'>
+              <span className='inline-flex items-center gap-1.5 text-sm font-medium text-red-700 mach-dark:text-red-300 bg-red-50 mach-dark:bg-red-400/10 px-2.5 py-0.5 rounded-full'>
                 <AlertTriangle className='w-3.5 h-3.5' />
                 Payment {paymentState === "cancelled" ? "Cancelled" : "Failed"}
               </span>
@@ -300,19 +300,19 @@ export default function OrderConfirmationPage() {
 
         {/* Info text */}
         {isPaymentSuccess && (
-          <p className='text-sm text-gray-400 mb-8'>
+          <p className='text-sm text-gray-400 mach-dark:text-white/40 mb-8'>
             We've sent a confirmation email with your order details. You'll
             receive shipping updates as your order progresses.
           </p>
         )}
         {isPaymentPending && (
-          <p className='text-sm text-gray-400 mb-8'>
+          <p className='text-sm text-gray-400 mach-dark:text-white/40 mb-8'>
             If your payment was completed, it may take a few minutes to process.
             Check your email for updates.
           </p>
         )}
         {isPaymentFailed && (
-          <p className='text-sm text-gray-400 mb-8'>
+          <p className='text-sm text-gray-400 mach-dark:text-white/40 mb-8'>
             Don't worry — no charges were made. You can contact us at support
             for help.
           </p>

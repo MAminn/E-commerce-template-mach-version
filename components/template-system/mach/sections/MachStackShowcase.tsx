@@ -322,7 +322,7 @@ export function MachStackShowcase({
   actionHref,
   products,
   isLoading = false,
-  ground = "paper",
+  ground = "ink-soft",
   background,
 }: {
   id?: string;
@@ -356,9 +356,7 @@ export function MachStackShowcase({
   return (
     <section
       id={id}
-      className={`${backdrop.sectionCls} scroll-mt-24 ${
-        isDark ? "" : "border-t border-[var(--mach-ink)]/10"
-      }`}>
+      className={`${backdrop.sectionCls} scroll-mt-24 ${backdrop.ruleCls}`}>
       <MachSectionBackdrop background={background} />
       {/* Wider than the product rows below it, and on a tighter gutter. The
           feature block out-measures the shelves horizontally; it no longer

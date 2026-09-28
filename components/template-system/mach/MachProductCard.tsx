@@ -11,24 +11,23 @@ import { MachQuickAdd } from "./MachQuickAdd";
  *
  * The editorial card this replaces used a 3:4 portrait crop built for
  * garments; a supplement tub in that frame sits marooned in empty space. This
- * one is square, puts the container at ~88% of the frame, and stands it on a
- * flat ground so the product silhouette carries the card.
+ * one is square and the photo runs edge to edge inside it.
  *
- * The frame carries a hairline edge and lifts to a hard black rule on hover:
- * the card has to read as a discrete, clickable object on a white shelf where
- * there is no colour available to separate it from the page.
+ * The media stage is full-bleed: no inset, no hairline, no hover rule. An
+ * inset on a white stage drew a white frame around every photo that is not
+ * itself pure white (the grey-ground wraps, lifestyle shots), and the hairline
+ * drew a box around that. The pack shots already carry between 4% and 27% of
+ * their own whitespace, which is all the breathing room they need. The stage
+ * fill only shows where a non-square photo letterboxes.
  *
  * `variant="shop"` is the browsing-grid treatment, used only by the shop and
- * category grid. It is opt-in for exactly this reason: the frame, the stage
- * inset, the meta scale and the quick-add placement all differ there, and the
- * homepage shelves must not move when the shop does. Nothing below reads it
- * except through `isShop`, so the shelf path is byte-identical to what it was.
+ * category grid. It is opt-in for exactly this reason: the hover scale, the
+ * meta scale and the quick-add placement all differ there, and the homepage
+ * shelves must not move when the shop does.
  *
  * `size="lg"` is used by the page's main shelf (Best Sellers). It is not a
- * bigger card — it is a *cleaner* one: the resting hairline comes off so the
- * product sits on an open stage with no container drawn around it, and the
- * name and price tighten up underneath. Container chrome is what makes a
- * shelf read as a row of boxes instead of a row of products.
+ * bigger card — it is a *cleaner* one: the name and price tighten up
+ * underneath.
  *
  * Destination, price, discount and stock all come from the product system —
  * nothing here is CMS copy.
@@ -79,31 +78,17 @@ function resolveSecondaryImage(product: MachProduct): string | null {
 }
 
 /**
- * Padding inside the media stage, identical at both card sizes.
+ * Fit for the product photo inside the square stage.
  *
- * A product must not change scale between the Best Sellers shelf and the Gym
- * Gear shelf, and the pack shots already carry between 4% and 27% of their own
- * whitespace — the stage should not compound that further than it has to. One
- * small, predictable inset, applied to every card on every shelf.
+ * `contain`, not `cover`: the catalogue mixes square pack shots with tall
+ * (0.56:1 tubs, 3:4 straps) and wide (1.41:1 wraps) files, and `cover` would
+ * cut the lid and base off a tall tub or the loops off a strap. A square photo
+ * — most of them — fills the stage edge to edge either way; the others
+ * letterbox onto the stage fill rather than lose packaging. There is no
+ * per-product sizing here and there must not be — one fit, every SKU, or the
+ * grid stops being a grid.
  */
-const STAGE_PAD = "p-[4%]";
-
-/**
- * Media-stage inset for the browsing grid.
- *
- * The shop shows an unfiltered mix — tubs, multi-tub bundles, flat-lay straps
- * — whose source files carry between 4% and 27% of their own baked whitespace,
- * and CSS cannot take that back out of a JPEG. What it *can* do is give every
- * product the same stage and the same safe area, so the variation reads as
- * photography rather than as a broken grid.
- *
- * A little more room than the shelves get, because these stages are white
- * tiles on a paper ground: the inset is what stops a wide bundle from running
- * into the tile edge, and `object-contain` keeps it doing that without ever
- * cropping. There is no per-product sizing here and there must not be — one
- * inset, every SKU, or the grid stops being a grid.
- */
-const STAGE_PAD_SHOP = "p-[6%] sm:p-[7%]";
+const MEDIA_FIT = "object-contain";
 
 export interface MachProductCardProps {
   product: MachProduct;
@@ -115,10 +100,9 @@ export interface MachProductCardProps {
    * Presentation treatment.
    *
    * `"shelf"` is the homepage/product-page card and the default — no existing
-   * caller changes behaviour. `"shop"` is the browsing-grid card: a white
-   * media tile with no frame at rest on the shop's paper ground, a larger safe
-   * area, quieter hover, and meta typography sized to be read in a four-up
-   * grid rather than glanced at in a shelf.
+   * caller changes behaviour. `"shop"` is the browsing-grid card: quieter
+   * hover, a full-width quick-add bar, and meta typography sized to be read in
+   * a four-up grid rather than glanced at in a shelf.
    *
    * It is a variant rather than a change to `size="lg"` precisely because
    * `size="lg"` is what the homepage shelves run on.
@@ -150,40 +134,19 @@ export const MachProductCard = memo(function MachProductCard({
   const nameCls = onDark ? "text-white" : "text-[var(--mach-ink)]";
   const metaCls = onDark ? "text-white/45" : "text-[var(--mach-mute)]";
   const priceCls = onDark ? "text-white" : "text-[var(--mach-ink)]";
-  // White on light grounds, not paper-grey. Supplement pack shots are cut out
-  // on white, so a grey frame draws a hard rectangle around the photo's own
-  // background instead of around the product. The hairline does the separating,
-  // and the card still reads as a tile because the section behind it is paper.
-  // The dense shelves rest with no visible edge and draw one on hover; the
-  // legacy rows keep their permanent hairline, which is what separates a card
-  // from the page when four of them sit in a tight grid.
+  // Stage fill. With the photo full-bleed it is covered entirely by a square
+  // shot and only shows where a non-square one letterboxes, so it is chosen to
+  // continue the photo, not to frame it: white, because the pack shots are
+  // photographed on white and are not cut out. It stays opaque so a section
+  // background image never shows through inside the card.
   //
-  // On a dark ground the dense stage is *white*, not charcoal. Supplement pack
-  // shots are photographed on white and are not cut out, so a charcoal stage
-  // renders every product as a bright white rectangle floating inside a dark
-  // card — the picture's own background becomes the visible shape. Standing
-  // the shot on a white tile instead makes the ink section the frame and the
-  // product the content, which is what the light shelves already do.
-  const darkDenseStage = onDark && isLarge;
-  const restingRing = isLarge
-    ? "ring-transparent"
-    : onDark
-      ? "ring-white/10"
-      : "ring-[var(--mach-ink)]/12";
-  // The shop grid draws no frame at all, at rest or on hover. Its stage is a
-  // white tile on a paper page, so the tonal step already separates the card
-  // from the ground — adding a rule on hover would put the hard rectangle back
-  // around the photo's own white background that the shelves have to live
-  // with. Hover is carried by the photo and the quick-add bar instead.
-  const frameCls = isShop
-    ? "bg-white"
-    : darkDenseStage
-      ? `bg-white ring-1 ring-inset ${restingRing} group-hover:ring-[var(--mach-ink)]/25`
-      : onDark
-        ? `bg-[var(--mach-ink-raised)] ring-1 ring-inset ${restingRing} group-hover:ring-white/40`
-        : `bg-white ring-1 ring-inset ${restingRing} group-hover:ring-[var(--mach-ink)]`;
+  // On a dark ground the stage is white too, not charcoal — a charcoal band
+  // beside a white-ground photo would draw the photo's edge as a box. That now
+  // holds at every size and in the shop grid: the storefront is dark by
+  // default, so `onDark` only lights the type underneath and never re-tints
+  // the photo's stage.
+  const stageFill = "bg-white";
 
-  const stagePad = isShop ? STAGE_PAD_SHOP : STAGE_PAD;
   // Restrained on the shop grid: at 1.05 a contained product visibly grows
   // past its own safe area on hover, which reads as a wobble across sixteen
   // tiles at once.
@@ -194,16 +157,11 @@ export const MachProductCard = memo(function MachProductCard({
     ? "focus-visible:ring-white focus-visible:ring-offset-[var(--mach-ink)]"
     : "focus-visible:ring-[var(--mach-ink)] focus-visible:ring-offset-white";
 
-  // The quick-add is black-on-white everywhere the stage is white. The one
-  // stage that isn't — a legacy non-dense card on an ink ground — inverts it,
-  // or a black button on charcoal would disappear.
-  const onCharcoalStage = onDark && !isLarge;
-
   return (
     <div className="group relative">
       {/* ── Image frame ── */}
       <div
-        className={`relative aspect-square w-full overflow-hidden transition-[box-shadow] duration-300 ${frameCls}`}>
+        className={`relative aspect-square w-full overflow-hidden ${stageFill}`}>
         {img ? (
           <>
             <img
@@ -211,7 +169,7 @@ export const MachProductCard = memo(function MachProductCard({
               alt={product.name}
               loading="lazy"
               decoding="async"
-              className={`absolute inset-0 h-full w-full object-contain ${stagePad} transition-[opacity,transform] duration-500 ease-out ${hoverZoom} ${
+              className={`absolute inset-0 h-full w-full ${MEDIA_FIT} transition-[opacity,transform] duration-500 ease-out ${hoverZoom} ${
                 secondaryImg ? "group-hover:opacity-0" : ""
               }`}
             />
@@ -222,7 +180,7 @@ export const MachProductCard = memo(function MachProductCard({
                 aria-hidden="true"
                 loading="lazy"
                 decoding="async"
-                className={`absolute inset-0 h-full w-full object-contain ${stagePad} opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-100`}
+                className={`absolute inset-0 h-full w-full ${MEDIA_FIT} opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-100`}
               />
             )}
           </>
@@ -249,9 +207,7 @@ export const MachProductCard = memo(function MachProductCard({
         {/* Sold out — full veil so the state is unmissable */}
         {isSoldOut && (
           <div
-            className={`absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[1px] ${
-              onDark && !darkDenseStage ? "bg-black/60" : "bg-white/70"
-            }`}>
+            className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
             <span className="bg-[var(--mach-ink)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-white">
               Sold out
             </span>
@@ -267,7 +223,6 @@ export const MachProductCard = memo(function MachProductCard({
           product={product}
           href={href}
           imageUrl={img}
-          onCharcoal={onCharcoalStage}
           placement={isShop ? "bar" : "corner"}
         />
       </div>

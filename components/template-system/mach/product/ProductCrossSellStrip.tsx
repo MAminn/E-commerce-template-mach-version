@@ -44,13 +44,13 @@ export const ProductCrossSellStrip = memo(function ProductCrossSellStrip({
     <section className={className}>
       {/* Client-owned via product-page CMS content; the wording below is only
           the unconfigured default. */}
-      <h2 className="text-[clamp(1.25rem,2.4vw,1.75rem)] font-black uppercase leading-[0.95] tracking-[-0.02em] text-[var(--mach-ink)]">
+      <h2 className="text-[clamp(1.25rem,2.4vw,1.75rem)] font-black uppercase leading-[0.95] tracking-[-0.02em] text-white">
         {heading && heading.trim().length > 0
           ? heading
           : "Frequently Bought Together"}
       </h2>
 
-      <ul className="mt-5 grid border-t border-[var(--mach-ink)]/12 sm:grid-cols-2 sm:gap-x-10 lg:grid-cols-3 lg:gap-x-12">
+      <ul className="mt-5 grid border-t border-white/12 sm:grid-cols-2 sm:gap-x-10 lg:grid-cols-3 lg:gap-x-12">
         {items.map((p) => {
           const src = imageSrc(p);
           const discounted =
@@ -59,7 +59,7 @@ export const ProductCrossSellStrip = memo(function ProductCrossSellStrip({
           return (
             <li
               key={p.id}
-              className="border-b border-[var(--mach-ink)]/12">
+              className="border-b border-white/12">
               <a
                 href={`/shop/${p.slug ?? p.id}`}
                 className="group flex items-center gap-4 py-3.5">
@@ -77,21 +77,21 @@ export const ProductCrossSellStrip = memo(function ProductCrossSellStrip({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-[12px] font-bold uppercase leading-[1.3] tracking-[0.03em] text-[var(--mach-ink)]">
+                  <p className="line-clamp-2 text-[12px] font-bold uppercase leading-[1.3] tracking-[0.03em] text-white">
                     {p.name}
                   </p>
                   <p className="mt-1.5 text-[13px]">
                     {discounted ? (
                       <>
-                        <span className="font-bold text-[var(--mach-ink)]">
+                        <span className="font-bold text-white">
                           {formatPrice(Number(p.discountPrice))}
                         </span>{" "}
-                        <span className="text-[12px] text-[var(--mach-mute)] line-through">
+                        <span className="text-[12px] text-[var(--mach-mute-invert)] line-through">
                           {formatPrice(Number(p.price))}
                         </span>
                       </>
                     ) : (
-                      <span className="font-bold text-[var(--mach-ink)]">
+                      <span className="font-bold text-white">
                         {formatPrice(Number(p.price))}
                       </span>
                     )}
@@ -100,7 +100,7 @@ export const ProductCrossSellStrip = memo(function ProductCrossSellStrip({
 
                 <ArrowUpRight
                   aria-hidden="true"
-                  className="h-4 w-4 shrink-0 text-[var(--mach-ink)]/30 transition-colors group-hover:text-[var(--mach-ink)]"
+                  className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-white"
                 />
               </a>
             </li>

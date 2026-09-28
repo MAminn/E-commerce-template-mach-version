@@ -107,7 +107,7 @@ export function CheckoutPageEditorialTemplate({
 
   /* Pill-style input classes */
   const inputCls =
-    "h-11 rounded-full border-stone-200 bg-white text-sm px-5 focus-visible:ring-2 focus-visible:ring-stone-900/15 focus-visible:ring-offset-0";
+    "h-11 rounded-full border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] text-sm px-5 focus-visible:ring-2 focus-visible:ring-stone-900/15 mach-dark:focus-visible:ring-white/25 focus-visible:ring-offset-0";
 
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const cartQuantity = items.reduce((s, i) => s + i.quantity, 0);
@@ -124,22 +124,22 @@ export function CheckoutPageEditorialTemplate({
       {items.map((item) => (
         <div key={item.id} className='flex justify-between gap-3'>
           <div className='flex-1 min-w-0'>
-            <p className='text-sm text-stone-900 line-clamp-1'>
+            <p className='text-sm text-stone-900 mach-dark:text-white line-clamp-1'>
               {item.name}
             </p>
             {item.variant && (
-              <p className='text-xs text-stone-400'>{item.variant}</p>
+              <p className='text-xs text-stone-400 mach-dark:text-white/40'>{item.variant}</p>
             )}
-            <p className='text-xs text-stone-500'>Qty: {item.quantity}</p>
+            <p className='text-xs text-stone-500 mach-dark:text-white/55'>Qty: {item.quantity}</p>
           </div>
           <div className='text-right shrink-0'>
             {item.originalPrice != null &&
               item.originalPrice > item.price && (
-                <p className='text-xs text-stone-400 line-through'>
+                <p className='text-xs text-stone-400 mach-dark:text-white/40 line-through'>
                   {formatPrice(item.originalPrice * item.quantity, currency)}
                 </p>
               )}
-            <p className='text-sm font-medium text-stone-900'>
+            <p className='text-sm font-medium text-stone-900 mach-dark:text-white'>
               {formatPrice(item.price * item.quantity, currency)}
             </p>
           </div>
@@ -151,14 +151,14 @@ export function CheckoutPageEditorialTemplate({
   // Shared totals breakdown — used by both the desktop card and the mobile expanded panel
   const renderTotalsBreakdown = () => (
     <div className='mt-4 space-y-3 text-sm'>
-      <div className='flex justify-between text-stone-600'>
+      <div className='flex justify-between text-stone-600 mach-dark:text-white/65'>
         <span>Subtotal</span>
         <span>{formatPrice(totals.subtotal, currency)}</span>
       </div>
       {totals.discount != null && totals.discount > 0 && (
-        <div className='flex justify-between text-stone-600'>
+        <div className='flex justify-between text-stone-600 mach-dark:text-white/65'>
           <span>Discount</span>
-          <span className='text-green-700'>
+          <span className='text-green-700 mach-dark:text-emerald-400'>
             −{formatPrice(totals.discount, currency)}
           </span>
         </div>
@@ -167,7 +167,7 @@ export function CheckoutPageEditorialTemplate({
         totals.appliedOffers.map((offer) => (
           <div
             key={offer.name}
-            className='flex items-start justify-between gap-2 text-red-600'>
+            className='flex items-start justify-between gap-2 text-red-600 mach-dark:text-red-400'>
             <span className='flex items-center gap-1 font-medium min-w-0'>
               🎁 <span className='truncate'>{offer.name}</span>
             </span>
@@ -179,7 +179,7 @@ export function CheckoutPageEditorialTemplate({
           </div>
         ))}
       {totals.shipping != null && (
-        <div className='flex justify-between text-stone-600'>
+        <div className='flex justify-between text-stone-600 mach-dark:text-white/65'>
           <span>Shipping</span>
           <span>
             {totals.shipping === 0
@@ -193,16 +193,16 @@ export function CheckoutPageEditorialTemplate({
 
   return (
     <EditorialChrome>
-      <div className='min-h-screen bg-stone-50'>
+      <div className='min-h-screen bg-stone-50 mach-dark:bg-[var(--mach-ink)]'>
         <div className='mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 lg:px-10'>
           {/* Header */}
           <Reveal variant='fadeUp'>
             <div className='mb-10 flex items-center justify-between'>
               <div>
-                <p className='text-xs tracking-[0.32em] uppercase text-stone-500'>
+                <p className='text-xs tracking-[0.32em] uppercase text-stone-500 mach-dark:text-white/55'>
                   Checkout
                 </p>
-                <h1 className='mt-2 text-3xl font-semibold tracking-tight text-stone-900 sm:text-4xl'>
+                <h1 className='mt-2 text-3xl font-semibold tracking-tight text-stone-900 mach-dark:text-white sm:text-4xl'>
                   Complete Your Order
                 </h1>
               </div>
@@ -210,7 +210,7 @@ export function CheckoutPageEditorialTemplate({
                 <button
                   type='button'
                   onClick={onEditCart}
-                  className='inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 transition-colors'>
+                  className='inline-flex items-center gap-1 text-sm text-stone-500 mach-dark:text-white/55 hover:text-stone-900 mach-dark:hover:text-white transition-colors'>
                   <ChevronLeft className='h-3.5 w-3.5' />
                   Edit Bag
                 </button>
@@ -234,8 +234,8 @@ export function CheckoutPageEditorialTemplate({
               <StaggerContainer className='lg:col-span-7 space-y-8'>
                 {/* Customer Info */}
                 <StaggerItem>
-                  <section className='rounded-2xl border border-stone-200 bg-white p-6'>
-                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mb-5'>
+                  <section className='rounded-2xl border border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] p-6'>
+                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mach-dark:text-white/55 mb-5'>
                       Contact Information
                     </h2>
                     <div className='space-y-4'>
@@ -288,8 +288,8 @@ export function CheckoutPageEditorialTemplate({
 
                 {/* Shipping Address */}
                 <StaggerItem>
-                  <section className='rounded-2xl border border-stone-200 bg-white p-6'>
-                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mb-5'>
+                  <section className='rounded-2xl border border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] p-6'>
+                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mach-dark:text-white/55 mb-5'>
                       Shipping Address
                     </h2>
                     <div className='space-y-4'>
@@ -391,14 +391,14 @@ export function CheckoutPageEditorialTemplate({
 
                 {/* Payment Method */}
                 <StaggerItem>
-                  <section className='rounded-2xl border border-stone-200 bg-white p-6'>
-                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mb-5'>
+                  <section className='rounded-2xl border border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] p-6'>
+                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mach-dark:text-white/55 mb-5'>
                       Payment Method
                     </h2>
                     {paymentMethodsLoading ? (
                       <div className='space-y-3'>
-                        <Skeleton className='h-12 w-full rounded-xl' />
-                        <Skeleton className='h-12 w-full rounded-xl' />
+                        <Skeleton className='h-12 w-full rounded-xl mach-dark:bg-white/[0.08]' />
+                        <Skeleton className='h-12 w-full rounded-xl mach-dark:bg-white/[0.08]' />
                       </div>
                     ) : paymentMethods && paymentMethods.length > 0 ? (
                       <div className='space-y-2'>
@@ -407,8 +407,8 @@ export function CheckoutPageEditorialTemplate({
                             key={pm.id}
                             className={`flex cursor-pointer items-center gap-4 rounded-xl border px-5 py-4 transition-colors ${
                               formValues.paymentMethod === pm.id
-                                ? "border-stone-900 bg-stone-50"
-                                : "border-stone-200 bg-white hover:border-stone-300"
+                                ? "border-stone-900 mach-dark:border-white bg-stone-50 mach-dark:bg-[var(--mach-ink)]"
+                                : "border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] hover:border-stone-300 mach-dark:hover:border-white/40"
                             }`}>
                             <input
                               type='radio'
@@ -418,14 +418,14 @@ export function CheckoutPageEditorialTemplate({
                               onChange={(e) =>
                                 updateField("paymentMethod", e.target.value)
                               }
-                              className='h-4 w-4 border-stone-300 text-stone-900 focus:ring-stone-900/20'
+                              className='h-4 w-4 border-stone-300 mach-dark:border-white/30 text-stone-900 mach-dark:text-white mach-dark:accent-white focus:ring-stone-900/20 mach-dark:focus:ring-white/30'
                             />
                             <div className='flex-1'>
-                              <p className='text-sm font-medium text-stone-900'>
+                              <p className='text-sm font-medium text-stone-900 mach-dark:text-white'>
                                 {pm.label}
                               </p>
                               {pm.description && (
-                                <p className='text-xs text-stone-500'>
+                                <p className='text-xs text-stone-500 mach-dark:text-white/55'>
                                   {pm.description}
                                 </p>
                               )}
@@ -434,20 +434,20 @@ export function CheckoutPageEditorialTemplate({
                         ))}
                       </div>
                     ) : (
-                      <label className='flex cursor-pointer items-center gap-4 rounded-xl border border-stone-900 bg-stone-50 px-5 py-4'>
+                      <label className='flex cursor-pointer items-center gap-4 rounded-xl border border-stone-900 mach-dark:border-white bg-stone-50 mach-dark:bg-[var(--mach-ink)] px-5 py-4'>
                         <input
                           type='radio'
                           name='paymentMethod'
                           value='cod'
                           checked
                           readOnly
-                          className='h-4 w-4 border-stone-300 text-stone-900'
+                          className='h-4 w-4 border-stone-300 mach-dark:border-white/30 text-stone-900 mach-dark:text-white mach-dark:accent-white'
                         />
                         <div>
-                          <p className='text-sm font-medium text-stone-900'>
+                          <p className='text-sm font-medium text-stone-900 mach-dark:text-white'>
                             Cash on Delivery
                           </p>
-                          <p className='text-xs text-stone-500'>
+                          <p className='text-xs text-stone-500 mach-dark:text-white/55'>
                             Pay when you receive your order
                           </p>
                         </div>
@@ -458,8 +458,8 @@ export function CheckoutPageEditorialTemplate({
 
                 {/* Order Notes */}
                 <StaggerItem>
-                  <section className='rounded-2xl border border-stone-200 bg-white p-6'>
-                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mb-5'>
+                  <section className='rounded-2xl border border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] p-6'>
+                    <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mach-dark:text-white/55 mb-5'>
                       Order Notes (Optional)
                     </h2>
                     <textarea
@@ -467,7 +467,7 @@ export function CheckoutPageEditorialTemplate({
                       onChange={(e) => updateField("notes", e.target.value)}
                       placeholder='Any special instructions…'
                       rows={3}
-                      className='w-full rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-900 placeholder:text-stone-400 resize-none focus:outline-none focus:ring-2 focus:ring-stone-900/15'
+                      className='w-full rounded-xl border border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] p-4 text-sm text-stone-900 mach-dark:text-white placeholder:text-stone-400 mach-dark:placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-stone-900/15 mach-dark:focus:ring-white/25'
                     />
                   </section>
                 </StaggerItem>
@@ -481,20 +481,20 @@ export function CheckoutPageEditorialTemplate({
                 delay={0.2}
                 className='lg:col-span-5 space-y-3'>
                 {/* Desktop: full itemized card */}
-                <div className='hidden lg:block lg:sticky lg:top-24 rounded-2xl border border-stone-200 bg-white p-6'>
-                  <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mb-5'>
+                <div className='hidden lg:block lg:sticky lg:top-24 rounded-2xl border border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] p-6'>
+                  <h2 className='text-sm font-medium tracking-[0.2em] uppercase text-stone-500 mach-dark:text-white/55 mb-5'>
                     Order Summary
                   </h2>
 
                   {renderItemsList()}
 
-                  <div className='mt-5 h-px w-full bg-stone-200' />
+                  <div className='mt-5 h-px w-full bg-stone-200 mach-dark:bg-white/12' />
 
                   {renderTotalsBreakdown()}
 
-                  <div className='mt-4 h-px w-full bg-stone-200' />
+                  <div className='mt-4 h-px w-full bg-stone-200 mach-dark:bg-white/12' />
 
-                  <div className='mt-4 flex justify-between text-base font-semibold text-stone-900'>
+                  <div className='mt-4 flex justify-between text-base font-semibold text-stone-900 mach-dark:text-white'>
                     <span>Total</span>
                     <span>{formatPrice(totals.grandTotal, currency)}</span>
                   </div>
@@ -516,52 +516,52 @@ export function CheckoutPageEditorialTemplate({
                   </Button>
 
                   {/* Security note */}
-                  <div className='mt-4 flex items-center justify-center gap-1.5 text-xs text-stone-400'>
+                  <div className='mt-4 flex items-center justify-center gap-1.5 text-xs text-stone-400 mach-dark:text-white/40'>
                     <Shield className='h-3 w-3' />
                     <span>Secure checkout</span>
                   </div>
                 </div>
 
                 {/* Mobile: compact collapsed summary bar */}
-                <div className='lg:hidden rounded-2xl border border-stone-200 bg-white p-4'>
+                <div className='lg:hidden rounded-2xl border border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] p-4'>
                   <button
                     type='button'
                     onClick={() => setSummaryExpanded((v) => !v)}
                     className='w-full flex items-center gap-3'
                     aria-expanded={summaryExpanded}>
                     <div className='w-12 h-12 shrink-0 rounded-lg overflow-hidden bg-stone-100 border border-stone-200 flex items-center justify-center'>
-                      <ShoppingBag className='w-4 h-4 text-stone-300' />
+                      <ShoppingBag className='w-4 h-4 text-stone-300 mach-dark:text-white/30' />
                     </div>
                     <div className='flex-1 min-w-0 text-left'>
-                      <p className='text-sm font-semibold text-stone-900'>
+                      <p className='text-sm font-semibold text-stone-900 mach-dark:text-white'>
                         Total
                       </p>
-                      <p className='text-xs text-stone-500'>
+                      <p className='text-xs text-stone-500 mach-dark:text-white/55'>
                         {cartQuantity} {cartQuantity === 1 ? "item" : "items"}
                       </p>
                     </div>
                     <div className='text-right shrink-0'>
                       {hasDiscount && (
-                        <p className='text-xs text-stone-400 line-through'>
+                        <p className='text-xs text-stone-400 mach-dark:text-white/40 line-through'>
                           {formatPrice(originalTotal, currency)}
                         </p>
                       )}
-                      <p className='text-base font-semibold text-stone-900'>
+                      <p className='text-base font-semibold text-stone-900 mach-dark:text-white'>
                         {formatPrice(totals.grandTotal, currency)}
                       </p>
                     </div>
                     <ChevronDown
                       className={cn(
-                        "w-4 h-4 text-stone-400 shrink-0 transition-transform",
+                        "w-4 h-4 text-stone-400 mach-dark:text-white/40 shrink-0 transition-transform",
                         summaryExpanded && "rotate-180",
                       )}
                     />
                   </button>
 
                   {summaryExpanded && (
-                    <div className='mt-4 pt-4 border-t border-stone-200'>
+                    <div className='mt-4 pt-4 border-t border-stone-200 mach-dark:border-white/15'>
                       {renderItemsList()}
-                      <div className='mt-4 h-px w-full bg-stone-200' />
+                      <div className='mt-4 h-px w-full bg-stone-200 mach-dark:bg-white/12' />
                       {renderTotalsBreakdown()}
                     </div>
                   )}
@@ -582,7 +582,7 @@ export function CheckoutPageEditorialTemplate({
                       "Place Order"
                     )}
                   </Button>
-                  <div className='mt-4 flex items-center justify-center gap-1.5 text-xs text-stone-400'>
+                  <div className='mt-4 flex items-center justify-center gap-1.5 text-xs text-stone-400 mach-dark:text-white/40'>
                     <Shield className='h-3 w-3' />
                     <span>Secure checkout</span>
                   </div>

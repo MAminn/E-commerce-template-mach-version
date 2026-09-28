@@ -97,8 +97,8 @@ function Breadcrumb({
   return (
     <nav
       aria-label="Breadcrumb"
-      className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mach-mute)]">
-      <a href="/" className="transition-colors hover:text-[var(--mach-ink)]">
+      className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mach-mute-invert)]">
+      <a href="/" className="transition-colors hover:text-white">
         Home
       </a>
       <ChevronRight aria-hidden="true" className="h-2.5 w-2.5 opacity-60" />
@@ -106,14 +106,14 @@ function Breadcrumb({
         <>
           <a
             href="/shop"
-            className="transition-colors hover:text-[var(--mach-ink)]">
+            className="transition-colors hover:text-white">
             Shop
           </a>
           <ChevronRight aria-hidden="true" className="h-2.5 w-2.5 opacity-60" />
-          <span className="text-[var(--mach-ink)]">{category.name}</span>
+          <span className="text-white">{category.name}</span>
         </>
       ) : (
-        <span className="text-[var(--mach-ink)]">Shop</span>
+        <span className="text-white">Shop</span>
       )}
     </nav>
   );
@@ -154,14 +154,14 @@ function GroupNav({
   const tab = (active: boolean) =>
     `-mb-px whitespace-nowrap border-b-2 pb-4 pt-3.5 text-[11px] font-bold uppercase tracking-[0.16em] transition-colors duration-200 sm:text-[12px] sm:tracking-[0.2em] ${
       active
-        ? "border-[var(--mach-ink)] text-[var(--mach-ink)]"
-        : "border-transparent text-[var(--mach-mute)] hover:text-[var(--mach-ink)]"
+        ? "border-white text-white"
+        : "border-transparent text-[var(--mach-mute-invert)] hover:text-white"
     }`;
 
   return (
     <nav aria-label="Product groups" className={className}>
       <div className="scrollbar-hide -mx-5 overflow-x-auto px-5 sm:-mx-8 sm:px-8 lg:mx-0 lg:px-0">
-        <div className="flex w-max min-w-full items-end gap-7 border-b border-[var(--mach-ink)]/15 sm:gap-9 lg:gap-10">
+        <div className="flex w-max min-w-full items-end gap-7 border-b border-white/15 sm:gap-9 lg:gap-10">
           <button
             type="button"
             onClick={() => onCategoryChange(null)}
@@ -197,15 +197,15 @@ function FilterPanel({
   onDiscountedOnlyChange: (v: boolean) => void;
 }) {
   const box =
-    "flex cursor-pointer items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--mach-ink)] sm:text-[12px]";
+    "flex cursor-pointer items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white sm:text-[12px]";
   return (
-    <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-[var(--mach-ink)]/12 pt-5">
+    <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-white/12 pt-5">
       <label className={box}>
         <input
           type="checkbox"
           checked={inStockOnly}
           onChange={(e) => onInStockOnlyChange(e.target.checked)}
-          className="h-4 w-4 accent-[var(--mach-ink)]"
+          className="h-4 w-4 accent-white"
         />
         In stock only
       </label>
@@ -214,7 +214,7 @@ function FilterPanel({
           type="checkbox"
           checked={discountedOnly}
           onChange={(e) => onDiscountedOnlyChange(e.target.checked)}
-          className="h-4 w-4 accent-[var(--mach-ink)]"
+          className="h-4 w-4 accent-white"
         />
         On sale
       </label>
@@ -234,11 +234,11 @@ function Pagination({
   if (totalPages <= 1) return null;
   // Same restraint as the toolbar: hairline-only, quiet until worked.
   const btn =
-    "inline-flex h-11 min-w-11 items-center justify-center border-b border-[var(--mach-ink)]/25 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--mach-ink)] transition-colors duration-200 hover:border-[var(--mach-ink)] disabled:pointer-events-none disabled:opacity-30";
+    "inline-flex h-11 min-w-11 items-center justify-center border-b border-white/25 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white transition-colors duration-200 hover:border-white disabled:pointer-events-none disabled:opacity-30";
   return (
     <nav
       aria-label="Pagination"
-      className="mt-20 flex items-center justify-center gap-8 border-t border-[var(--mach-ink)]/10 pt-12 sm:gap-10">
+      className="mt-20 flex items-center justify-center gap-8 border-t border-white/10 pt-12 sm:gap-10">
       <button
         type="button"
         onClick={() => onPageChange(page - 1)}
@@ -246,7 +246,7 @@ function Pagination({
         className={btn}>
         Prev
       </button>
-      <span className="px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--mach-mute)]">
+      <span className="px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--mach-mute-invert)]">
         {page} / {totalPages}
       </span>
       <button
@@ -321,20 +321,17 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
     // so the storefront does not change footer between the homepage and
     // everywhere else.
     <MachChrome>
-      {/* One continuous paper ground under the whole page, with the product
-          stages drawn on it in white.
+      {/* One continuous ink ground under the whole page — the storefront's
+          dark default — with the product stages drawn on it in white.
 
-          The shop used to run white with a paper masthead, which left the
-          cards nothing to stand on: the pack shots are photographed on white
-          and are not cut out, so on a white page every product dissolved into
-          the ground and the grid read as a flat sheet of pictures. Inverting
-          it — paper page, white stage — makes each tile a piece of
+          The pack shots are photographed on white and are not cut out, so the
+          stage stays white on the dark page: each tile reads as a piece of
           merchandising without drawing a single border, and the photo's own
           white background lands exactly on the stage instead of showing up as
           a rectangle inside a frame. It is also why the stage cannot be tinted
-          off-white: that would put the rectangle back. */}
+          off-white or charcoal: that would put the rectangle back. */}
       <div
-        className={`mach-shop bg-[var(--mach-paper)] text-[var(--mach-ink)] ${className}`}>
+        className={`mach-shop bg-[var(--mach-ink)] text-white ${className}`}>
         {/* Hero renders nothing at all when disabled — no reserved space. */}
         {!categoryContext && <MachShopHero hero={content.hero} />}
 
@@ -360,9 +357,9 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
                   <>
                     <span
                       aria-hidden="true"
-                      className="hidden h-px min-w-8 flex-1 -translate-y-[0.6rem] bg-[var(--mach-ink)]/15 sm:block"
+                      className="hidden h-px min-w-8 flex-1 -translate-y-[0.6rem] bg-white/15 sm:block"
                     />
-                    <span className="w-full pb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--mach-mute)] sm:w-auto sm:pb-[0.35rem]">
+                    <span className="w-full pb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--mach-mute-invert)] sm:w-auto sm:pb-[0.35rem]">
                       {countLabel}
                     </span>
                   </>
@@ -371,7 +368,7 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
             )}
 
             {intro && (
-              <p className="mt-4 max-w-[52ch] text-[13px] leading-relaxed text-[var(--mach-mute)] sm:text-[15px]">
+              <p className="mt-4 max-w-[52ch] text-[13px] leading-relaxed text-[var(--mach-mute-invert)] sm:text-[15px]">
                 {intro}
               </p>
             )}
@@ -388,7 +385,7 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
             ) : (
               // Without groups the masthead still needs its closing rule, or
               // the search row floats under the heading with nothing under it.
-              <div className="mt-7 border-b border-[var(--mach-ink)]/15 sm:mt-9" />
+              <div className="mt-7 border-b border-white/15 sm:mt-9" />
             )}
           </div>
         </header>
@@ -424,17 +421,19 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
                 {Array.from({ length: 8 }).map((_, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton
                   <div key={i}>
-                    {/* Square, hard-edged and white — the skeleton stands in
-                        for the media stage, so it has to be the same shape. */}
-                    <Skeleton className="aspect-square w-full rounded-none" />
-                    <Skeleton className="mt-5 h-2.5 w-1/3 rounded-none sm:mt-6" />
-                    <Skeleton className="mt-3 h-3.5 w-4/5 rounded-none" />
-                    <Skeleton className="mt-3 h-3.5 w-1/4 rounded-none" />
+                    {/* Square and hard-edged — the skeleton stands in for the
+                        media stage, so it has to be the same shape. A faint
+                        lift off the ink rather than the shared skeleton's
+                        light stone, which would flash on the dark page. */}
+                    <Skeleton className="aspect-square w-full rounded-none bg-white/[0.08]" />
+                    <Skeleton className="mt-5 h-2.5 w-1/3 rounded-none bg-white/[0.08] sm:mt-6" />
+                    <Skeleton className="mt-3 h-3.5 w-4/5 rounded-none bg-white/[0.08]" />
+                    <Skeleton className="mt-3 h-3.5 w-1/4 rounded-none bg-white/[0.08]" />
                   </div>
                 ))}
               </div>
             ) : products.length === 0 ? (
-              <p className="py-24 text-center text-sm text-[var(--mach-mute)]">
+              <p className="py-24 text-center text-sm text-[var(--mach-mute-invert)]">
                 {emptyText}
               </p>
             ) : (
@@ -442,8 +441,15 @@ export const SortingMachTemplate = memo(function SortingMachTemplate({
                 <div className={GRID}>
                   {products.map((p) => (
                     // `variant="shop"` and not `size="lg"`: the shelf sizes
-                    // stay where the homepage put them.
-                    <MachProductCard key={p.id} product={p} variant="shop" />
+                    // stay where the homepage put them. `onDark` lights the
+                    // name, meta and price for the ink page; the stage stays
+                    // white.
+                    <MachProductCard
+                      key={p.id}
+                      product={p}
+                      variant="shop"
+                      onDark
+                    />
                   ))}
                 </div>
                 <Pagination
