@@ -42,6 +42,10 @@ import {
   type ProductReviewItem,
 } from "../mach/product/ProductReviews";
 import { StaggerContainer, StaggerItem } from "../motion/Stagger";
+import { ProductUpsellBlock } from "../mach/upsell/ProductUpsellBlock";
+import { PostAddUpsellSheet } from "../mach/upsell/PostAddUpsellSheet";
+import { useProductUpsells } from "../mach/upsell/useProductUpsells";
+import type { ProductUpsells } from "../mach/upsell/types";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -68,6 +72,11 @@ export interface ProductPageEditorialProps {
   relatedProducts?: FeaturedProduct[];
   /** Curated add-ons, already resolved to live products by the backend. */
   crossSellProducts?: FeaturedProduct[];
+  /**
+   * Upsell recommendations from the server resolver. Drives the compact block
+   * under the purchase controls and the post-add sheet; absent = neither.
+   */
+  upsells?: ProductUpsells;
   /** Approved reviews from the existing reviews service. */
   reviews?: ProductReviewItem[];
   /** CMS-controlled page copy. */
@@ -286,6 +295,7 @@ function ProductPageEditorialResolved({
   product,
   relatedProducts,
   crossSellProducts,
+  upsells,
   reviews,
   content,
   showWishlist = true,
@@ -344,6 +354,8 @@ function ProductPageEditorialResolved({
   const [justAdded, setJustAdded] = useState(false);
   const addedTimer = useRef<number | null>(null);
 
+  const upsell = useProductUpsells(upsells);
+
   useEffect(
     () => () => {
       if (addedTimer.current) window.clearTimeout(addedTimer.current);
@@ -360,13 +372,26 @@ function ProductPageEditorialResolved({
     const unitPrice = hasDiscount
       ? Number(product.discountPrice)
       : Number(product.price);
+    const addedImage = currentImage?.url ?? product.imageUrl;
 
-    showMachCartToast({
+    // The cart has accepted the product. The upsell sheet is the add's
+    // confirmation when it has something to offer; otherwise the usual toast.
+    const sheetOpened = upsell.openAfterAdd({
+      id: product.id,
       name: product.name,
       price: unitPrice,
       quantity,
-      imageUrl: currentImage?.url ?? product.imageUrl,
+      imageUrl: addedImage,
+      selectedOptions: selectedVariants,
     });
+    if (!sheetOpened) {
+      showMachCartToast({
+        name: product.name,
+        price: unitPrice,
+        quantity,
+        imageUrl: addedImage,
+      });
+    }
 
     setJustAdded(true);
     if (addedTimer.current) window.clearTimeout(addedTimer.current);
@@ -728,6 +753,19 @@ function ProductPageEditorialResolved({
                   )}
                 </div>
 
+                {/* Upsells — next to the decision they add to. The heading is
+                    the store's add-ons heading when set. */}
+                <ProductUpsellBlock
+                  products={upsell.blockItems}
+                  heading={
+                    content?.crossSellHeading?.trim() ||
+                    (upsells?.source === "manual"
+                      ? "Frequently Bought Together"
+                      : "Add to Your Order")
+                  }
+                  className='mt-7'
+                />
+
                 {/* Trust strip — one quiet line. It reassures; it does not
                     merchandise, so it gets no boxes and no fill. Wording is
                     unchanged. */}
@@ -904,6 +942,13 @@ function ProductPageEditorialResolved({
             </Button>
           </div>
         </div>
+
+        <PostAddUpsellSheet
+          open={upsell.sheet !== null}
+          main={upsell.sheet?.main ?? null}
+          products={upsell.sheet?.items ?? []}
+          onClose={upsell.closeSheet}
+        />
 
         {/* ============================================================ */}
         {/*  LIGHTBOX                                                    */}

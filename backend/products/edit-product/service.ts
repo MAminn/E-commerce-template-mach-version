@@ -10,6 +10,7 @@ import { ServerError } from "#root/shared/error/server";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
+import { UPSELL_MODES } from "#root/shared/upsell/config";
 import {
   validateProductRules,
   fragranceInfoSchema,
@@ -61,6 +62,8 @@ export const editProductSchema = z.object({
   sku: skuSchema,
   supplementInfo: supplementInfoSchema,
   bestLayeredWithIds: z.array(z.string().uuid()).optional(),
+  /** Upsell mode; the manual list is `bestLayeredWithIds`. */
+  upsellMode: z.enum(UPSELL_MODES).optional(),
 });
 
 export const editProduct = (
@@ -116,6 +119,8 @@ export const editProduct = (
               sku: data.sku ?? null,
               supplementInfo: data.supplementInfo ?? null,
               bestLayeredWithIds: data.bestLayeredWithIds ?? [],
+              // Omitted by an older client = keep what is stored.
+              ...(data.upsellMode ? { upsellMode: data.upsellMode } : {}),
               updatedAt: new Date(),
             })
             .where(eq(product.id, data.id))

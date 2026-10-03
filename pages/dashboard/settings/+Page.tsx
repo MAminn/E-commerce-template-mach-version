@@ -25,6 +25,7 @@ import {
 } from "#root/components/ui/dialog";
 import { STORE_CURRENCY } from "#root/shared/config/branding";
 import { v7 } from "uuid";
+import { UpsellSettingsCard } from "./UpsellSettingsCard";
 
 export default function SettingsPage() {
   const [shippingFee, setShippingFee] = useState<string>("");
@@ -447,6 +448,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <UpsellSettingsCard />
+
       {/* Product Page Content Card */}
       <Card>
         <CardHeader>
@@ -488,7 +491,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className='space-y-2'>
-                <Label htmlFor='crossSellHeading'>Add-ons heading</Label>
+                <Label htmlFor='crossSellHeading'>Add-ons / upsell heading</Label>
                 <Input
                   id='crossSellHeading'
                   value={crossSellHeading}

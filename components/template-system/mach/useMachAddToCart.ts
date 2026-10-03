@@ -35,6 +35,11 @@ export interface MachAddToCartInput {
   quantity?: number;
   /** Chosen variant values. `{}` only for products with no option groups. */
   selectedOptions?: Record<string, string>;
+  /**
+   * Show the Mach toast. Off only where the surface itself is already the
+   * confirmation — the post-add upsell sheet, which a toast would cover.
+   */
+  toast?: boolean;
 }
 
 export function useMachAddToCart() {
@@ -81,12 +86,14 @@ export function useMachAddToCart() {
         categoryName: input.categoryName,
       });
 
-      showMachCartToast({
-        name: input.name,
-        price: input.price,
-        quantity,
-        imageUrl: input.imageUrl,
-      });
+      if (input.toast !== false) {
+        showMachCartToast({
+          name: input.name,
+          price: input.price,
+          quantity,
+          imageUrl: input.imageUrl,
+        });
+      }
 
       setConfirmed(true);
       if (timer.current) window.clearTimeout(timer.current);

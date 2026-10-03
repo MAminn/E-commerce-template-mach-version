@@ -15,6 +15,9 @@ import type { ProductPageProduct } from "#root/components/template-system/produc
 import type { FeaturedProduct } from "#root/components/template-system/home/HomeFeaturedProducts";
 import type { ProductPageEditorialContent } from "#root/components/template-system/productPage/ProductPageEditorial";
 import type { ProductReviewItem } from "#root/components/template-system/mach/product/ProductReviews";
+import type { ProductUpsells } from "#root/components/template-system/mach/upsell/types";
+import { getUpsellSessionSeed } from "#root/components/template-system/mach/upsell/upsellSeed";
+import { productPageUpsellProps } from "#root/components/template-system/mach/upsell/productPageUpsellProps";
 
 /** A group of products belonging to a single category type */
 export interface CategoryProductGroup {
@@ -56,6 +59,10 @@ export default function ProductDetailPage() {
   const { addItem, items } = useCart();
   const { trackEvent } = useTracking();
   const hasTrackedView = useRef<string | null>(null);
+  // Read when the upsell request is made, not a fetch dependency — a cart
+  // change must not refetch the whole page.
+  const cartProductIds = useRef<string[]>([]);
+  cartProductIds.current = items.map((i) => i.id);
 
   const [productData, setProductData] = useState<ProductPageProduct | null>(
     null,
@@ -69,6 +76,9 @@ export default function ProductDetailPage() {
     [],
   );
   const [reviews, setReviews] = useState<ProductReviewItem[]>([]);
+  const [upsells, setUpsells] = useState<ProductUpsells | undefined>(
+    undefined,
+  );
   const [pageContent, setPageContent] = useState<ProductPageEditorialContent>(
     {},
   );
@@ -99,12 +109,28 @@ export default function ProductDetailPage() {
 
       // Fetch reviews — use the resolved real product id, not the route
       // param, since that may be a slug and getReviews requires a UUID.
-      const reviewsResponse = await trpc.product.getReviews.query({
-        productId: product.id,
-      });
+      // Upsells come from the one server resolver, fetched alongside; a
+      // failure there only means no upsells, never a broken page.
+      const [reviewsResponse, upsellResponse] = await Promise.all([
+        trpc.product.getReviews.query({
+          productId: product.id,
+        }),
+        trpc.upsell.forProduct
+          .query({
+            productId: product.id,
+            excludeProductIds: [...new Set(cartProductIds.current)].slice(
+              0,
+              100,
+            ),
+            seed: getUpsellSessionSeed(),
+          })
+          .catch(() => null),
+      ]);
       const reviewsData = reviewsResponse.success
         ? reviewsResponse.result
         : null;
+      const upsellData =
+        upsellResponse && upsellResponse.success ? upsellResponse.result : null;
 
       // ── Helpers ──
       const mapViewToFeatured = (items: any[]): FeaturedProduct[] =>
@@ -238,8 +264,14 @@ export default function ProductDetailPage() {
       }
 
       // Curated add-ons, resolved live by the backend from stored product IDs.
-      const addOns = mapSearchToFeatured(
-        (product.bestLayeredWith ?? []) as any[],
+      // While upsells are on, that same curated list is the product's manual
+      // upsell list and is shown by the upsell block instead, so the strip is
+      // not drawn a second time lower down. With upsells switched off (the
+      // shipped default) or unreachable, the strip behaves exactly as it
+      // always has.
+      const upsellProps = productPageUpsellProps(
+        upsellData,
+        mapSearchToFeatured((product.bestLayeredWith ?? []) as any[]),
       );
 
       // Extract reviews and their statistics
@@ -282,7 +314,8 @@ export default function ProductDetailPage() {
 
       setProductData(mappedProduct);
       setRelatedProducts(mappedRelatedProducts);
-      setCrossSellProducts(addOns);
+      setCrossSellProducts(upsellProps.crossSellProducts);
+      setUpsells(upsellProps.upsells);
       setReviews((reviewsData?.reviews ?? []) as ProductReviewItem[]);
       setCategoryGroups(groups);
       setAllProducts(allProds);
@@ -434,6 +467,7 @@ export default function ProductDetailPage() {
       allProducts={allProducts}
       isLoading={isLoading}
       crossSellProducts={crossSellProducts}
+      upsells={upsells}
       reviews={reviews}
       content={pageContent}
       onAddToCart={(

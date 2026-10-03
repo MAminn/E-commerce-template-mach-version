@@ -9,6 +9,7 @@ import {
 import { ServerError } from "#root/shared/error/server";
 import { Effect } from "effect";
 import { z } from "zod";
+import { UPSELL_MODES } from "#root/shared/upsell/config";
 import {
   validateProductRules,
   fragranceInfoSchema,
@@ -62,6 +63,8 @@ export const createProductSchema = z.object({
   sku: skuSchema,
   supplementInfo: supplementInfoSchema,
   bestLayeredWithIds: z.array(z.string().uuid()).optional(),
+  /** Upsell mode; the manual list is `bestLayeredWithIds`. */
+  upsellMode: z.enum(UPSELL_MODES).optional(),
 });
 
 export const createProduct = (
@@ -107,6 +110,7 @@ export const createProduct = (
               sku: data.sku ?? null,
               supplementInfo: data.supplementInfo ?? null,
               bestLayeredWithIds: data.bestLayeredWithIds ?? [],
+              upsellMode: data.upsellMode ?? "global",
             })
             .returning()
             .then((data) => data[0]);

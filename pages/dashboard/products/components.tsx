@@ -44,6 +44,17 @@ import { MultiFileUploadInput } from "#root/components/file-uploads/MultiFileUpl
 import { Label } from "#root/components/ui/label";
 import { Badge } from "#root/components/ui/badge";
 import { Switch } from "#root/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#root/components/ui/select";
+import {
+  UPSELL_MODES,
+  normalizeUpsellMode,
+} from "#root/shared/upsell/config";
 import { trpc } from "#root/shared/trpc/client";
 import {
   isSupplementStore,
@@ -429,6 +440,7 @@ export function ProductForm({
       badges?: string[];
     } | null;
     bestLayeredWithIds?: string[] | null;
+    upsellMode?: string | null;
     sku?: string | null;
     supplementInfo?: {
       detailsHeading?: string;
@@ -536,6 +548,7 @@ export function ProductForm({
       })
       .optional(),
     bestLayeredWithIds: z.array(z.string()).optional().default([]),
+    upsellMode: z.enum(UPSELL_MODES).default("global"),
     sku: z.string().max(64).optional(),
     supplementInfo: z
       .object({
@@ -603,6 +616,7 @@ export function ProductForm({
       bestLayeredWithIds: Array.isArray(initialValues?.bestLayeredWithIds)
         ? initialValues.bestLayeredWithIds
         : [],
+      upsellMode: normalizeUpsellMode(initialValues?.upsellMode),
       sku: initialValues?.sku ?? "",
       supplementInfo: initialValues?.supplementInfo ?? undefined,
     },
@@ -1022,26 +1036,68 @@ export function ProductForm({
           </div>
           )}
 
-          {/* Curated cross-sell strip. The DB column is still the legacy
-              `best_layered_with_ids` for data compatibility, but the concept and
-              the wording are neutral ecommerce add-ons. */}
-          <FormField
-            control={form.control}
-            name='bestLayeredWithIds'
-            render={({ field }) => (
-              <ProductRefPicker
-                value={field.value ?? []}
-                onChange={field.onChange}
-                excludeProductId={initialValues?.id}
-                label={
-                  isSupplementStore()
-                    ? "Add-ons / Frequently Bought Together (Optional)"
-                    : "Best Layered With (Optional)"
-                }
-                description='Products shown alongside this one on its product page. Use the arrows to set the order. Leave empty to hide the section.'
+          {/* Upsells. One mode per product; the manual list is the curated
+              add-ons list (DB column still the legacy `best_layered_with_ids`
+              for data compatibility), so there is one relation, not two. */}
+          <div className='space-y-3 rounded-md border p-4'>
+            <FormField
+              control={form.control}
+              name='upsellMode'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Upsells</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value='global'>Use global default</SelectItem>
+                      <SelectItem value='manual'>Manual products</SelectItem>
+                      <SelectItem value='disabled'>Disabled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className='text-xs text-muted-foreground'>
+                    {field.value === "manual"
+                      ? "Only the products picked below are recommended, in this order. Out-of-stock or hidden picks are skipped automatically."
+                      : field.value === "disabled"
+                        ? "No upsell recommendations for this product."
+                        : "Random in-stock products, chosen automatically. Store-wide rules are in Settings → Upsells."}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Shown for manual mode. Non-supplement stores keep the picker
+                visible at all times, because their product template reads
+                this list as its "Best Layered With" carousel. */}
+            {(form.watch("upsellMode") === "manual" || !isSupplementStore()) && (
+              <FormField
+                control={form.control}
+                name='bestLayeredWithIds'
+                render={({ field }) => (
+                  <ProductRefPicker
+                    value={field.value ?? []}
+                    onChange={field.onChange}
+                    excludeProductId={initialValues?.id}
+                    label={
+                      isSupplementStore()
+                        ? "Upsell products / Frequently Bought Together"
+                        : "Best Layered With (Optional)"
+                    }
+                    description={
+                      form.watch("upsellMode") === "manual" &&
+                      (field.value ?? []).length === 0
+                        ? "Pick at least one product — with none picked, this product shows no upsells."
+                        : "Search to add products. Use the arrows to set the order; × removes one."
+                    }
+                  />
+                )}
               />
             )}
-          />
+          </div>
 
           <div className='grid grid-cols-2 gap-4'>
             <FormField
