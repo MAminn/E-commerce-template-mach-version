@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Button } from "#root/components/ui/button";
 import { Input } from "#root/components/ui/input";
 import { CityCombobox } from "#root/components/checkout/CityCombobox";
@@ -8,7 +8,7 @@ import {
 } from "#root/components/checkout/BostaShippingFields";
 import { Skeleton } from "#root/components/ui/skeleton";
 import { Alert, AlertDescription } from "#root/components/ui/alert";
-import { AlertCircle, Loader2, Shield, ChevronLeft, ChevronDown, ShoppingBag } from "lucide-react";
+import { AlertCircle, Loader2, Shield, ChevronLeft, ChevronDown, ShoppingBag, Tag } from "lucide-react";
 import { cn } from "#root/lib/utils";
 import type {
   CheckoutCustomerInfo,
@@ -16,6 +16,7 @@ import type {
   CheckoutOrderSummaryItem,
   CheckoutTotals,
   PaymentMethodOption,
+  CheckoutPageModernTemplateProps,
 } from "./CheckoutPageModernTemplate";
 import { EditorialChrome } from "../editorial/EditorialChrome";
 import { Reveal } from "../motion/Reveal";
@@ -25,7 +26,18 @@ import { StaggerContainer, StaggerItem } from "../motion/Stagger";
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
 
-export interface CheckoutPageEditorialTemplateProps {
+// The promo-code props are shared with the cart templates (via the Modern
+// checkout props) so pages/checkout feeds them from the same CartContext
+// promo state as pages/cart — one applied code, two places to enter it.
+export interface CheckoutPageEditorialTemplateProps
+  extends Pick<
+    CheckoutPageModernTemplateProps,
+    | "onApplyCoupon"
+    | "appliedCoupon"
+    | "onRemoveCoupon"
+    | "couponNotice"
+    | "onDismissCouponNotice"
+  > {
   customer?: CheckoutCustomerInfo;
   shippingAddress?: CheckoutAddress;
   billingAddress?: CheckoutAddress;
@@ -64,6 +76,11 @@ export function CheckoutPageEditorialTemplate({
   currency = "EGP",
   paymentMethods,
   paymentMethodsLoading = false,
+  onApplyCoupon,
+  appliedCoupon,
+  onRemoveCoupon,
+  couponNotice,
+  onDismissCouponNotice,
 }: CheckoutPageEditorialTemplateProps) {
   /* Internal form state — field names match the Modern template so
      pages/checkout/+Page.tsx's submit handler works for either template. */
@@ -103,6 +120,54 @@ export function CheckoutPageEditorialTemplate({
       return;
     }
     onSubmit?.(formValues);
+  };
+
+  /* Promo code — only what's typed and the last apply result live here. The
+     applied code, its validation and the discount are CartContext's, the
+     same state the cart's promo box drives. Shared by the desktop and
+     mobile summaries so both always show the same thing. */
+  const [couponCode, setCouponCode] = useState("");
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [couponFeedback, setCouponFeedback] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  // State alone can't stop an Enter + click landing in the same tick, before
+  // the disabled button has re-rendered.
+  const applyInFlight = useRef(false);
+
+  const handleApplyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code || !onApplyCoupon || applyInFlight.current) return;
+
+    applyInFlight.current = true;
+    setCouponFeedback(null);
+    onDismissCouponNotice?.();
+    setIsApplyingCoupon(true);
+    try {
+      const result = await onApplyCoupon(code);
+      if (result) {
+        setCouponFeedback(result);
+        // Only clear the field on success, so a typo stays editable.
+        if (result.success) setCouponCode("");
+      } else {
+        setCouponCode("");
+      }
+    } catch {
+      setCouponFeedback({
+        success: false,
+        message: "We couldn't apply that promo code. Please try again.",
+      });
+    } finally {
+      applyInFlight.current = false;
+      setIsApplyingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponFeedback(null);
+    onDismissCouponNotice?.();
+    onRemoveCoupon?.();
   };
 
   /* Pill-style input classes */
@@ -157,7 +222,9 @@ export function CheckoutPageEditorialTemplate({
       </div>
       {totals.discount != null && totals.discount > 0 && (
         <div className='flex justify-between text-stone-600 mach-dark:text-white/65'>
-          <span>Discount</span>
+          <span>
+            Discount{appliedCoupon ? ` (${appliedCoupon.code})` : ""}
+          </span>
           <span className='text-green-700 mach-dark:text-emerald-400'>
             −{formatPrice(totals.discount, currency)}
           </span>
@@ -190,6 +257,116 @@ export function CheckoutPageEditorialTemplate({
       )}
     </div>
   );
+
+  // Promo code box — rendered in both the desktop card and the mobile summary
+  // (only one is visible at a time), so ids are prefixed per placement.
+  const renderPromoCode = (placement: "desktop" | "mobile") => {
+    const feedbackId = `${placement}-promo-code-feedback`;
+    return (
+      <div data-testid={`${placement}-promo-code`}>
+        <p className='text-xs font-medium tracking-[0.2em] uppercase text-stone-500 mach-dark:text-white/55'>
+          Promo Code
+        </p>
+
+        {appliedCoupon ? (
+          // One code at a time: while one is on, the box shows it instead of
+          // an input — removing it brings the input back.
+          <div
+            data-testid='applied-promo-code'
+            className='mt-2 flex items-center justify-between gap-3 rounded-xl border border-green-100 mach-dark:border-emerald-400/25 bg-green-50 mach-dark:bg-emerald-400/10 px-3 py-2'>
+            <p className='min-w-0 text-xs text-green-700 mach-dark:text-emerald-400'>
+              <span className='font-semibold tracking-wide'>
+                {appliedCoupon.code}
+              </span>
+              {appliedCoupon.discountLabel
+                ? ` — ${appliedCoupon.discountLabel}`
+                : ""}
+              {totals.discount != null && totals.discount > 0 && (
+                <span className='block'>
+                  You save {formatPrice(totals.discount, currency)}
+                </span>
+              )}
+            </p>
+            {onRemoveCoupon && (
+              <button
+                type='button'
+                onClick={handleRemoveCoupon}
+                aria-label={`Remove promo code ${appliedCoupon.code}`}
+                className='shrink-0 text-[11px] font-medium uppercase tracking-wide text-green-700 mach-dark:text-emerald-400 underline underline-offset-2 hover:text-green-900 mach-dark:hover:text-emerald-300'>
+                Remove
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className='mt-2 flex gap-2'>
+            <div className='relative min-w-0 flex-1'>
+              <Tag className='absolute start-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400 mach-dark:text-white/40' />
+              <Input
+                type='text'
+                placeholder='Enter promo code'
+                aria-label='Promo code'
+                autoComplete='off'
+                autoCapitalize='characters'
+                spellCheck={false}
+                enterKeyHint='done'
+                value={couponCode}
+                onChange={(e) => {
+                  setCouponCode(e.target.value);
+                  if (couponFeedback) setCouponFeedback(null);
+                }}
+                onKeyDown={(e) => {
+                  // The promo box sits inside the order form: Enter must
+                  // apply the code, never place the order.
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleApplyCoupon();
+                  }
+                }}
+                disabled={isApplyingCoupon}
+                aria-invalid={couponFeedback?.success === false}
+                aria-describedby={feedbackId}
+                className={cn(
+                  "h-10 rounded-full ps-9 text-sm mach-dark:text-white",
+                  couponFeedback && !couponFeedback.success
+                    ? "border-red-300 mach-dark:border-red-400/60"
+                    : "border-stone-200 mach-dark:border-white/25",
+                )}
+              />
+            </div>
+            <Button
+              type='button'
+              variant='outline'
+              className='h-10 shrink-0 rounded-full px-5 text-xs tracking-wide border-stone-200 mach-dark:border-white/25 mach-dark:text-white mach-dark:hover:border-white mach-dark:hover:bg-white/10'
+              onClick={handleApplyCoupon}
+              disabled={!couponCode.trim() || isApplyingCoupon}>
+              {isApplyingCoupon ? "Checking…" : "Apply"}
+            </Button>
+          </div>
+        )}
+
+        <div id={feedbackId} aria-live='polite'>
+          {/* A code that stopped being valid on its own (cart edited, code
+              expired between visits, etc.) */}
+          {couponNotice && (
+            <p className='mt-2 rounded-xl border border-amber-100 mach-dark:border-amber-400/25 bg-amber-50 mach-dark:bg-amber-400/10 px-3 py-2 text-xs text-amber-700 mach-dark:text-amber-300'>
+              {couponNotice}
+            </p>
+          )}
+          {couponFeedback && (
+            <p
+              className={cn(
+                "mt-2 px-1 text-xs",
+                couponFeedback.success
+                  ? "text-green-700 mach-dark:text-emerald-400"
+                  : "text-red-600 mach-dark:text-red-400",
+              )}>
+              {couponFeedback.message}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <EditorialChrome>
@@ -490,6 +667,13 @@ export function CheckoutPageEditorialTemplate({
 
                   <div className='mt-5 h-px w-full bg-stone-200 mach-dark:bg-white/12' />
 
+                  {onApplyCoupon && (
+                    <>
+                      <div className='mt-5'>{renderPromoCode("desktop")}</div>
+                      <div className='mt-5 h-px w-full bg-stone-200 mach-dark:bg-white/12' />
+                    </>
+                  )}
+
                   {renderTotalsBreakdown()}
 
                   <div className='mt-4 h-px w-full bg-stone-200 mach-dark:bg-white/12' />
@@ -504,7 +688,7 @@ export function CheckoutPageEditorialTemplate({
                     type='submit'
                     size='lg'
                     className='mt-6 w-full rounded-full py-6 text-sm tracking-wide'
-                    disabled={isSubmitting}>
+                    disabled={isSubmitting || isApplyingCoupon}>
                     {isSubmitting ? (
                       <>
                         <Loader2 className='me-2 h-4 w-4 animate-spin' />
@@ -565,6 +749,14 @@ export function CheckoutPageEditorialTemplate({
                       {renderTotalsBreakdown()}
                     </div>
                   )}
+
+                  {/* Outside the collapsible panel so shoppers see it
+                      without expanding the summary. */}
+                  {onApplyCoupon && (
+                    <div className='mt-4 pt-4 border-t border-stone-200 mach-dark:border-white/15'>
+                      {renderPromoCode("mobile")}
+                    </div>
+                  )}
                 </div>
 
                 <div className='lg:hidden'>
@@ -572,7 +764,7 @@ export function CheckoutPageEditorialTemplate({
                     type='submit'
                     size='lg'
                     className='w-full rounded-full py-6 text-sm tracking-wide'
-                    disabled={isSubmitting}>
+                    disabled={isSubmitting || isApplyingCoupon}>
                     {isSubmitting ? (
                       <>
                         <Loader2 className='me-2 h-4 w-4 animate-spin' />

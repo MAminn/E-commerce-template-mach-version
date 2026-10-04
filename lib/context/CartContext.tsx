@@ -27,6 +27,22 @@ export interface PromoCodeInfo {
   eligibleProductIds?: string[];
 }
 
+/**
+ * Human-readable discount for an applied code — the server's label when it
+ * sent one, otherwise derived the same way the server does. Shared by every
+ * page that shows the applied code so cart and checkout always agree.
+ */
+export function promoDiscountLabel(
+  info: Pick<PromoCodeInfo, "discountLabel" | "discountType" | "discountValue">,
+): string {
+  return (
+    info.discountLabel ??
+    (info.discountType === "percentage"
+      ? `${info.discountValue}% off`
+      : `${info.discountValue.toFixed(2)} EGP off`)
+  );
+}
+
 const sameIds = (a: readonly string[] = [], b: readonly string[] = []) =>
   a.length === b.length && a.every((id) => b.includes(id));
 
@@ -506,14 +522,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       if (result.success && result.result) {
         setPromoCode(result.result);
-        const label =
-          result.result.discountLabel ??
-          (result.result.discountType === "percentage"
-            ? `${result.result.discountValue}% off`
-            : `${result.result.discountValue.toFixed(2)} EGP off`);
         return {
           success: true,
-          message: `"${code}" applied — ${label}.`,
+          message: `"${code}" applied — ${promoDiscountLabel(result.result)}.`,
         };
       }
 

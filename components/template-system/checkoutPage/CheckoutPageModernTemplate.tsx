@@ -30,6 +30,7 @@ import { OfferProgressBanner } from "#root/components/template-system/cartPage/O
 import {
   AppliedOffersSavings,
 } from "#root/components/template-system/cartPage/AppliedOffersSavings";
+import type { CartPageModernTemplateProps } from "#root/components/template-system/cartPage/CartPageModernTemplate";
 
 /**
  * Customer information interface
@@ -91,8 +92,20 @@ export interface PaymentMethodOption {
 
 /**
  * Props for CheckoutPageModernTemplate
+ *
+ * The promo-code props are the cart templates' own: pages/checkout feeds them
+ * from the same CartContext promo state pages/cart does, so checkout is a
+ * second entry point into one promo system, not a separate one.
  */
-export interface CheckoutPageModernTemplateProps {
+export interface CheckoutPageModernTemplateProps
+  extends Pick<
+    CartPageModernTemplateProps,
+    | "onApplyCoupon"
+    | "appliedCoupon"
+    | "onRemoveCoupon"
+    | "couponNotice"
+    | "onDismissCouponNotice"
+  > {
   customer?: CheckoutCustomerInfo;
   shippingAddress?: CheckoutAddress;
   billingAddress?: CheckoutAddress;

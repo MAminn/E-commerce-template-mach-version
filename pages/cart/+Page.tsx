@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
-import { useCart } from "#root/lib/context/CartContext";
+import { useCart, promoDiscountLabel } from "#root/lib/context/CartContext";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import type {
   CartPageModernTemplateProps,
@@ -146,14 +146,7 @@ export default function CartPage() {
     onApplyCoupon: handleApplyCoupon,
     onProceedToCheckout: handleProceedToCheckout,
     appliedCoupon: promoCode
-      ? {
-          code: promoCode.code,
-          discountLabel:
-            promoCode.discountLabel ??
-            (promoCode.discountType === "percentage"
-              ? `${promoCode.discountValue}% off`
-              : `${promoCode.discountValue.toFixed(2)} EGP off`),
-        }
+      ? { code: promoCode.code, discountLabel: promoDiscountLabel(promoCode) }
       : null,
     onRemoveCoupon: removePromoCode,
     couponNotice: promoCodeNotice,

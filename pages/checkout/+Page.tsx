@@ -5,6 +5,7 @@ import {
   useCart,
   type CartItem as ContextCartItem,
   type PromoCodeInfo,
+  promoDiscountLabel,
 } from "#root/lib/context/CartContext";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
@@ -75,6 +76,10 @@ export default function CheckoutPage() {
     shipping,
     total,
     promoCode,
+    applyPromoCode,
+    removePromoCode,
+    promoCodeNotice,
+    clearPromoCodeNotice,
     clearCart,
     appliedOffers,
   } = useCart();
@@ -364,6 +369,16 @@ export default function CheckoutPage() {
     currency: STORE_CURRENCY,
     paymentMethods,
     paymentMethodsLoading,
+    // The same CartContext promo state and actions pages/cart uses — a code
+    // applied or removed here is the code the cart shows, and the one
+    // `promoCodeId` above sends with the order.
+    onApplyCoupon: applyPromoCode,
+    appliedCoupon: promoCode
+      ? { code: promoCode.code, discountLabel: promoDiscountLabel(promoCode) }
+      : null,
+    onRemoveCoupon: removePromoCode,
+    couponNotice: promoCodeNotice,
+    onDismissCouponNotice: clearPromoCodeNotice,
   };
 
   return <Template.component {...templateProps} />;
