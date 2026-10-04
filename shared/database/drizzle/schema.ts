@@ -14,6 +14,7 @@ import {
 import { v7 } from "uuid";
 import type { SupplementInfo } from "#root/shared/types/supplement-info";
 import type { UpsellSettings } from "#root/shared/upsell/config";
+import type { WhatsAppSettings } from "#root/shared/whatsapp/config";
 
 export const userRole = pgEnum("user_role", ["admin", "vendor", "user", "superadmin"]);
 
@@ -1513,6 +1514,9 @@ export const storeSettings = pgTable("store_settings", {
   /** Store-wide upsell switches. Null/partial rows inherit the defaults in
    * shared/upsell/config.ts. */
   upsellConfig: jsonb("upsell_config").$type<Partial<UpsellSettings>>(),
+  /** Floating WhatsApp (click-to-chat) button. Null/partial rows inherit the
+   * defaults in shared/whatsapp/config.ts — off, no number. */
+  whatsappConfig: jsonb("whatsapp_config").$type<Partial<WhatsAppSettings>>(),
   updatedAt: timestamp("updated_at", {
     withTimezone: true,
     mode: "date",

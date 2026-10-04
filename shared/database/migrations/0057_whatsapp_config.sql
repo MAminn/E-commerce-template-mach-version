@@ -1,0 +1,13 @@
+-- Additive: store-wide settings for the floating WhatsApp (click-to-chat)
+-- button.
+--
+-- whatsapp_config is nullable; a NULL row means "use the shipped defaults"
+-- (shared/whatsapp/config.ts), which keep the button OFF with no number, so
+-- nothing needs backfilling and existing stores are unaffected. It is its own
+-- column — the footer contact phone is not reused.
+--
+-- FORMATTING: shared/database/auto-migrate.ts splits this file on the
+-- statement-breakpoint marker and DISCARDS any chunk beginning with a SQL
+-- line comment, so this header ends with its own breakpoint.
+--> statement-breakpoint
+ALTER TABLE "store_settings" ADD COLUMN IF NOT EXISTS "whatsapp_config" jsonb;

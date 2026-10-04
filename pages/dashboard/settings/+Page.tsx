@@ -26,6 +26,7 @@ import {
 import { STORE_CURRENCY } from "#root/shared/config/branding";
 import { v7 } from "uuid";
 import { UpsellSettingsCard } from "./UpsellSettingsCard";
+import { WhatsAppSettingsCard } from "./WhatsAppSettingsCard";
 
 export default function SettingsPage() {
   const [shippingFee, setShippingFee] = useState<string>("");
@@ -449,6 +450,8 @@ export default function SettingsPage() {
       </Card>
 
       <UpsellSettingsCard />
+
+      <WhatsAppSettingsCard />
 
       {/* Product Page Content Card */}
       <Card>

@@ -14,6 +14,7 @@ import { EntryPopup } from "#root/components/EntryPopup";
 import { StickyCartBar } from "#root/components/ui/StickyCartBar";
 import { MachCartToastContainer } from "#root/components/template-system/mach/MachCartFeedback";
 import { MachSocialProofToast } from "#root/components/template-system/mach/MachSocialProofToast";
+import { MachWhatsAppButton } from "#root/components/template-system/mach/whatsapp/MachWhatsAppButton";
 import {
   MACH_THEME_ATTRIBUTE,
   MACH_THEME_CLASS,
@@ -327,6 +328,11 @@ function LayoutShell({
                 own route exclusion list (checkout, cart, auth, account…), so
                 mounting it here does not mean showing it everywhere. */}
             {!isDashboardRoute && isMachStorefront && <MachSocialProofToast />}
+            {/* CMS-controlled click-to-chat button (Settings → WhatsApp).
+                Renders nothing until the owner switches it on with a valid
+                number; positioned against the Mach sticky purchase bar and
+                the consent banner, and keeps its own route exclusions. */}
+            {!isDashboardRoute && isMachStorefront && <MachWhatsAppButton />}
             {/* Minimal template: mobile relies on the bottom nav's "Offers" tab
                 instead, but desktop still gets this pill — CTA uses the
                 component's own default (/shop, "SHOP MORE") so users chasing
