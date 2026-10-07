@@ -19,6 +19,8 @@ import { TrackingEventName } from "#root/shared/types/pixel-tracking";
 import { STORE_CURRENCY } from "#root/shared/config/branding";
 import { useCart } from "#root/lib/context/CartContext";
 import { trpc } from "#root/shared/trpc/client";
+import { AttemptConfirmation } from "./AttemptConfirmation";
+import { displayOrderNumber, ORDER_REFERENCE_PATTERN } from "#root/shared/orders/order-reference";
 
 type PaymentState = "none" | "success" | "pending" | "cancelled" | "failed";
 
@@ -40,6 +42,20 @@ function getPaymentState(param: string | null): PaymentState {
 }
 
 export default function OrderConfirmationPage() {
+  // Online (Fawaterak) checkouts return with ?attempt=<id>: no order exists
+  // until the payment is verified. urlParsed is identical on server and
+  // client, so this branch never causes a hydration mismatch.
+  const pageContext = usePageContext();
+  const search = pageContext.urlParsed?.search ?? {};
+  const attemptId = search.attempt;
+  if (attemptId) {
+    return <AttemptConfirmation attemptId={attemptId} returnedAs={search.payment ?? null} />;
+  }
+  return <OrderConfirmationContent />;
+}
+
+/** COD and legacy order-first online payments (?id=<orderId>…). Unchanged. */
+function OrderConfirmationContent() {
   const pageContext = usePageContext();
   const searchParams =
     typeof window !== "undefined"
@@ -49,7 +65,15 @@ export default function OrderConfirmationPage() {
   const orderTotal = searchParams?.get("total") ?? "";
   const customerEmail = searchParams?.get("email") ?? "";
   const paymentState = getPaymentState(searchParams?.get("payment") ?? null);
-  const shortId = orderId ? orderId.substring(0, 8).toUpperCase() : "";
+  // New orders pass their unique reference (?ref=ORD-XXXXXXXX); older links
+  // only carry the id, whose legacy number is its first 8 hex characters.
+  const refParam = searchParams?.get("ref") ?? "";
+  const shortId = orderId
+    ? displayOrderNumber({
+        id: orderId,
+        reference: ORDER_REFERENCE_PATTERN.test(refParam) ? refParam : null,
+      }).slice(1)
+    : "";
   const [verifiedPaymentStatus, setVerifiedPaymentStatus] = useState<
     | "pending"
     | "paid"

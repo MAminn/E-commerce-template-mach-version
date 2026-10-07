@@ -164,6 +164,9 @@ export const viewOrders = (
               bostaSyncedAt: order.bostaSyncedAt,
               bostaSyncAttemptedAt: order.bostaSyncAttemptedAt,
               bostaWebhookData: order.bostaWebhookData,
+              fulfillmentHold: order.fulfillmentHold,
+              reference: order.reference,
+              fulfillmentHoldNote: order.fulfillmentHoldNote,
             })
             .from(order)
             .where(whereClause)

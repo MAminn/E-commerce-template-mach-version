@@ -75,10 +75,12 @@ import { useToast } from "#root/components/ui/use-toast";
 import { Pagination } from "#root/components/utils/Pagination";
 import { OrderEditPanel } from "./OrderEditPanel";
 import { OrderActivityLog } from "./OrderActivityLog";
+import { FulfillmentHoldBadge, FulfillmentHoldPanel, PaidWithoutOrderBanner } from "./FulfillmentHold";
 import {
   isOnlinePaymentMethod,
   type PaymentMethod,
 } from "#root/shared/config/payment-methods";
+import { displayOrderNumber, matchesOrderReference } from "#root/shared/orders/order-reference";
 
 interface OrderItem {
   id: string;
@@ -135,6 +137,11 @@ interface Order {
   bostaAttempts?: number | null;
   /** Online-payment order that reached (or is mid-flight to) Bosta without a confirmed "paid" status */
   hasPaymentIssue?: boolean;
+  /** Unique "ORD-XXXXXXXX" reference; null on legacy orders */
+  reference?: string | null;
+  /** Paid order that must not be prepared (e.g. "stock_conflict") */
+  fulfillmentHold?: string | null;
+  fulfillmentHoldNote?: string | null;
 }
 
 export default function Orders() {
@@ -442,6 +449,7 @@ export default function Orders() {
       const query = searchQuery.toLowerCase();
       return (
         order.id.toLowerCase().includes(query) ||
+        matchesOrderReference(order, query) ||
         order.customerName.toLowerCase().includes(query) ||
         order.customerEmail.toLowerCase().includes(query) ||
         order.items?.some((item) => item.name.toLowerCase().includes(query))
@@ -739,6 +747,7 @@ export default function Orders() {
             )}
           </CardHeader>
           <CardContent>
+            <PaidWithoutOrderBanner enabled={isAdmin} />
             {isLoading ? (
               <div className='text-center py-10'>
                 <Loader2 className='mx-auto h-12 w-12 text-muted-foreground animate-spin' />
@@ -790,7 +799,7 @@ export default function Orders() {
                       {filteredOrders.map((order) => (
                         <TableRow
                           key={order.id}
-                          className={`hover:bg-muted/50 ${order.hasPaymentIssue ? "bg-red-50/60" : ""}`}>
+                          className={`hover:bg-muted/50 ${order.hasPaymentIssue || order.fulfillmentHold ? "bg-red-50/60" : ""}`}>
                           <TableCell className='font-mono text-xs py-2'>
                             <div className='flex items-center gap-1.5'>
                               {order.hasPaymentIssue && (
@@ -799,7 +808,7 @@ export default function Orders() {
                                   aria-label='Sent to Bosta without confirmed payment'
                                 />
                               )}
-                              {order.id.slice(0, 8)}
+                              {displayOrderNumber(order)}
                             </div>
                           </TableCell>
                           <TableCell className='py-2'>
@@ -830,12 +839,15 @@ export default function Orders() {
                             {renderPaymentInfo(order, true)}
                           </TableCell>
                           <TableCell className='py-2'>
-                            <Badge
-                              variant='outline'
-                              className={getStatusColor(order.status)}>
-                              {order.status.charAt(0).toUpperCase() +
-                                order.status.slice(1)}
-                            </Badge>
+                            <div className='flex flex-col items-start gap-1'>
+                              <Badge
+                                variant='outline'
+                                className={getStatusColor(order.status)}>
+                                {order.status.charAt(0).toUpperCase() +
+                                  order.status.slice(1)}
+                              </Badge>
+                              <FulfillmentHoldBadge hold={order.fulfillmentHold} />
+                            </div>
                           </TableCell>
                           {bostaEnabled && isAdmin && (
                             <TableCell className='py-2'>
@@ -878,7 +890,7 @@ export default function Orders() {
                   {filteredOrders.map((order) => (
                     <div
                       key={order.id}
-                      className={`rounded-lg border bg-card p-4 shadow-sm ${order.hasPaymentIssue ? "bg-red-50/60 border-red-200" : ""}`}>
+                      className={`rounded-lg border bg-card p-4 shadow-sm ${order.hasPaymentIssue || order.fulfillmentHold ? "bg-red-50/60 border-red-200" : ""}`}>
                       <div className='flex items-center justify-between'>
                         <span className='font-mono text-xs text-muted-foreground flex items-center gap-1.5'>
                           {order.hasPaymentIssue && (
@@ -887,7 +899,7 @@ export default function Orders() {
                               aria-label='Sent to Bosta without confirmed payment'
                             />
                           )}
-                          #{order.id.slice(0, 8)}
+                          {displayOrderNumber(order)}
                         </span>
                         <span className='text-xs text-muted-foreground'>
                           {formatRelativeDate(order.createdAt)}
@@ -913,6 +925,11 @@ export default function Orders() {
                         {Number.parseFloat(order.total).toFixed(2)} EGP
                       </div>
                       <div className='mt-2'>{renderPaymentInfo(order, true)}</div>
+                      {order.fulfillmentHold && (
+                        <div className='mt-2'>
+                          <FulfillmentHoldBadge hold={order.fulfillmentHold} />
+                        </div>
+                      )}
                       <div className='mt-2 flex items-center justify-between gap-2 flex-wrap'>
                         <Badge
                           variant='outline'
@@ -989,6 +1006,18 @@ export default function Orders() {
                     Order ID: {selectedOrder.id}
                   </DialogDescription>
                 </DialogHeader>
+
+                <FulfillmentHoldPanel
+                    orderId={selectedOrder.id}
+                    hold={selectedOrder.fulfillmentHold}
+                    note={selectedOrder.fulfillmentHoldNote}
+                    internalNotes={selectedOrder.notes}
+                    canRelease={isAdmin}
+                    onReleased={handleOrderSaved}
+                    onError={(message) =>
+                      toast({ title: "Hold not released", description: message, variant: "destructive" })
+                    }
+                  />
 
                 {selectedOrder.hasPaymentIssue && (
                   <div className='flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800'>
@@ -1454,6 +1483,18 @@ export default function Orders() {
                 ) : (
                 <>
                 <div className='flex-1 overflow-y-auto p-4 space-y-6'>
+                  <FulfillmentHoldPanel
+                    orderId={selectedOrder.id}
+                    hold={selectedOrder.fulfillmentHold}
+                    note={selectedOrder.fulfillmentHoldNote}
+                    internalNotes={selectedOrder.notes}
+                    canRelease={isAdmin}
+                    onReleased={handleOrderSaved}
+                    onError={(message) =>
+                      toast({ title: "Hold not released", description: message, variant: "destructive" })
+                    }
+                  />
+
                   {selectedOrder.hasPaymentIssue && (
                     <div className='flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800'>
                       <AlertTriangle className='h-4 w-4 mt-0.5 shrink-0' />

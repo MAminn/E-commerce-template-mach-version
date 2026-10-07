@@ -24,6 +24,7 @@ import {
   isFawaterakConfigured,
 } from "#root/shared/config/payment";
 import { getPublicOrigin } from "#root/shared/config/site-url";
+import { legacyOrderReference } from "#root/shared/orders/order-reference";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -236,8 +237,25 @@ async function fawaterakRequest<T>(
 // ─── Create hosted transaction ──────────────────────────────────────────────
 
 export interface CreateFawaterakTransactionInput {
-  /** Internal order UUID — the only identity we ever trust back from Fawaterak. */
+  /**
+   * The local payment reference — the only identity we ever trust back from
+   * Fawaterak. For the payment-attempt-first checkout this is the
+   * payment_attempt id (which the order later reuses); for legacy
+   * order-first payments it is the order id. Fawaterak only ever sees an
+   * opaque UUID in pay_load.orderId either way.
+   */
   orderId: string;
+  /**
+   * Where the customer returns: "attempt" → /order-confirmation?attempt=<id>
+   * (no order exists yet); "order" (default, legacy) → ?id=<orderId>&total&email.
+   */
+  referenceKind?: "order" | "attempt";
+  /**
+   * Merchant-visible tr_number. New attempts pass their registered unique
+   * reference; legacy order-first payments omit it and keep the original
+   * derivation (first 8 hex chars of the order id).
+   */
+  reference?: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -256,9 +274,13 @@ export interface FawaterakTransactionResult {
   expiresIn: number | null;
 }
 
-/** Merchant-visible reference; mirrors the short id shown on the confirmation page. */
+/**
+ * Legacy merchant-visible reference (first 8 hex chars of the id). Kept for
+ * legacy order-first payments; new attempts send their registered unique
+ * reference instead (shared/orders/order-reference.ts).
+ */
 export function buildFawaterakOrderReference(orderId: string): string {
-  return `ORD-${orderId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+  return legacyOrderReference(orderId);
 }
 
 /**
@@ -293,6 +315,26 @@ export function buildFawaterakRedirectUrls(order: {
   };
 }
 
+/**
+ * Redirect targets for the payment-attempt-first checkout. Only the attempt id
+ * travels in the URL — no order number, total or email, because no order
+ * exists yet; the confirmation page asks the server what the attempt became.
+ */
+export function buildFawaterakAttemptRedirectUrls(attemptId: string) {
+  const origin = getPublicOrigin();
+  const confirmation = (payment: string) => {
+    const params = new URLSearchParams({ attempt: attemptId, payment });
+    return `${origin}/order-confirmation?${params.toString()}`;
+  };
+  return {
+    successUrl: confirmation("success"),
+    failUrl: confirmation("failed"),
+    pendingUrl: confirmation("pending"),
+    backUrl: confirmation("cancelled"),
+    webhookUrl: `${origin}${FAWATERAK_WEBHOOK_PATHS.paid}`,
+  };
+}
+
 function splitName(fullName: string): { firstName: string; lastName: string } {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   const firstName = parts[0] ?? "Customer";
@@ -315,13 +357,16 @@ export function buildFawaterakTransactionPayload(
   input: CreateFawaterakTransactionInput,
 ): Record<string, unknown> {
   const amount = formatMajorAmount(input.total);
-  const reference = buildFawaterakOrderReference(input.orderId);
+  const reference = input.reference ?? buildFawaterakOrderReference(input.orderId);
   const { firstName, lastName } = splitName(input.customerName);
-  const urls = buildFawaterakRedirectUrls({
-    id: input.orderId,
-    total: input.total,
-    customerEmail: input.customerEmail,
-  });
+  const urls =
+    input.referenceKind === "attempt"
+      ? buildFawaterakAttemptRedirectUrls(input.orderId)
+      : buildFawaterakRedirectUrls({
+          id: input.orderId,
+          total: input.total,
+          customerEmail: input.customerEmail,
+        });
 
   const description = (input.itemNames ?? [])
     .filter((n) => typeof n === "string" && n.trim())

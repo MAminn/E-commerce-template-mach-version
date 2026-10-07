@@ -1,4 +1,5 @@
 import { query } from "#root/shared/database/drizzle/db";
+import { FULFILLMENT_HOLD_BLOCK_MESSAGE } from "#root/backend/orders/fulfillment-hold/service";
 import {
   order,
   orderItem,
@@ -110,10 +111,49 @@ export const editOrder = (
               shipping: order.shipping,
               tax: order.tax,
               discount: order.discount,
+              fulfillmentHold: order.fulfillmentHold,
             })
             .from(order)
             .where(eq(order.id, orderId))
             .execute();
+
+          // A held order took no stock; item edits here adjust stock by
+          // deltas and would corrupt inventory, and status/payment edits would
+          // move it toward fulfillment. The ONLY edit allowed while held is the
+          // internal notes field — no items, stock, money or status touched.
+          if (existingOrder[0]?.fulfillmentHold) {
+            const { orderId: _orderId, notes, ...rest } = input;
+            const touchesMore = Object.values(rest).some(
+              (value) => value !== undefined && !(Array.isArray(value) && value.length === 0),
+            );
+            if (!touchesMore && notes !== undefined) {
+              const [updated] = await tx
+                .update(order)
+                .set({ notes, updatedAt: new Date() })
+                .where(eq(order.id, orderId))
+                .returning();
+              const [actor] = await tx
+                .select({ id: user.id })
+                .from(user)
+                .where(eq(user.email, session.email))
+                .execute();
+              await tx.insert(orderLog).values({
+                orderId,
+                userId: actor?.id,
+                action: "items_edited",
+                oldStatus: existingOrder[0].status,
+                newStatus: existingOrder[0].status,
+                note: `Internal notes updated by ${session.role} (order on fulfillment hold — nothing else changed)`,
+              });
+              return updated;
+            }
+            throw new ServerError({
+              tag: "FulfillmentHold",
+              message: `Order ${orderId} is on fulfillment hold (${existingOrder[0].fulfillmentHold})`,
+              statusCode: 409,
+              clientMessage: FULFILLMENT_HOLD_BLOCK_MESSAGE,
+            });
+          }
 
           if (!existingOrder || existingOrder.length === 0) {
             throw new ServerError({

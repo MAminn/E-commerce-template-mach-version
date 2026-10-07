@@ -52,7 +52,9 @@ function dispatchResultToError(
             ? "NotFound"
             : result.code === "payment_not_confirmed"
               ? "PaymentNotConfirmed"
-              : "AlreadyExists",
+              : result.code === "on_hold"
+                ? "FulfillmentHold"
+                : "AlreadyExists",
         statusCode: result.code === "not_found" ? 404 : 409,
         clientMessage: result.reason,
       });

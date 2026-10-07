@@ -19,6 +19,7 @@ import {
   Gift,
   Type,
   BellRing,
+  CreditCard,
 } from "lucide-react";
 
 import {
@@ -59,6 +60,7 @@ export function DashboardSidebar() {
     { label: "Categories", href: "/dashboard/categories", icon: LayoutGrid },
     { label: "Products", href: "/dashboard/products", icon: Package },
     { label: "Orders", href: "/dashboard/orders", icon: ShoppingCart },
+    { label: "Payment Attempts", href: "/dashboard/payment-attempts", icon: CreditCard },
     { label: "Promo Codes", href: "/dashboard/promo-codes", icon: TicketPercent },
     { label: "Offers", href: "/dashboard/offers", icon: Tag },
     { label: "Reviews", href: "/dashboard/reviews", icon: Star },

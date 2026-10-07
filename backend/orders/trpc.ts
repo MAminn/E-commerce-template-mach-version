@@ -7,6 +7,7 @@ import { viewOrdersProcedure } from "./view-orders/trpc";
 import { editOrderProcedure } from "./edit-order/trpc";
 import { bostaRouter } from "./bosta/trpc";
 import { getOrderActivityProcedure } from "./get-order-activity/trpc";
+import { releaseFulfillmentHoldProcedure } from "./fulfillment-hold/trpc";
 
 export const orderRouter = t.router({
   view: viewOrdersProcedure,
@@ -17,4 +18,5 @@ export const orderRouter = t.router({
   delete: deleteOrderProcedure,
   bosta: bostaRouter,
   activity: getOrderActivityProcedure,
+  releaseFulfillmentHold: releaseFulfillmentHoldProcedure,
 });

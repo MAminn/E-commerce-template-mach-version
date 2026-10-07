@@ -15,6 +15,7 @@ import {
 } from "@react-email/components";
 // NEVER REMOVE THIS IMPORT
 import * as React from "react";
+import type { OrderEmailNotice } from "../order-email-notice";
 
 interface OrderItem {
   name: string;
@@ -42,6 +43,8 @@ interface MinimalOrderEmailProps {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  /** Replaces the confirmation copy (e.g. paid order under review). */
+  notice?: OrderEmailNotice;
 }
 
 export const MinimalOrderEmailTemplate = ({
@@ -61,14 +64,24 @@ export const MinimalOrderEmailTemplate = ({
   customerName,
   customerEmail,
   customerPhone,
+  notice,
 }: MinimalOrderEmailProps) => {
   const fmt = (price: number) => price.toFixed(2);
 
   return (
     <Html>
       <Head>
-        <title>Your Order Confirmation</title>
-        <Preview>Thank you for your order at {storeName}!</Preview>
+        {notice ? (
+          <>
+            <title>{notice.title}</title>
+            <Preview>{notice.preview}</Preview>
+          </>
+        ) : (
+          <>
+            <title>Your Order Confirmation</title>
+            <Preview>Thank you for your order at {storeName}!</Preview>
+          </>
+        )}
       </Head>
       <Body style={main}>
         <Container style={container}>
@@ -91,6 +104,31 @@ export const MinimalOrderEmailTemplate = ({
           <Hr style={divider} />
 
           {/* Greeting */}
+          {notice ? (
+            <Section style={section}>
+              {notice.alert && notice.alert.length > 0 && (
+                <Section style={noticeAlert}>
+                  {notice.alert.map((line) => (
+                    <Text key={line} style={noticeAlertText}>
+                      {line}
+                    </Text>
+                  ))}
+                </Section>
+              )}
+              <Heading as="h2" style={sectionTitle}>
+                {notice.title}
+              </Heading>
+              <Text style={paragraph}>Dear {customerName},</Text>
+              {notice.paragraphs.map((line) => (
+                <Text key={line} style={paragraph}>
+                  {line}
+                </Text>
+              ))}
+              {notice.orderNumber && (
+                <Text style={paragraph}>Order number: {notice.orderNumber}</Text>
+              )}
+            </Section>
+          ) : (
           <Section style={section}>
             <Heading as="h2" style={sectionTitle}>
               Order Confirmation
@@ -101,6 +139,7 @@ export const MinimalOrderEmailTemplate = ({
               processing your order and will keep you updated on its status.
             </Text>
           </Section>
+          )}
 
           {/* Order Summary */}
           <Section style={section}>
@@ -216,6 +255,20 @@ export const MinimalOrderEmailTemplate = ({
 };
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
+
+const noticeAlert = {
+  backgroundColor: "#fef2f2",
+  border: "2px solid #dc2626",
+  padding: "12px 16px",
+  marginBottom: "16px",
+};
+
+const noticeAlertText = {
+  color: "#991b1b",
+  fontSize: "14px",
+  fontWeight: "700",
+  margin: "2px 0",
+};
 
 const main = {
   backgroundColor: "#f9fafb",

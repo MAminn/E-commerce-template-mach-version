@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "#root/components/ui/button";
 import { Badge } from "#root/components/ui/badge";
+import { displayOrderNumber } from "#root/shared/orders/order-reference";
 
 interface OrderItem {
   id: string;
@@ -28,6 +29,7 @@ interface OrderItem {
 }
 
 interface Order {
+  reference?: string | null;
   id: string;
   customerName: string;
   customerEmail: string | null;
@@ -187,7 +189,7 @@ export default function OrderHistoryPage() {
                       </div>
                       <div className='min-w-0'>
                         <p className='text-sm font-medium text-gray-900 mach-dark:text-white'>
-                          Order #{order.id.substring(0, 8).toUpperCase()}
+                          Order {displayOrderNumber(order)}
                         </p>
                         <p className='text-xs text-gray-400 mach-dark:text-white/40 mt-0.5'>
                           {new Date(order.createdAt).toLocaleDateString(

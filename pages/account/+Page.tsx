@@ -34,6 +34,7 @@ import { useResolvedHeaderLogo } from "#root/components/globals/HeaderLogo";
 import { useWishlist } from "#root/lib/hooks/useWishlist";
 import { STORE_CURRENCY } from "#root/shared/config/branding";
 import { getProductUrl } from "#root/lib/utils/route-helpers";
+import { displayOrderNumber } from "#root/shared/orders/order-reference";
 
 const profileSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
@@ -69,6 +70,7 @@ interface OrderItem {
 }
 
 interface Order {
+  reference?: string | null;
   id: string;
   customerName: string;
   customerEmail: string | null;
@@ -324,7 +326,7 @@ function OrdersTab() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[13px] font-medium text-stone-800 mach-dark:text-white">#{order.id.substring(0, 8).toUpperCase()}</span>
+                  <span className="text-[13px] font-medium text-stone-800 mach-dark:text-white">{displayOrderNumber(order)}</span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium uppercase tracking-wide ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 text-[12px] text-stone-400 mach-dark:text-white/40">

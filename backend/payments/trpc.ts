@@ -3,8 +3,11 @@
  *
  * Provides:
  * - paymentMethods: Public query returning available payment methods
- * - createSession: Protected mutation to create a payment session for an order
- * - verifyPayment: Protected mutation to check payment status
+ * - createSession: payment session for an existing order (legacy order-first
+ *   online flow: Stripe, Paymob, and pre-attempt Fawaterak orders)
+ * - verifyPayment: payment status for an existing order
+ * - startCheckout: Fawaterak payment-attempt-first checkout (no order before payment)
+ * - attemptStatus: confirmation-page status of a payment attempt
  */
 
 import { z } from "zod";
@@ -34,6 +37,14 @@ import {
 } from "./fawaterak-service";
 import { applyOnlinePaymentUpdate } from "./confirm-online-payment";
 import { ServerError } from "#root/shared/error/server";
+import { paymentAttempt } from "#root/shared/database/drizzle/schema";
+import {
+  checkProviderAndFinalize,
+  finalizePaidAttempt,
+  PAID_STATES,
+  startCheckoutSchema,
+  startOnlineCheckout,
+} from "./payment-attempts/service";
 
 // ─── Payment Methods Query ──────────────────────────────────────────────────
 
@@ -385,10 +396,141 @@ const verifyPaymentProcedure = publicProcedure
     ).then(serializeBackendEffectResult);
   });
 
+// ─── Payment-attempt-first online checkout ──────────────────────────────────
+
+const toServerError = (error: unknown) =>
+  error instanceof ServerError
+    ? error
+    : new ServerError({
+        tag: "PaymentError",
+        cause: error,
+        message: error instanceof Error ? error.message : String(error),
+        statusCode: 500,
+        clientMessage:
+          "We couldn't start the online payment. Nothing was charged and your cart is still here — please try again.",
+      });
+
+/**
+ * Online checkout: prices the cart into a payment attempt and returns the
+ * Fawaterak hosted-checkout URL. Creates NO order — the order is created
+ * only after the provider verifies the payment.
+ */
+const startCheckoutProcedure = publicProcedure
+  .input(startCheckoutSchema)
+  .mutation(async ({ ctx, input }) => {
+    return await runBackendEffect(
+      Effect.tryPromise({
+        try: async () => {
+          if (!isFawaterakConfigured()) {
+            throw new ServerError({
+              tag: "BadRequest",
+              message: "Fawaterak is not configured",
+              statusCode: 400,
+              clientMessage: "Online payment is not available",
+            });
+          }
+          return startOnlineCheckout(ctx.db, input, ctx.clientSession ?? undefined);
+        },
+        catch: toServerError,
+      }),
+    ).then(serializeBackendEffectResult);
+  });
+
+/**
+ * Confirmation-page status for a payment attempt. Never trusts the redirect:
+ * asks Fawaterak and, if verified paid, runs the same idempotent finalizer
+ * the webhook uses. Exposes the order (number, total, email) only once a real
+ * order exists.
+ */
+const attemptStatusProcedure = publicProcedure
+  .input(z.object({ attemptId: z.string().uuid() }))
+  .query(async ({ ctx, input }) => {
+    return await runBackendEffect(
+      Effect.tryPromise({
+        try: async () => {
+          const load = async () => {
+            const [row] = await ctx.db
+              .select({
+                id: paymentAttempt.id,
+                status: paymentAttempt.status,
+                intentKey: paymentAttempt.intentKey,
+                total: paymentAttempt.total,
+                orderId: paymentAttempt.orderId,
+              })
+              .from(paymentAttempt)
+              .where(eq(paymentAttempt.id, input.attemptId))
+              .limit(1)
+              .execute();
+            return row;
+          };
+
+          const attempt = await load();
+          if (!attempt) {
+            throw new ServerError({
+              tag: "NotFound",
+              message: "Payment attempt not found",
+              statusCode: 404,
+              clientMessage: "Payment not found",
+            });
+          }
+
+          if (PAID_STATES.includes(attempt.status)) {
+            // Retry materialization / effects if still outstanding (no-op when done).
+            await finalizePaidAttempt(ctx.db, attempt.id, null);
+          } else if (isFawaterakConfigured()) {
+            await checkProviderAndFinalize(ctx.db, attempt);
+          }
+
+          const current = (await load()) ?? attempt;
+          let orderInfo: {
+            id: string;
+            reference: string | null;
+            total: string;
+            customerEmail: string;
+            fulfillmentHold: string | null;
+          } | null = null;
+          if (current.status === "materialized" && current.orderId) {
+            const [o] = await ctx.db
+              .select({
+                id: order.id,
+                reference: order.reference,
+                total: order.total,
+                customerEmail: order.customerEmail,
+                fulfillmentHold: order.fulfillmentHold,
+              })
+              .from(order)
+              .where(eq(order.id, current.orderId))
+              .limit(1)
+              .execute();
+            orderInfo = o ?? null;
+          }
+
+          return {
+            attemptId: current.id,
+            status: current.status,
+            amount: current.total,
+            order: orderInfo
+              ? {
+                  id: orderInfo.id,
+                  reference: orderInfo.reference,
+                  total: orderInfo.total,
+                  customerEmail: orderInfo.customerEmail,
+                  onHold: !!orderInfo.fulfillmentHold,
+                }
+              : null,
+          };
+        },
+        catch: toServerError,
+      }),
+    ).then(serializeBackendEffectResult);
+  });
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 export const paymentRouter = t.router({
   methods: paymentMethodsProcedure,
   createSession: createPaymentSessionProcedure,
   verify: verifyPaymentProcedure,
+  startCheckout: startCheckoutProcedure,
+  attemptStatus: attemptStatusProcedure,
 });

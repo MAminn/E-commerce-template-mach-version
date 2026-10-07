@@ -233,8 +233,7 @@ export default function CheckoutPage() {
         };
       });
 
-      // Submit order via tRPC (with paymentMethod)
-      const result = await trpc.order.create.mutate({
+      const checkoutPayload = {
         customerName: formValues.fullName || "",
         customerEmail: formValues.email || "",
         customerPhone: formValues.phoneNumber || "",
@@ -246,11 +245,62 @@ export default function CheckoutPage() {
         items: orderItemsPayload,
         notes: formValues.notes || undefined,
         promoCodeId: promoCode?.id,
-        paymentMethod: selectedPaymentMethod as PaymentMethod,
         buildingNumber: formValues.buildingNumber || undefined,
         apartment: formValues.apartment || undefined,
         // Exact Bosta district picked at checkout (only when Bosta is enabled).
         bostaDistrictId: formValues.bostaDistrictId || undefined,
+      };
+
+      // ─── Fawaterak: payment attempt first — NO order until paid ────────
+      // The server prices the cart into a payment attempt and returns the
+      // hosted payment page. The cart is not cleared and not marked
+      // converted here: if the payment never completes, nothing was
+      // ordered and the cart is still the customer's to retry with.
+      if (selectedPaymentMethod === "fawaterak") {
+        const started = await trpc.payment.startCheckout.mutate({
+          ...checkoutPayload,
+          paymentMethod: "fawaterak",
+          cartSessionToken: getCartSessionToken() || undefined,
+        });
+        if (!started.success) {
+          throw new Error(
+            started.error ||
+              "We couldn't start the online payment. Nothing was charged and your cart is still here — please try again.",
+          );
+        }
+        const attemptId = started.result.attemptId;
+        try {
+          // For the Purchase event, fired only once a real order exists.
+          sessionStorage.setItem(
+            `checkout_items:attempt:${attemptId}`,
+            JSON.stringify(
+              items.map((item) => ({
+                itemId: item.id,
+                itemName: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                category: item.categoryName ?? undefined,
+              })),
+            ),
+          );
+          // The confirmation page clears the cart only for this attempt,
+          // and only once the payment is verified.
+          sessionStorage.setItem(`pending_cart_clear:attempt:${attemptId}`, "1");
+        } catch {
+          /* best-effort */
+        }
+        if (started.result.kind === "already_paid") {
+          navigate(`/order-confirmation?attempt=${attemptId}&payment=success`);
+          return;
+        }
+        window.location.href = started.result.paymentUrl;
+        return;
+      }
+
+      // Submit order via tRPC (with paymentMethod)
+      const result = await trpc.order.create.mutate({
+        ...checkoutPayload,
+        paymentMethod: selectedPaymentMethod as PaymentMethod,
       });
 
       if (!result.success) {
@@ -258,6 +308,9 @@ export default function CheckoutPage() {
       }
 
       const orderId = result.result?.id ?? "";
+      const orderRef = result.result?.reference
+        ? `&ref=${encodeURIComponent(result.result.reference)}`
+        : "";
       const orderTotal = result.result?.total ?? "";
       const email = encodeURIComponent(formValues.email || "");
 
@@ -298,8 +351,8 @@ export default function CheckoutPage() {
           const paymentResult = await trpc.payment.createSession.mutate({
             orderId,
             paymentMethod: selectedPaymentMethod as PaymentGateway,
-            successUrl: `${origin}/order-confirmation?id=${orderId}&total=${orderTotal}&email=${email}&payment=success`,
-            cancelUrl: `${origin}/order-confirmation?id=${orderId}&total=${orderTotal}&email=${email}&payment=cancelled`,
+            successUrl: `${origin}/order-confirmation?id=${orderId}${orderRef}&total=${orderTotal}&email=${email}&payment=success`,
+            cancelUrl: `${origin}/order-confirmation?id=${orderId}${orderRef}&total=${orderTotal}&email=${email}&payment=cancelled`,
           });
 
           if (paymentResult.success && paymentResult.result?.paymentUrl) {
@@ -324,7 +377,7 @@ export default function CheckoutPage() {
           // Still clear cart and navigate to confirmation (order exists, payment pending)
           clearCart();
           navigate(
-            `/order-confirmation?id=${orderId}&total=${orderTotal}&email=${email}&payment=pending`,
+            `/order-confirmation?id=${orderId}${orderRef}&total=${orderTotal}&email=${email}&payment=pending`,
           );
           return;
         }
@@ -333,7 +386,7 @@ export default function CheckoutPage() {
       // ─── COD flow: just navigate to confirmation ──────────────────────
       clearCart();
       navigate(
-        `/order-confirmation?id=${orderId}&total=${orderTotal}&email=${email}`,
+        `/order-confirmation?id=${orderId}${orderRef}&total=${orderTotal}&email=${email}`,
       );
     } catch (error) {
       console.error("[Checkout] Order submission failed:", error);

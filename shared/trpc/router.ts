@@ -11,6 +11,7 @@ import { shopContentRouter } from "#root/backend/shop-content/trpc";
 import { layoutRouter } from "#root/backend/layout/trpc";
 import { pixelTrackingRouter } from "#root/backend/pixel-tracking/trpc";
 import { paymentRouter } from "#root/backend/payments/trpc";
+import { paymentAttemptsRouter } from "#root/backend/payments/payment-attempts/trpc";
 import { settingsRouter } from "#root/backend/settings/trpc";
 import { analyticsRouter } from "#root/backend/analytics/trpc";
 import { contactRouter } from "#root/backend/contact/trpc";
@@ -50,6 +51,7 @@ export const appRouter = router({
   layout: layoutRouter,
   pixelTracking: pixelTrackingRouter,
   payment: paymentRouter,
+  paymentAttempts: paymentAttemptsRouter,
   settings: settingsRouter,
   analytics: analyticsRouter,
   contact: contactRouter,

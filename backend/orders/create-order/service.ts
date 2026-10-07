@@ -1,4 +1,4 @@
-import { query } from "#root/shared/database/drizzle/db";
+import { query, type DatabaseClient } from "#root/shared/database/drizzle/db";
 import {
   order,
   orderItem,
@@ -32,6 +32,9 @@ import { encodeBostaDistrictRef } from "#root/backend/orders/bosta/districts";
 import { isFincartEnabled } from "#root/backend/orders/fincart/config";
 import { logOrderEvent } from "#root/backend/orders/order-log";
 import { PAYMENT_METHODS, isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
+import type { PaymentAttemptItemSnapshot } from "#root/shared/types/payment-attempt";
+import { claimOrderReference } from "#root/backend/orders/order-reference";
+import type { OrderEmailNotice } from "#root/backend/emails/order-email-notice";
 
 const OrderItemSchema = z.object({
   productId: z.string().uuid(),
@@ -96,6 +99,7 @@ type OrderInsertData = {
 // Function to send order data to Fincart
 interface FincartOrderData {
   id: string;
+  reference?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail: string;
@@ -169,7 +173,7 @@ const sendOrderToFincart = async (
       ref_id: orderData.id.substring(0, 24), // Limit length to match their format
       pickup_id: FINCART_PICKUP_ID || "67115a8c16713e3eaec19384",
       id_default: true,
-      desc: `Order #${orderData.id.substring(0, 8)} from ${orderData.customerName}`,
+      desc: `Order ${orderData.reference ?? `#${orderData.id.substring(0, 8)}`} from ${orderData.customerName}`,
       no_items: orderData.items.reduce(
         (total, item) => total + item.quantity,
         0,
@@ -290,6 +294,428 @@ function formatStoredShippingAddress(input: {
   return `${street} (${parts.join(", ")})`;
 }
 
+// ─── Shared checkout pricing ──────────────────────────────────────────────────
+//
+// One authoritative pricing path for both checkouts:
+//   COD    → createOrder (below) prices and writes the order immediately.
+//   Online → backend/payments/payment-attempts prices into a payment_attempt
+//            snapshot and only writes an order after verified payment.
+// priceCheckout only takes a `select`-capable client, so it cannot write.
+
+type SelectClient = Pick<DatabaseClient, "select">;
+type CheckoutInput = z.infer<typeof createOrderSchema>;
+
+/** Logged-in shopper's user id (orders are attributed by session email). */
+export async function resolveCheckoutUserId(
+  db: SelectClient,
+  session?: ClientSession,
+): Promise<string | null> {
+  if (!session) return null;
+  const userData = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.email, session.email))
+    .execute();
+  return userData?.[0]?.id ?? null;
+}
+
+/** Address/customer fields exactly as the order row stores them. */
+export function buildOrderAddressFields(input: CheckoutInput) {
+  return {
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+    customerPhone: input.customerPhone,
+    shippingAddress: formatStoredShippingAddress({
+      shippingAddress: input.shippingAddress,
+      buildingNumber: input.buildingNumber,
+      apartment: input.apartment,
+    }),
+    shippingCity: input.shippingCity,
+    shippingState: input.shippingState,
+    // Exact Bosta district (when picked) is stored as a "bosta:<id>"
+    // reference; otherwise whatever free text the client sent.
+    shippingDistrict: input.bostaDistrictId
+      ? encodeBostaDistrictRef(input.bostaDistrictId)
+      : (input.shippingDistrict ?? undefined),
+    shippingPostalCode: input.shippingPostalCode,
+    shippingCountry: input.shippingCountry,
+    notes: input.notes,
+  };
+}
+
+type PricedProduct = {
+  id: string;
+  price: string;
+  discountPrice: string | null;
+  name: string;
+  stock: number;
+  hidden: boolean;
+  categoryId: string | null;
+};
+
+export interface PricedCheckout {
+  products: PricedProduct[];
+  /** Cart lines as priced — the online attempt snapshot stores exactly these. */
+  lines: PaymentAttemptItemSnapshot[];
+  subtotal: number;
+  offerDiscount: number;
+  appliedOffers: ReturnType<typeof applyOffersToCart>;
+  promoCodeData: typeof promoCode.$inferSelect | null;
+  /** Promo-code discount only. */
+  promoDiscount: number;
+  /** Offers + promo. */
+  combinedDiscount: number;
+  /** Shipping after any free-shipping offer. */
+  shipping: number;
+  total: number;
+}
+
+/**
+ * Validate the cart (products, visibility, stock), evaluate automatic offers,
+ * re-validate the promo code server-side and compute the total. Read-only:
+ * no order, no stock change, no promo usage.
+ */
+export async function priceCheckout(
+  tx: SelectClient,
+  input: CheckoutInput,
+  userId: string | null,
+): Promise<PricedCheckout> {
+  const productIds = input.items.map((item) => item.productId);
+
+  // Fetch products (single-shop mode: no vendor data needed)
+  const products = await tx
+    .select({
+      id: product.id,
+      price: product.price,
+      discountPrice: product.discountPrice,
+      name: product.name,
+      stock: product.stock,
+      hidden: product.hidden,
+      categoryId: product.categoryId,
+    })
+    .from(product)
+    .where(inArray(product.id, productIds))
+    .execute();
+
+  if (!products || products.length === 0) {
+    throw new ServerError({
+      tag: "ProductNotFound",
+      message: "No products found for this order",
+      statusCode: 404,
+      clientMessage: "Products not found",
+    });
+  }
+
+  for (const item of input.items) {
+    const productData = products.find((p) => p.id === item.productId);
+    if (!productData) {
+      throw new ServerError({
+        tag: "ProductNotFound",
+        message: `Product with ID ${item.productId} not found`,
+        statusCode: 404,
+        clientMessage: "Some products in your order could not be found",
+      });
+    }
+
+    if (productData.hidden) {
+      throw new ServerError({
+        tag: "ProductNotAvailable",
+        message: `Product ${productData.name} is not available`,
+        statusCode: 400,
+        clientMessage: `${productData.name} is no longer available for purchase`,
+      });
+    }
+
+    if (productData.stock < item.quantity) {
+      throw new ServerError({
+        tag: "InsufficientStock",
+        message: `Insufficient stock for product ${productData.name}`,
+        statusCode: 400,
+        clientMessage: `Sorry, there's not enough stock available for ${productData.name}`,
+      });
+    }
+  }
+
+  const subtotal = input.items.reduce((acc, item) => {
+    const productData = products.find((p) => p.id === item.productId);
+    if (!productData) return acc;
+
+    // Use discount price if available
+    const priceToUse = productData.discountPrice
+      ? Number.parseFloat(productData.discountPrice.toString())
+      : Number.parseFloat(productData.price.toString());
+
+    return acc + priceToUse * item.quantity;
+  }, 0);
+
+  const shipping = await getShippingFeeRaw(tx);
+
+  // ─── Evaluate automatic cart offers server-side ───────────────────────
+  // Evaluated before the promo code discount below so the promo code's
+  // percentage/fixed discount applies to what's left *after* automatic
+  // offers, not the raw subtotal (matches the shopper-facing cart math).
+  const now = new Date();
+  const activeOffers = await tx
+    .select()
+    .from(cartOffer)
+    .where(
+      and(
+        eq(cartOffer.isActive, true),
+        or(isNull(cartOffer.startsAt), lte(cartOffer.startsAt, now)),
+        or(isNull(cartOffer.endsAt), gte(cartOffer.endsAt, now)),
+      ),
+    )
+    .orderBy(asc(cartOffer.priority))
+    .execute();
+
+  const cartItemsForOffers = input.items
+    .map((item) => {
+      const p = products.find((prod) => prod.id === item.productId);
+      if (!p) return null;
+      const price = p.discountPrice
+        ? Number.parseFloat(p.discountPrice.toString())
+        : Number.parseFloat(p.price.toString());
+      return { id: item.productId, name: p.name, quantity: item.quantity, price };
+    })
+    .filter(
+      (i): i is { id: string; name: string; quantity: number; price: number } =>
+        i !== null,
+    );
+
+  const appliedOffers = applyOffersToCart(activeOffers, cartItemsForOffers, subtotal);
+  const offerDiscount = appliedOffers.reduce((s, o) => s + o.discountAmount, 0);
+  const hasFreeShippingFromOffer = appliedOffers.some((o) => o.freeShipping);
+  const effectiveShipping = hasFreeShippingFromOffer ? 0 : shipping;
+
+  // Check if a promo code is applied
+  let discount = 0;
+  let promoCodeData: typeof promoCode.$inferSelect | null = null;
+
+  if (input.promoCodeId) {
+    // Get the promo code first to get its code
+    promoCodeData =
+      (await tx
+        .select()
+        .from(promoCode)
+        .where(eq(promoCode.id, input.promoCodeId))
+        .then((res) => res[0])) ?? null;
+
+    // A promo code id that doesn't resolve means the client sent
+    // something stale or tampered with — never silently ignore it.
+    if (!promoCodeData) {
+      throw new ServerError({
+        tag: "PromoCodeValidationFailed",
+        statusCode: 400,
+        clientMessage:
+          "The promo code on your order is no longer available. Please remove it and try again.",
+      });
+    }
+    const promo = promoCodeData;
+
+    const nowForPromo = new Date();
+
+    // Re-validate everything server-side at order time. The cart may
+    // have changed since the code was applied, and the client's copy
+    // of the discount is never trusted.
+    const rejection: string | null = (() => {
+      if (promo.status !== "active" && promo.status !== "scheduled") {
+        return promo.status === "expired"
+          ? "This promo code has expired."
+          : promo.status === "exhausted"
+            ? "This promo code has reached its usage limit and can no longer be used."
+            : "This promo code isn't active right now.";
+      }
+      if (promo.startDate && promo.startDate > nowForPromo) {
+        return "This promo code isn't active yet.";
+      }
+      if (promo.endDate && promo.endDate < nowForPromo) {
+        return "This promo code has expired.";
+      }
+      if (promo.usageLimit !== null && promo.usedCount >= promo.usageLimit) {
+        return "This promo code has reached its usage limit and can no longer be used.";
+      }
+      const minPurchase = promo.minPurchaseAmount ? Number(promo.minPurchaseAmount) : 0;
+      if (minPurchase > 0 && subtotal < minPurchase) {
+        return `This promo code needs a minimum order of ${minPurchase.toFixed(2)} EGP.`;
+      }
+      return null;
+    })();
+
+    if (rejection) {
+      throw new ServerError({
+        tag: "PromoCodeValidationFailed",
+        statusCode: 400,
+        clientMessage: rejection,
+      });
+    }
+
+    // Per-user usage limit — signed-in shoppers by user id, guests by
+    // the email they're checking out with.
+    if (promo.usageLimitPerUser !== null) {
+      const previousUses = await tx
+        .select({ id: order.id })
+        .from(order)
+        .where(
+          and(
+            eq(order.promoCodeId, promo.id),
+            userId ? eq(order.userId, userId) : eq(order.customerEmail, input.customerEmail),
+          ),
+        )
+        .execute();
+
+      if (previousUses.length >= promo.usageLimitPerUser) {
+        throw new ServerError({
+          tag: "PromoCodeValidationFailed",
+          statusCode: 400,
+          clientMessage:
+            promo.usageLimitPerUser === 1
+              ? "You've already used this promo code."
+              : `You've already used this promo code the maximum of ${promo.usageLimitPerUser} times.`,
+        });
+      }
+    }
+
+    // Product / category applicability, resolved from the database
+    // rows fetched above — the same rule the cart's validation uses.
+    const eligibleProductIds = promo.appliesToAllProducts
+      ? new Set(products.map((p) => p.id))
+      : await resolvePromoEligibleProductIds(tx, promo.id, products);
+
+    if (eligibleProductIds.size === 0) {
+      throw new ServerError({
+        tag: "PromoCodeValidationFailed",
+        statusCode: 400,
+        clientMessage: "This promo code doesn't apply to any of the items in your cart.",
+      });
+    }
+
+    // Calculate discount from the code's own values, never the
+    // client's — and for a restricted code, only on eligible lines.
+    discount = computeLinePromoDiscount(
+      promo.discountType,
+      Number(promo.discountValue),
+      cartItemsForOffers.map((line) => ({
+        price: line.price,
+        quantity: line.quantity,
+        eligible: eligibleProductIds.has(line.id),
+      })),
+      appliedOffers,
+    ).discount;
+  }
+
+  const combinedDiscount = discount + offerDiscount;
+  const discountedSubtotal = subtotal - combinedDiscount;
+  // Ensure shipping is included in the total (no tax)
+  const total = Math.max(0, discountedSubtotal) + effectiveShipping;
+
+  const lines: PaymentAttemptItemSnapshot[] = input.items.map((item) => {
+    // Presence was validated above.
+    const p = products.find((prod) => prod.id === item.productId) as PricedProduct;
+    const unitPrice = p.discountPrice
+      ? Number.parseFloat(p.discountPrice.toString())
+      : Number.parseFloat(p.price.toString());
+    return {
+      productId: item.productId,
+      selectedOptions: item.selectedOptions ?? null,
+      name: item.selectedOptions ? `${p.name} (${item.selectedOptions})` : p.name,
+      quantity: item.quantity,
+      listPrice: p.price.toString(),
+      discountPrice: p.discountPrice?.toString() || null,
+      unitPrice,
+      lineTotal: unitPrice * item.quantity,
+    };
+  });
+
+  return {
+    products,
+    lines,
+    subtotal,
+    offerDiscount,
+    appliedOffers,
+    promoCodeData,
+    promoDiscount: discount,
+    combinedDiscount,
+    shipping: effectiveShipping,
+    total,
+  };
+}
+
+/**
+ * The "Order Confirmation" / "New Order Received" email body — shared by COD
+ * checkout and paid online-order materialization so both send the same email.
+ */
+export function renderNewOrderEmail(
+  result: {
+    shipping: string;
+    subtotal: string;
+    total: string;
+    shippingAddress: string;
+    shippingCity: string;
+    shippingState: string;
+    shippingCountry: string;
+    shippingPostalCode: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    items: Array<{
+      name: string | null;
+      quantity: number | null;
+      price: string | null;
+      discountPrice: string | null;
+      vendorName: string | null;
+    }>;
+  },
+  branding: Awaited<ReturnType<typeof getEmailBranding>>,
+  /** Optional replacement copy (paid order on hold); omitted for every normal order. */
+  notice?: OrderEmailNotice,
+) {
+  const orderItems = result.items.map((i) => ({
+    name: i.name ?? "-",
+    quantity: i.quantity ?? 0,
+    price: i.price ? Number.parseFloat(i.price) : 0,
+    discountPrice: i.discountPrice ? Number.parseFloat(i.discountPrice) : undefined,
+    vendorName: i.vendorName ?? undefined,
+  }));
+
+  return renderEmailTemplate(
+    branding.isMinimal
+      ? MinimalOrderEmailTemplate({
+          storeName: branding.storeName,
+          logoUrl: branding.logoUrl,
+          contactEmail: branding.contactEmail,
+          currency: branding.currency,
+          items: orderItems,
+          shippingFees: Number.parseFloat(result.shipping),
+          subTotal: Number.parseFloat(result.subtotal),
+          total: Number.parseFloat(result.total),
+          address: result.shippingAddress,
+          city: result.shippingCity,
+          state: result.shippingState,
+          country: result.shippingCountry,
+          postalCode: result.shippingPostalCode,
+          customerName: result.customerName,
+          customerEmail: result.customerEmail,
+          customerPhone: result.customerPhone,
+          notice,
+        })
+      : NewOrderEmailTemplate({
+          items: orderItems,
+          shippingFees: Number.parseFloat(result.shipping),
+          subTotal: Number.parseFloat(result.subtotal),
+          total: Number.parseFloat(result.total),
+          address: result.shippingAddress,
+          city: result.shippingCity,
+          state: result.shippingState,
+          country: result.shippingCountry,
+          postalCode: result.shippingPostalCode,
+          customerName: result.customerName,
+          customerEmail: result.customerEmail,
+          customerPhone: result.customerPhone,
+          notice,
+        }),
+  );
+}
+
 // ─── Main create-order service ────────────────────────────────────────────────
 
 export const createOrder = (
@@ -297,262 +723,38 @@ export const createOrder = (
   session?: ClientSession,
 ) =>
   Effect.gen(function* ($) {
+    // Fawaterak checkouts never create an order before payment — they go
+    // through payment.startCheckout (payment attempt) and the order is
+    // materialized only after the provider verifies the payment. Reaching
+    // here with "fawaterak" means a browser running the pre-attempt checkout
+    // script; refusing it keeps "no unpaid online order" absolute.
+    if (input.paymentMethod === "fawaterak") {
+      return yield* $(
+        Effect.fail(
+          new ServerError({
+            tag: "CheckoutFlowChanged",
+            message: "order.create called with fawaterak — online checkouts use payment.startCheckout",
+            statusCode: 409,
+            clientMessage:
+              "Our checkout was just updated. Please refresh the page and place your order again.",
+          }),
+        ),
+      );
+    }
+
     // We no longer require a session for ordering
     const result = yield* $(
       query(async (db) => {
         return await db.transaction(async (tx) => {
           // Get user ID if the user is logged in, otherwise set to null
-          let userId = null;
-          if (session) {
-            const userData = await tx
-              .select({ id: user.id })
-              .from(user)
-              .where(eq(user.email, session.email))
-              .execute();
+          const userId = await resolveCheckoutUserId(tx, session);
 
-            if (userData && userData.length > 0 && userData[0]?.id) {
-              userId = userData[0].id;
-            }
-          }
+          const priced = await priceCheckout(tx, input, userId);
+          const { products, promoCodeData, combinedDiscount, total } = priced;
+          const subtotal = priced.subtotal;
+          const effectiveShipping = priced.shipping;
 
-          const productIds = input.items.map((item) => item.productId);
-
-          // Fetch products (single-shop mode: no vendor data needed)
-          const products = await tx
-            .select({
-              id: product.id,
-              price: product.price,
-              discountPrice: product.discountPrice,
-              name: product.name,
-              stock: product.stock,
-              hidden: product.hidden,
-              categoryId: product.categoryId,
-            })
-            .from(product)
-            .where(inArray(product.id, productIds))
-            .execute();
-
-          if (!products || products.length === 0) {
-            throw new ServerError({
-              tag: "ProductNotFound",
-              message: "No products found for this order",
-              statusCode: 404,
-              clientMessage: "Products not found",
-            });
-          }
-
-          for (const item of input.items) {
-            const productData = products.find((p) => p.id === item.productId);
-            if (!productData) {
-              throw new ServerError({
-                tag: "ProductNotFound",
-                message: `Product with ID ${item.productId} not found`,
-                statusCode: 404,
-                clientMessage: "Some products in your order could not be found",
-              });
-            }
-
-            if (productData.hidden) {
-              throw new ServerError({
-                tag: "ProductNotAvailable",
-                message: `Product ${productData.name} is not available`,
-                statusCode: 400,
-                clientMessage: `${productData.name} is no longer available for purchase`,
-              });
-            }
-
-            if (productData.stock < item.quantity) {
-              throw new ServerError({
-                tag: "InsufficientStock",
-                message: `Insufficient stock for product ${productData.name}`,
-                statusCode: 400,
-                clientMessage: `Sorry, there's not enough stock available for ${productData.name}`,
-              });
-            }
-          }
-
-          const subtotal = input.items.reduce((acc, item) => {
-            const productData = products.find((p) => p.id === item.productId);
-            if (!productData) return acc;
-
-            // Use discount price if available
-            const priceToUse = productData.discountPrice
-              ? Number.parseFloat(productData.discountPrice.toString())
-              : Number.parseFloat(productData.price.toString());
-
-            return acc + priceToUse * item.quantity;
-          }, 0);
-
-          const shipping = await getShippingFeeRaw(tx);
-
-          // ─── Evaluate automatic cart offers server-side ───────────────────────
-          // Evaluated before the promo code discount below so the promo code's
-          // percentage/fixed discount applies to what's left *after* automatic
-          // offers, not the raw subtotal (matches the shopper-facing cart math).
-          const now = new Date();
-          const activeOffers = await tx
-            .select()
-            .from(cartOffer)
-            .where(
-              and(
-                eq(cartOffer.isActive, true),
-                or(isNull(cartOffer.startsAt), lte(cartOffer.startsAt, now)),
-                or(isNull(cartOffer.endsAt), gte(cartOffer.endsAt, now)),
-              ),
-            )
-            .orderBy(asc(cartOffer.priority))
-            .execute();
-
-          const cartItemsForOffers = input.items
-            .map((item) => {
-              const p = products.find((prod) => prod.id === item.productId);
-              if (!p) return null;
-              const price = p.discountPrice
-                ? Number.parseFloat(p.discountPrice.toString())
-                : Number.parseFloat(p.price.toString());
-              return { id: item.productId, name: p.name, quantity: item.quantity, price };
-            })
-            .filter(
-              (i): i is { id: string; name: string; quantity: number; price: number } =>
-                i !== null,
-            );
-
-          const appliedOffers = applyOffersToCart(activeOffers, cartItemsForOffers, subtotal);
-          const offerDiscount = appliedOffers.reduce((s, o) => s + o.discountAmount, 0);
-          const hasFreeShippingFromOffer = appliedOffers.some((o) => o.freeShipping);
-          const effectiveShipping = hasFreeShippingFromOffer ? 0 : shipping;
-
-          // Check if a promo code is applied
-          let discount = 0;
-          let promoCodeData = null;
-
-          if (input.promoCodeId) {
-            // Get the promo code first to get its code
-            promoCodeData = await tx
-              .select()
-              .from(promoCode)
-              .where(eq(promoCode.id, input.promoCodeId))
-              .then((res) => res[0]);
-
-            // A promo code id that doesn't resolve means the client sent
-            // something stale or tampered with — never silently ignore it.
-            if (!promoCodeData) {
-              throw new ServerError({
-                tag: "PromoCodeValidationFailed",
-                statusCode: 400,
-                clientMessage:
-                  "The promo code on your order is no longer available. Please remove it and try again.",
-              });
-            }
-
-            const nowForPromo = new Date();
-
-            // Re-validate everything server-side at order time. The cart may
-            // have changed since the code was applied, and the client's copy
-            // of the discount is never trusted.
-            const rejection: string | null = (() => {
-              if (
-                promoCodeData.status !== "active" &&
-                promoCodeData.status !== "scheduled"
-              ) {
-                return promoCodeData.status === "expired"
-                  ? "This promo code has expired."
-                  : promoCodeData.status === "exhausted"
-                    ? "This promo code has reached its usage limit and can no longer be used."
-                    : "This promo code isn't active right now.";
-              }
-              if (
-                promoCodeData.startDate &&
-                promoCodeData.startDate > nowForPromo
-              ) {
-                return "This promo code isn't active yet.";
-              }
-              if (promoCodeData.endDate && promoCodeData.endDate < nowForPromo) {
-                return "This promo code has expired.";
-              }
-              if (
-                promoCodeData.usageLimit !== null &&
-                promoCodeData.usedCount >= promoCodeData.usageLimit
-              ) {
-                return "This promo code has reached its usage limit and can no longer be used.";
-              }
-              const minPurchase = promoCodeData.minPurchaseAmount
-                ? Number(promoCodeData.minPurchaseAmount)
-                : 0;
-              if (minPurchase > 0 && subtotal < minPurchase) {
-                return `This promo code needs a minimum order of ${minPurchase.toFixed(2)} EGP.`;
-              }
-              return null;
-            })();
-
-            if (rejection) {
-              throw new ServerError({
-                tag: "PromoCodeValidationFailed",
-                statusCode: 400,
-                clientMessage: rejection,
-              });
-            }
-
-            // Per-user usage limit — signed-in shoppers by user id, guests by
-            // the email they're checking out with.
-            if (promoCodeData.usageLimitPerUser !== null) {
-              const previousUses = await tx
-                .select({ id: order.id })
-                .from(order)
-                .where(
-                  and(
-                    eq(order.promoCodeId, promoCodeData.id),
-                    userId
-                      ? eq(order.userId, userId)
-                      : eq(order.customerEmail, input.customerEmail),
-                  ),
-                )
-                .execute();
-
-              if (previousUses.length >= promoCodeData.usageLimitPerUser) {
-                throw new ServerError({
-                  tag: "PromoCodeValidationFailed",
-                  statusCode: 400,
-                  clientMessage:
-                    promoCodeData.usageLimitPerUser === 1
-                      ? "You've already used this promo code."
-                      : `You've already used this promo code the maximum of ${promoCodeData.usageLimitPerUser} times.`,
-                });
-              }
-            }
-
-            // Product / category applicability, resolved from the database
-            // rows fetched above — the same rule the cart's validation uses.
-            const eligibleProductIds = promoCodeData.appliesToAllProducts
-              ? new Set(products.map((p) => p.id))
-              : await resolvePromoEligibleProductIds(
-                  tx,
-                  promoCodeData.id,
-                  products,
-                );
-
-            if (eligibleProductIds.size === 0) {
-              throw new ServerError({
-                tag: "PromoCodeValidationFailed",
-                statusCode: 400,
-                clientMessage:
-                  "This promo code doesn't apply to any of the items in your cart.",
-              });
-            }
-
-            // Calculate discount from the code's own values, never the
-            // client's — and for a restricted code, only on eligible lines.
-            discount = computeLinePromoDiscount(
-              promoCodeData.discountType,
-              Number(promoCodeData.discountValue),
-              cartItemsForOffers.map((line) => ({
-                price: line.price,
-                quantity: line.quantity,
-                eligible: eligibleProductIds.has(line.id),
-              })),
-              appliedOffers,
-            ).discount;
-
+          if (promoCodeData) {
             // Increment used count for the promo code
             await tx
               .update(promoCode)
@@ -568,39 +770,22 @@ export const createOrder = (
               .where(eq(promoCode.id, promoCodeData.id));
           }
 
-          const combinedDiscount = discount + offerDiscount;
-          const discountedSubtotal = subtotal - combinedDiscount;
-          // Ensure shipping is included in the total (no tax)
-          const total = Math.max(0, discountedSubtotal) + effectiveShipping;
+          // Unique customer-facing reference (registered in this transaction).
+          const { id: newOrderId, reference } = await claimOrderReference(tx, "order");
 
           // Only include fields directly provided or calculated
           const isOnlinePayment = isOnlinePaymentMethod(input.paymentMethod);
           const insertData = {
+            id: newOrderId,
+            reference,
             userId: userId,
-            customerName: input.customerName,
-            customerEmail: input.customerEmail,
-            customerPhone: input.customerPhone,
-            shippingAddress: formatStoredShippingAddress({
-              shippingAddress: input.shippingAddress,
-              buildingNumber: input.buildingNumber,
-              apartment: input.apartment,
-            }),
-            shippingCity: input.shippingCity,
-            shippingState: input.shippingState,
-            // Exact Bosta district (when picked) is stored as a "bosta:<id>"
-            // reference; otherwise whatever free text the client sent.
-            shippingDistrict: input.bostaDistrictId
-              ? encodeBostaDistrictRef(input.bostaDistrictId)
-              : (input.shippingDistrict ?? undefined),
-            shippingPostalCode: input.shippingPostalCode,
-            shippingCountry: input.shippingCountry,
+            ...buildOrderAddressFields(input),
             subtotal: subtotal.toString(),
             discount: combinedDiscount > 0 ? combinedDiscount.toString() : null,
             promoCodeId: input.promoCodeId || null,
             shipping: effectiveShipping.toString(),
             tax: "0",
             total: total.toString(),
-            notes: input.notes,
             paymentMethod: input.paymentMethod ?? "cod",
             paymentStatus: isOnlinePayment ? "pending" : "not_required",
           };
@@ -714,53 +899,7 @@ export const createOrder = (
 
     const branding = yield* $(Effect.promise(() => getEmailBranding()));
 
-    const orderItems = result.items.map((i) => ({
-      name: i.name ?? "-",
-      quantity: i.quantity ?? 0,
-      price: i.price ? Number.parseFloat(i.price) : 0,
-      discountPrice: i.discountPrice
-        ? Number.parseFloat(i.discountPrice)
-        : undefined,
-      vendorName: i.vendorName ?? undefined,
-    }));
-
-    const emailTemplate = yield* $(
-      renderEmailTemplate(
-        branding.isMinimal
-          ? MinimalOrderEmailTemplate({
-              storeName: branding.storeName,
-              logoUrl: branding.logoUrl,
-              contactEmail: branding.contactEmail,
-              currency: branding.currency,
-              items: orderItems,
-              shippingFees: Number.parseFloat(result.shipping),
-              subTotal: Number.parseFloat(result.subtotal),
-              total: Number.parseFloat(result.total),
-              address: result.shippingAddress,
-              city: result.shippingCity,
-              state: result.shippingState,
-              country: result.shippingCountry,
-              postalCode: result.shippingPostalCode,
-              customerName: result.customerName,
-              customerEmail: result.customerEmail,
-              customerPhone: result.customerPhone,
-            })
-          : NewOrderEmailTemplate({
-              items: orderItems,
-              shippingFees: Number.parseFloat(result.shipping),
-              subTotal: Number.parseFloat(result.subtotal),
-              total: Number.parseFloat(result.total),
-              address: result.shippingAddress,
-              city: result.shippingCity,
-              state: result.shippingState,
-              country: result.shippingCountry,
-              postalCode: result.shippingPostalCode,
-              customerName: result.customerName,
-              customerEmail: result.customerEmail,
-              customerPhone: result.customerPhone,
-            }),
-      ),
-    );
+    const emailTemplate = yield* $(renderNewOrderEmail(result, branding));
 
     const admins = yield* $(
       query(

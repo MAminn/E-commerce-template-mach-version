@@ -1,4 +1,5 @@
 import { query } from "#root/shared/database/drizzle/db";
+import { FULFILLMENT_HOLD_BLOCK_MESSAGE } from "#root/backend/orders/fulfillment-hold/service";
 import {
   order,
   orderItem,
@@ -70,10 +71,25 @@ export const updateOrderStatus = (
               id: order.id,
               status: order.status,
               stockRestored: order.stockRestored,
+              fulfillmentHold: order.fulfillmentHold,
             })
             .from(order)
             .where(eq(order.id, orderId))
             .execute();
+
+          // A held order (paid, but e.g. out of stock) can be cancelled but
+          // never moved toward fulfillment until the hold is released.
+          if (
+            currentOrder[0]?.fulfillmentHold &&
+            (status === "processing" || status === "shipped" || status === "delivered")
+          ) {
+            throw new ServerError({
+              tag: "FulfillmentHold",
+              message: `Order ${orderId} is on fulfillment hold (${currentOrder[0].fulfillmentHold})`,
+              statusCode: 409,
+              clientMessage: FULFILLMENT_HOLD_BLOCK_MESSAGE,
+            });
+          }
 
           if (!currentOrder || currentOrder.length === 0) {
             throw new ServerError({

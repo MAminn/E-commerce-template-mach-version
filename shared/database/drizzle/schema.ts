@@ -15,6 +15,10 @@ import { v7 } from "uuid";
 import type { SupplementInfo } from "#root/shared/types/supplement-info";
 import type { UpsellSettings } from "#root/shared/upsell/config";
 import type { WhatsAppSettings } from "#root/shared/whatsapp/config";
+import type {
+  PaymentAttemptItemSnapshot,
+  PaymentAttemptOrderSnapshot,
+} from "#root/shared/types/payment-attempt";
 
 export const userRole = pgEnum("user_role", ["admin", "vendor", "user", "superadmin"]);
 
@@ -525,8 +529,18 @@ export const order = pgTable("order", {
     withTimezone: true,
     mode: "date",
   }),
-  /** True once the reserved stock for this order's items has been restored (on cancel/delete), so it's never restored twice */
+  /** True once the reserved stock for this order's items has been restored (on cancel/delete), so it's never restored twice.
+   * Also true for an order created on a fulfillment hold without taking stock — there is nothing to give back. */
   stockRestored: boolean("stock_restored").notNull().default(false),
+  /** Non-null = a PAID order that must not be prepared or shipped until an
+   * admin resolves it. Values: "stock_conflict" (stock ran out while the
+   * customer was paying online). Bosta dispatch refuses held orders. */
+  fulfillmentHold: text("fulfillment_hold"),
+  fulfillmentHoldNote: text("fulfillment_hold_note"),
+  /** Unique customer/merchant reference ("ORD-XXXXXXXX"), registered in
+   * order_reference. NULL on legacy orders, which display the first 8 hex
+   * characters of their id (see shared/orders/order-reference.ts). */
+  reference: text("reference"), // unique index order_reference_idx (migration 0059)
 });
 
 export const orderItem = pgTable("order_item", {
@@ -1069,6 +1083,128 @@ export const webhookLog = pgTable("webhook_log", {
     mode: "date",
   }),
 });
+
+/**
+ * Online-payment attempt lifecycle (payment-attempt-first checkout):
+ *   created → pending (provider intent exists) → paid_pending_materialization
+ *   → materialized (real order exists, order_id = id)
+ * Side exits: session_failed (createTransaction failed — no payable intent),
+ * failed (a provider-reported failed try; NOT terminal — the same hosted
+ * transaction may still be paid), cancelled / expired (provider-reported).
+ * A verified payment always wins over any earlier outcome.
+ */
+export const paymentAttemptStatus = pgEnum("payment_attempt_status", [
+  "created",
+  "session_failed",
+  "pending",
+  "failed",
+  "cancelled",
+  "expired",
+  "paid_pending_materialization",
+  "materialized",
+]);
+
+export const paymentAttempt = pgTable(
+  "payment_attempt",
+  {
+    /** Also the id of the order it materializes into. */
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => v7()),
+    provider: paymentMethodEnum("provider").notNull().default("fawaterak"),
+    status: paymentAttemptStatus("status").notNull().default("created"),
+    orderId: uuid("order_id").references(() => order.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    userId: text("user_id").references(() => user.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    /** Browser cart-capture token — resume key and paid-time cart conversion. */
+    cartSessionToken: text("cart_session_token"),
+    /** Hash of the priced checkout; an identical re-submit resumes this attempt. */
+    fingerprint: text("fingerprint").notNull(),
+    customerName: text("customer_name").notNull(),
+    customerEmail: text("customer_email").notNull(),
+    customerPhone: text("customer_phone").notNull(),
+    orderSnapshot: jsonb("order_snapshot").$type<PaymentAttemptOrderSnapshot>().notNull(),
+    itemsSnapshot: jsonb("items_snapshot").$type<PaymentAttemptItemSnapshot[]>().notNull(),
+    subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+    offerDiscount: decimal("offer_discount", { precision: 10, scale: 2 }).notNull().default("0"),
+    promoDiscount: decimal("promo_discount", { precision: 10, scale: 2 }).notNull().default("0"),
+    /** offer + promo, exactly as order.discount will store it (null when 0). */
+    discount: decimal("discount", { precision: 10, scale: 2 }),
+    shipping: decimal("shipping", { precision: 10, scale: 2 }).notNull(),
+    tax: decimal("tax", { precision: 10, scale: 2 }).notNull().default("0"),
+    /** The amount sent to the provider and the order total. */
+    total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+    currency: text("currency").notNull().default("EGP"),
+    promoCodeId: uuid("promo_code_id").references(() => promoCode.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    promoCode: text("promo_code"),
+    /** Fawaterak data.intent_key. */
+    intentKey: text("intent_key"),
+    paymentUrl: text("payment_url"),
+    transactionId: text("transaction_id"),
+    providerPaymentMethod: text("provider_payment_method"),
+    gatewayData: jsonb("gateway_data"),
+    failureReason: text("failure_reason"),
+    paidAt: timestamp("paid_at", { withTimezone: true, mode: "date" }),
+    failedAt: timestamp("failed_at", { withTimezone: true, mode: "date" }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true, mode: "date" }),
+    materializedAt: timestamp("materialized_at", { withTimezone: true, mode: "date" }),
+    materializationError: text("materialization_error"),
+    materializationAttempts: integer("materialization_attempts").notNull().default(0),
+    lastMaterializationAttemptAt: timestamp("last_materialization_attempt_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    /** Set by whoever claims the post-order side effects (emails, Bosta, …). */
+    effectsClaimedAt: timestamp("effects_claimed_at", { withTimezone: true, mode: "date" }),
+    /** Unique "ORD-XXXXXXXX" reference (registered in order_reference); the
+     * order materialized from this attempt carries the same reference. */
+    reference: text("reference"),
+    /** Automatic provider reconciliation of an unpaid attempt. */
+    providerCheckedAt: timestamp("provider_checked_at", { withTimezone: true, mode: "date" }),
+    providerCheckCount: integer("provider_check_count").notNull().default(0),
+    providerCheckResult: text("provider_check_result"),
+    providerCheckError: text("provider_check_error"),
+    /** Polling schedule for the reconciliation sweep — not an expiry. */
+    nextProviderCheckAt: timestamp("next_provider_check_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    orderIdIdx: uniqueIndex("payment_attempt_order_id_idx").on(table.orderId),
+    intentKeyIdx: uniqueIndex("payment_attempt_intent_key_idx").on(table.intentKey),
+    statusCreatedIdx: index("payment_attempt_status_created_idx").on(table.status, table.createdAt),
+    resumeIdx: index("payment_attempt_resume_idx").on(table.cartSessionToken, table.fingerprint),
+    referenceIdx: uniqueIndex("payment_attempt_reference_idx").on(table.reference),
+    reconcileIdx: index("payment_attempt_reconcile_idx").on(table.status, table.nextProviderCheckAt),
+  }),
+);
+
+/**
+ * Registry of every "ORD-XXXXXXXX" reference ever issued (new orders, payment
+ * attempts) or already held by a legacy order. The primary key is the
+ * uniqueness guarantee across both kinds.
+ */
+export const orderReference = pgTable("order_reference", {
+  reference: text("reference").primaryKey(),
+  /** "order" | "attempt" | "legacy" */
+  kind: text("kind").notNull(),
+  ownerId: uuid("owner_id"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
+export type PaymentAttemptRow = typeof paymentAttempt.$inferSelect;
 
 /**
  * Homepage Content table

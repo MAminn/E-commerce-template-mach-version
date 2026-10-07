@@ -42,7 +42,7 @@ export type BostaDispatchResult =
   | { status: "skipped"; code: "not_configured"; reason: string }
   | {
       status: "blocked";
-      code: "not_found" | "payment_not_confirmed" | "already_sent" | "in_flight" | "cancelled";
+      code: "not_found" | "payment_not_confirmed" | "on_hold" | "already_sent" | "in_flight" | "cancelled";
       reason: string;
     }
   | { status: "failed"; code: "validation" | "api"; reason: string };
@@ -81,6 +81,16 @@ export async function dispatchOrderToBosta(
       status: "blocked",
       code: "payment_not_confirmed",
       reason: `Cannot send to Bosta — this order's ${row.paymentMethod} payment is "${row.paymentStatus}", not confirmed paid.`,
+    };
+  }
+
+  // Fulfillment hold — a paid order that must not ship (e.g. stock ran out
+  // while the customer was paying). Applies to every trigger, manual included.
+  if (row.fulfillmentHold) {
+    return {
+      status: "blocked",
+      code: "on_hold",
+      reason: `Cannot send to Bosta — this order is on a fulfillment hold (${row.fulfillmentHold}). Resolve the hold first.`,
     };
   }
 

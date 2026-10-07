@@ -27,12 +27,20 @@ import {
   DatabaseClientService,
   type DatabaseClient,
 } from "#root/shared/database/drizzle/db";
-import { order } from "#root/shared/database/drizzle/schema";
+import { order, paymentAttempt } from "#root/shared/database/drizzle/schema";
 import {
   recordWebhookLog,
   updateWebhookLogStatus,
 } from "#root/backend/orders/order-log";
 import { applyOnlinePaymentUpdate } from "./confirm-online-payment";
+import {
+  finalizePaidAttempt,
+  recordAttemptGatewayData,
+  recordAttemptOutcome,
+  type FinalizeOutcome,
+  type PaymentAttemptStatus,
+  type VerifiedPayment,
+} from "./payment-attempts/service";
 import {
   fetchFawaterakTransactionData,
   parseFawaterakPayLoad,
@@ -114,6 +122,31 @@ export interface FawaterakWebhookDeps {
     warn(message: string): void;
     error(message: string): void;
   };
+  /**
+   * Payment-attempt-first checkout. When present, a pay_load reference that
+   * names a payment_attempt is handled here; anything else falls through to
+   * the legacy order-first handler unchanged.
+   */
+  attempts?: FawaterakAttemptWebhookDeps;
+}
+
+export interface FawaterakWebhookAttempt {
+  id: string;
+  status: PaymentAttemptStatus;
+  intentKey: string | null;
+  total: string;
+}
+
+export interface FawaterakAttemptWebhookDeps {
+  findAttemptById(attemptId: string): Promise<FawaterakWebhookAttempt | null>;
+  /** The shared idempotent finalizer (persist paid -> materialize -> effects). */
+  finalizeAttempt(attemptId: string, payment: VerifiedPayment | null): Promise<FinalizeOutcome>;
+  recordOutcome(
+    attemptId: string,
+    outcome: "pending" | "failed" | "cancelled" | "expired",
+    data: { gatewayData: unknown; failureReason?: string | null; providerPaymentMethod?: string | null },
+  ): Promise<boolean>;
+  recordGatewayData(attemptId: string, gatewayData: unknown): Promise<void>;
 }
 
 export interface FawaterakWebhookOutcome {
@@ -195,6 +228,142 @@ async function locateOrder(
   return { ok: true, order: found };
 }
 
+// ─── Payment-attempt routing ────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ATTEMPT_PAID_STATES = new Set<PaymentAttemptStatus>([
+  "paid_pending_materialization",
+  "materialized",
+]);
+
+/**
+ * A pay_load reference resolves to a payment_attempt (new flow) or not at all
+ * here — legacy references are order ids, which never exist in the attempt
+ * table, so they always fall through to the legacy handler.
+ */
+async function findAttemptForPayLoad(
+  deps: FawaterakWebhookDeps,
+  payLoadRaw: unknown,
+): Promise<FawaterakWebhookAttempt | null> {
+  if (!deps.attempts) return null;
+  const payLoad = parseFawaterakPayLoad(payLoadRaw);
+  // Non-UUID references can't be attempts (and would fail the uuid cast).
+  if (!payLoad || !UUID_RE.test(payLoad.orderId)) return null;
+  return deps.attempts.findAttemptById(payLoad.orderId);
+}
+
+function finalizeToOutcome(attemptId: string, result: FinalizeOutcome): FawaterakWebhookOutcome {
+  switch (result.kind) {
+    case "materialized":
+      return ok(result.orderId, { result: "paid", held: result.held });
+    case "already_materialized":
+      return ok(result.orderId, { result: "already_materialized" });
+    case "materialization_failed":
+      // The payment is recorded (paid_pending_materialization); the order is
+      // retried by the sweep / poll / admin. Non-2xx so a provider
+      // redelivery, if Fawaterak does one, retries too.
+      return reject(500, `Payment recorded; order creation pending retry: ${result.error}`);
+    case "not_paid":
+      return reject(409, `Payment attempt ${attemptId} is ${result.status}`);
+    case "not_found":
+      return reject(404, "Payment attempt not found");
+  }
+}
+
+async function processAttemptPaidWebhook(
+  deps: FawaterakWebhookDeps,
+  attemptDeps: FawaterakAttemptWebhookDeps,
+  attempt: FawaterakWebhookAttempt,
+  payload: z.infer<typeof fawaterakPaidWebhookSchema>,
+): Promise<FawaterakWebhookOutcome> {
+  if (!attempt.intentKey || attempt.intentKey !== payload.transaction_key) {
+    return reject(409, "transaction_key does not match payment attempt");
+  }
+
+  // Already paid: nothing to verify. Just make sure the order and its effects
+  // exist (idempotent; already_materialized when done).
+  if (ATTEMPT_PAID_STATES.has(attempt.status)) {
+    return finalizeToOutcome(attempt.id, await attemptDeps.finalizeAttempt(attempt.id, null));
+  }
+
+  if (payload.status === "pending") {
+    await attemptDeps.recordOutcome(attempt.id, "pending", {
+      gatewayData: payload,
+      providerPaymentMethod: payload.payment_method,
+    });
+    deps.log.info(`[Fawaterak] Attempt ${attempt.id} pending via ${payload.payment_method}`);
+    return ok(null, { result: "pending" });
+  }
+
+  // status === "paid": the webhook is only a hint. Ask Fawaterak directly.
+  let providerData: FawaterakTransactionData;
+  try {
+    providerData = await deps.fetchTransaction(payload.transaction_key);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    deps.log.error(`[Fawaterak] getTransactionData failed for attempt ${attempt.id}: ${message}`);
+    return reject(502, "Provider verification unavailable");
+  }
+
+  const verification = verifyFawaterakPaidTransaction(
+    { id: attempt.id, paymentSessionId: attempt.intentKey, total: attempt.total },
+    providerData,
+  );
+  if (!verification.ok) {
+    deps.log.warn(
+      `[Fawaterak] Paid webhook for attempt ${attempt.id} NOT confirmed: ${verification.reason}`,
+    );
+    await attemptDeps.recordGatewayData(attempt.id, { webhook: payload, provider: providerData });
+    return accepted(null, `Not confirmed: ${verification.reason}`);
+  }
+
+  const result = await attemptDeps.finalizeAttempt(attempt.id, {
+    transactionId: verification.transactionId,
+    providerPaidAt: verification.paidAt,
+    gatewayData: providerData,
+    providerPaymentMethod: payload.payment_method,
+  });
+  deps.log.info(
+    `[Fawaterak] Attempt ${attempt.id} paid (txn ${verification.transactionId}) -> ${result.kind}`,
+  );
+  return finalizeToOutcome(attempt.id, result);
+}
+
+async function processAttemptUnpaidWebhook(
+  deps: FawaterakWebhookDeps,
+  attemptDeps: FawaterakAttemptWebhookDeps,
+  attempt: FawaterakWebhookAttempt,
+  transactionKey: string | undefined,
+  outcome: "failed" | "cancelled" | "expired",
+  payload: unknown,
+  failureReason: string | null,
+): Promise<FawaterakWebhookOutcome> {
+  if (transactionKey !== undefined) {
+    if (!attempt.intentKey || attempt.intentKey !== transactionKey) {
+      return reject(409, "transaction_key does not match payment attempt");
+    }
+  } else if (!attempt.intentKey) {
+    return reject(409, "Payment attempt has no payment session");
+  }
+
+  if (ATTEMPT_PAID_STATES.has(attempt.status)) {
+    deps.log.warn(`[Fawaterak] Ignoring ${outcome} webhook for attempt ${attempt.id} — already paid`);
+    return ok(null, { result: "already_paid" });
+  }
+
+  // Conditional update: a paid attempt is never downgraded, even if the paid
+  // webhook lands between the read above and this write.
+  const recorded = await attemptDeps.recordOutcome(attempt.id, outcome, {
+    gatewayData: payload,
+    failureReason,
+  });
+  deps.log.info(
+    `[Fawaterak] Attempt ${attempt.id} ${outcome}${recorded ? "" : " (not recorded — state moved on)"}`,
+  );
+  return ok(null, { result: outcome });
+}
+
 // ─── Paid / pending ─────────────────────────────────────────────────────────
 
 export async function processFawaterakPaidWebhook(
@@ -212,6 +381,12 @@ export async function processFawaterakPaidWebhook(
     return reject(401, "Invalid signature");
   }
 
+  const attempt = await findAttemptForPayLoad(deps, payload.pay_load);
+  if (attempt && deps.attempts) {
+    return processAttemptPaidWebhook(deps, deps.attempts, attempt, payload);
+  }
+
+  // Legacy order-first payment (orders created before payment attempts).
   const located = await locateOrder(deps, payload.pay_load, payload.transaction_key);
   if (!located.ok) return located.outcome;
   const { order: orderRow } = located;
@@ -284,6 +459,19 @@ export async function processFawaterakFailedWebhook(
     return reject(401, "Invalid signature");
   }
 
+  const attempt = await findAttemptForPayLoad(deps, payload.pay_load);
+  if (attempt && deps.attempts) {
+    return processAttemptUnpaidWebhook(
+      deps,
+      deps.attempts,
+      attempt,
+      payload.transaction_key,
+      "failed",
+      payload,
+      typeof payload.errorMessage === "string" ? payload.errorMessage : null,
+    );
+  }
+
   const located = await locateOrder(deps, payload.pay_load, payload.transaction_key);
   if (!located.ok) return located.outcome;
   const { order: orderRow } = located;
@@ -306,6 +494,22 @@ export async function processFawaterakCancelWebhook(
   if (!verifyFawaterakCancelWebhookHash(payload)) {
     deps.log.warn("[Fawaterak] Rejected cancel webhook — invalid hashKey");
     return reject(401, "Invalid signature");
+  }
+
+  const attempt = await findAttemptForPayLoad(deps, payload.pay_load);
+  if (attempt && deps.attempts) {
+    // Only an explicit provider EXPIRED is recorded as expired; expiry is
+    // never inferred from time.
+    const kind = (payload.status ?? "").trim().toUpperCase() === "EXPIRED" ? "expired" : "cancelled";
+    return processAttemptUnpaidWebhook(
+      deps,
+      deps.attempts,
+      attempt,
+      payload.transactionKey,
+      kind,
+      payload,
+      payload.status ? `Provider status: ${payload.status}` : null,
+    );
   }
 
   const located = await locateOrder(deps, payload.pay_load, payload.transactionKey);
@@ -353,7 +557,11 @@ async function markAttemptFailed(
 
 // ─── Fastify plugin (real deps) ─────────────────────────────────────────────
 
-function buildDeps(db: DatabaseClient, fastify: FastifyInstance): FawaterakWebhookDeps {
+/** Production wiring (exported so integration tests exercise exactly this). */
+export function buildFawaterakWebhookDeps(
+  db: DatabaseClient,
+  log: FawaterakWebhookDeps["log"],
+): FawaterakWebhookDeps {
   const run = <T, E>(effect: Effect.Effect<T, E, DatabaseClientService>) =>
     Effect.runPromise(Effect.provideService(effect, DatabaseClientService, db));
 
@@ -390,10 +598,26 @@ function buildDeps(db: DatabaseClient, fastify: FastifyInstance): FawaterakWebho
             .execute();
         }),
       ),
-    log: {
-      info: (m) => fastify.log.info(m),
-      warn: (m) => fastify.log.warn(m),
-      error: (m) => fastify.log.error(m),
+    log,
+    attempts: {
+      findAttemptById: async (attemptId) => {
+        const [row] = await db
+          .select({
+            id: paymentAttempt.id,
+            status: paymentAttempt.status,
+            intentKey: paymentAttempt.intentKey,
+            total: paymentAttempt.total,
+          })
+          .from(paymentAttempt)
+          .where(eq(paymentAttempt.id, attemptId))
+          .limit(1)
+          .execute();
+        return row ?? null;
+      },
+      finalizeAttempt: (attemptId, payment) => finalizePaidAttempt(db, attemptId, payment),
+      recordOutcome: (attemptId, outcome, data) => recordAttemptOutcome(db, attemptId, outcome, data),
+      recordGatewayData: (attemptId, gatewayData) =>
+        recordAttemptGatewayData(db, attemptId, gatewayData),
     },
   };
 }
@@ -418,7 +642,14 @@ function route(
     });
 
     try {
-      const outcome = await processor(body, buildDeps(request.db, fastify));
+      const outcome = await processor(
+        body,
+        buildFawaterakWebhookDeps(request.db, {
+          info: (m) => fastify.log.info(m),
+          warn: (m) => fastify.log.warn(m),
+          error: (m) => fastify.log.error(m),
+        }),
+      );
       if (webhookLogId) {
         await updateWebhookLogStatus(
           webhookLogId,
