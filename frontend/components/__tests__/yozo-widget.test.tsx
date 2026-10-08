@@ -7,16 +7,22 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConsentState } from "#root/shared/types/pixel-tracking";
 import {
+  CONSENT_COOKIE_NAME,
   buildAcceptAllConsent,
   buildRejectAllConsent,
-  getDefaultConsentState,
+  isConfigAllowedByConsent,
+  serializeConsentCookie,
 } from "#root/shared/utils/consent-gate";
 
 /**
- * The Yozo AI widget loader: marketing consent + public storefront routes
- * only, one tag per document, a full reload whenever a document that ran
- * Yozo reaches the dashboard or loses consent, and no credential anywhere a
- * browser can read it.
+ * The Yozo AI widget loader: every visitor on public storefront routes,
+ * regardless of cookie consent; one tag per document; a full reload whenever
+ * a document that ran Yozo reaches the dashboard; and no credential anywhere
+ * a browser can read it.
+ *
+ * Consent scenarios run through the real ConsentProvider and consent cookie,
+ * so they prove Yozo ignores consent *and* that the consent state the other
+ * integrations rely on still behaves as before.
  *
  * Script file loading is disabled for this file (docblock above), so happy-dom
  * never fetches the provider and instead fires the tag's `error` event — the
@@ -24,18 +30,11 @@ import {
  */
 
 const page = { urlPathname: "/" };
-const consentRef: { consent: ConsentState } = { consent: getDefaultConsentState() };
-let persistedConsent: ConsentState | null = null;
 
 vi.mock("vike-react/usePageContext", () => ({ usePageContext: () => page }));
-vi.mock("#root/frontend/contexts/ConsentContext", () => ({
-  useConsent: () => consentRef,
-}));
-vi.mock("#root/frontend/contexts/TrackingContext", () => ({
-  readConsentCookie: () => persistedConsent,
-}));
 
 const { YozoWidget } = await import("../YozoWidget");
+const { ConsentProvider, useConsent } = await import("#root/frontend/contexts/ConsentContext");
 const { Link } = await import("#root/components/utils/Link");
 const {
   YOZO_WIDGET_SRC,
@@ -58,24 +57,64 @@ let container: HTMLDivElement;
 let root: Root;
 let reload: ReturnType<typeof vi.fn>;
 
-function grant() {
-  consentRef.consent = buildAcceptAllConsent("banner_accept");
-  persistedConsent = consentRef.consent;
+/** The live consent context, captured from inside the real provider. */
+let consentApi: ReturnType<typeof useConsent> | undefined;
+function ConsentProbe() {
+  consentApi = useConsent();
+  return null;
+}
+function consent(): ReturnType<typeof useConsent> {
+  if (!consentApi) throw new Error("ConsentProvider not rendered");
+  return consentApi;
 }
 
-function revoke() {
-  consentRef.consent = buildRejectAllConsent("banner_reject");
-  persistedConsent = consentRef.consent;
+/** A returning visitor whose decision is already in the consent cookie. */
+function persistConsent(state: ConsentState) {
+  document.cookie = `${CONSENT_COOKIE_NAME}=${encodeURIComponent(serializeConsentCookie(state))};path=/`;
 }
 
+function clearConsentCookie() {
+  document.cookie = `${CONSENT_COOKIE_NAME}=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+}
+
+const ANALYTICS_ONLY: ConsentState = {
+  ...buildRejectAllConsent("settings_page"),
+  categories: { functional: true, analytics: true, marketing: false },
+};
+
+/** How the site's marketing / analytics pixels are gated (unchanged). */
+const marketingPixelAllowed = () =>
+  isConfigAllowedByConsent({ consentRequired: true, consentCategory: "marketing" }, consent().consent);
+const analyticsPixelAllowed = () =>
+  isConfigAllowedByConsent({ consentRequired: true, consentCategory: "analytics" }, consent().consent);
+
+/** The widget as the layout mounts it: inside the real ConsentProvider. */
 function render(ui: React.ReactNode = <YozoWidget />) {
-  act(() => root.render(ui));
+  act(() =>
+    root.render(
+      <ConsentProvider>
+        <ConsentProbe />
+        {ui}
+      </ConsentProvider>,
+    ),
+  );
+}
+
+function expectOneProviderScript() {
+  const tags = yozoTags();
+  expect(tags).toHaveLength(1);
+  const [tag] = tags;
+  if (!tag) throw new Error("Yozo script missing");
+  expect(tag.getAttribute("src")).toBe(PROVIDER_SRC);
+  expect(tag.async).toBe(true);
+  expect(tag.hasAttribute(YOZO_LOADER_ATTRIBUTE)).toBe(true);
+  expect(tag.parentElement).toBe(document.head);
 }
 
 beforeEach(() => {
   page.urlPathname = "/";
-  consentRef.consent = getDefaultConsentState();
-  persistedConsent = null;
+  consentApi = undefined;
+  clearConsentCookie();
   for (const s of document.querySelectorAll("script")) s.remove();
   reload = vi.fn();
   vi.spyOn(window.location, "reload").mockImplementation(reload);
@@ -94,6 +133,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  clearConsentCookie();
   vi.restoreAllMocks();
 });
 
@@ -103,101 +143,145 @@ describe("provider script", () => {
   });
 });
 
-describe("marketing consent", () => {
-  it("A: no Yozo script before marketing consent", () => {
+describe("available to every visitor, whatever their consent", () => {
+  it("1: no consent decision yet → loads (banner still offered)", () => {
     render();
-    expect(yozoTags()).toHaveLength(0);
+    expect(consent().showBanner).toBe(true);
+    expect(consent().consent.categories.marketing).toBe(false);
+    expectOneProviderScript();
   });
 
-  it("A: no Yozo script after an explicit reject", () => {
-    revoke();
+  it("2: marketing rejected (persisted) → loads", () => {
+    persistConsent(buildRejectAllConsent("banner_reject"));
     render();
-    expect(yozoTags()).toHaveLength(0);
+    expect(consent().showBanner).toBe(false);
+    expect(consent().consent.categories.marketing).toBe(false);
+    expectOneProviderScript();
   });
 
-  it("A: analytics-only consent is not marketing consent", () => {
-    consentRef.consent = {
-      ...buildRejectAllConsent("settings_page"),
-      categories: { functional: true, analytics: true, marketing: false },
-    };
+  it("3: analytics-only (persisted) → loads", () => {
+    persistConsent(ANALYTICS_ONLY);
     render();
-    expect(yozoTags()).toHaveLength(0);
+    expect(consent().consent.categories).toMatchObject({ analytics: true, marketing: false });
+    expectOneProviderScript();
   });
 
-  it("B: injects the exact async script once marketing consent is granted", () => {
+  it("4: marketing accepted (persisted) → loads", () => {
+    persistConsent(buildAcceptAllConsent("banner_accept"));
     render();
-    expect(yozoTags()).toHaveLength(0);
-
-    grant();
-    render();
-
-    const tags = yozoTags();
-    expect(tags).toHaveLength(1);
-    const [tag] = tags;
-    if (!tag) throw new Error("Yozo script missing");
-    expect(tag.getAttribute("src")).toBe(PROVIDER_SRC);
-    expect(tag.async).toBe(true);
-    expect(tag.hasAttribute(YOZO_LOADER_ATTRIBUTE)).toBe(true);
-    expect(tag.parentElement).toBe(document.head);
+    expect(consent().consent.categories.marketing).toBe(true);
+    expectOneProviderScript();
   });
 
-  it("B: loads on first render when consent was already persisted (refresh)", () => {
-    grant();
+  it("dismissing the banner (implied, functional-only) → still loaded", () => {
     render();
-    expect(yozoTags()).toHaveLength(1);
+    act(() => consent().dismissBanner());
+    expectOneProviderScript();
   });
 
-  it("withdrawing consent removes the tag and reloads the document", () => {
-    grant();
+  it("5: accept → reject → analytics-only → accept in one session: one script, never reloaded", () => {
     render();
-    expect(yozoTags()).toHaveLength(1);
+    expectOneProviderScript();
 
-    revoke();
-    render();
+    act(() => consent().acceptAll());
+    expectOneProviderScript();
 
-    expect(yozoTags()).toHaveLength(0);
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
+    act(() => consent().rejectAll());
+    expectOneProviderScript();
 
-  it("a provider remount's transient default state is not a withdrawal", () => {
-    grant();
-    render();
-    // ConsentProvider remounted: in-memory default, cookie still says yes.
-    consentRef.consent = getDefaultConsentState();
-    render();
+    act(() => consent().updateCategories({ functional: true, analytics: true, marketing: false }));
+    expectOneProviderScript();
+
+    act(() => consent().acceptAll());
+    expectOneProviderScript();
 
     expect(reload).not.toHaveBeenCalled();
-    expect(yozoTags()).toHaveLength(1);
+  });
+
+  it("the widget does not read consent at all", () => {
+    const ROOT = path.resolve(__dirname, "../../..");
+    for (const rel of ["frontend/components/YozoWidget.tsx", "frontend/yozo/yozo-widget.ts"]) {
+      const src = readFileSync(path.join(ROOT, rel), "utf-8");
+      expect(src, rel).not.toMatch(/ConsentContext|consent-gate|readConsentCookie|useConsent/);
+    }
   });
 });
 
-describe("one load per document", () => {
-  it("C: re-renders and client navigation keep exactly one script", () => {
-    grant();
+describe("10: cookie consent for the other integrations is unchanged", () => {
+  it("no decision: banner shown, marketing + analytics pixels blocked", () => {
+    render();
+    expect(consent().showBanner).toBe(true);
+    expect(marketingPixelAllowed()).toBe(false);
+    expect(analyticsPixelAllowed()).toBe(false);
+  });
+
+  it("reject: persisted to the cookie, banner hidden, both pixel categories blocked", () => {
+    render();
+    act(() => consent().rejectAll());
+    expect(consent().showBanner).toBe(false);
+    expect(document.cookie).toContain(`${CONSENT_COOKIE_NAME}=`);
+    expect(marketingPixelAllowed()).toBe(false);
+    expect(analyticsPixelAllowed()).toBe(false);
+  });
+
+  it("analytics-only: analytics pixels allowed, marketing pixels still blocked", () => {
+    render();
+    act(() => consent().updateCategories({ functional: true, analytics: true, marketing: false }));
+    expect(analyticsPixelAllowed()).toBe(true);
+    expect(marketingPixelAllowed()).toBe(false);
+  });
+
+  it("accept: both pixel categories allowed, and a refresh restores it from the cookie", () => {
+    render();
+    act(() => consent().acceptAll());
+    expect(marketingPixelAllowed()).toBe(true);
+    expect(analyticsPixelAllowed()).toBe(true);
+
+    // Fresh provider reading the same cookie.
+    act(() => root.unmount());
+    root = createRoot(container);
+    render();
+    expect(consent().showBanner).toBe(false);
+    expect(marketingPixelAllowed()).toBe(true);
+  });
+
+  it("consent changes still notify the tracking runtime", () => {
+    const seen: unknown[] = [];
+    const onChange = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener("tracking:consent-changed", onChange);
+    render();
+    act(() => consent().rejectAll());
+    window.removeEventListener("tracking:consent-changed", onChange);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ categories: { marketing: false } });
+  });
+});
+
+describe("5: one load per document", () => {
+  it("re-renders and client navigation keep exactly one script", () => {
     for (const pathname of ["/", "/shop", "/products/whey", "/cart", "/checkout", "/"]) {
       page.urlPathname = pathname;
       render();
       render();
     }
-    expect(yozoTags()).toHaveLength(1);
+    expectOneProviderScript();
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it("C: a remounted widget does not add a second tag", () => {
-    grant();
+  it("a remounted widget does not add a second tag", () => {
     render();
     act(() => root.unmount());
     root = createRoot(container);
     render();
-    expect(yozoTags()).toHaveLength(1);
+    expectOneProviderScript();
   });
 });
 
 describe("route exclusions", () => {
   it.each(["/dashboard", "/dashboard/orders", "/dashboard/payment-attempts"])(
-    "D: never loads on %s, even with marketing consent",
+    "6: never loads on %s, even with marketing consent",
     (pathname) => {
-      grant();
+      persistConsent(buildAcceptAllConsent("banner_accept"));
       page.urlPathname = pathname;
       render();
       expect(yozoTags()).toHaveLength(0);
@@ -205,8 +289,8 @@ describe("route exclusions", () => {
     },
   );
 
-  it("E: never loads on the template preview", () => {
-    grant();
+  it("7: never loads on the template preview, even with marketing consent", () => {
+    persistConsent(buildAcceptAllConsent("banner_accept"));
     page.urlPathname = "/template-preview";
     render();
     expect(yozoTags()).toHaveLength(0);
@@ -222,7 +306,7 @@ describe("route exclusions", () => {
   });
 });
 
-describe("F: storefront → dashboard is a full document navigation", () => {
+describe("storefront → dashboard is a full document navigation", () => {
   const linkRel = (href: string) =>
     container.querySelector<HTMLAnchorElement>(`a[href="${href}"]`)?.getAttribute("rel") ?? null;
 
@@ -256,9 +340,8 @@ describe("F: storefront → dashboard is a full document navigation", () => {
   });
 
   it("a client-routed arrival in the dashboard (back button, guard redirect) reloads a document that ran Yozo", () => {
-    grant();
     render();
-    expect(yozoTags()).toHaveLength(1);
+    expectOneProviderScript();
 
     page.urlPathname = "/dashboard";
     render();
@@ -267,8 +350,18 @@ describe("F: storefront → dashboard is a full document navigation", () => {
     expect(yozoTags()).toHaveLength(0);
   });
 
+  it("a client-routed arrival in the template preview reloads a document that ran Yozo", () => {
+    render();
+    expectOneProviderScript();
+
+    page.urlPathname = "/template-preview";
+    render();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(yozoTags()).toHaveLength(0);
+  });
+
   it("a dashboard-first document is never reloaded", () => {
-    grant();
     page.urlPathname = "/dashboard";
     render();
     page.urlPathname = "/dashboard/orders";
@@ -295,9 +388,8 @@ describe("F: storefront → dashboard is a full document navigation", () => {
   });
 });
 
-describe("G: provider failure never affects the storefront", () => {
+describe("8: provider failure never affects the storefront", () => {
   it("a failed script load leaves the page rendered and throws nothing", async () => {
-    grant();
     const onError = vi.fn();
     window.addEventListener("error", onError);
     render(
@@ -335,7 +427,7 @@ describe("G: provider failure never affects the storefront", () => {
   });
 });
 
-describe("H: no Yozo credential is reachable from the browser", () => {
+describe("9: no Yozo credential is reachable from the browser", () => {
   const ROOT = path.resolve(__dirname, "../../..");
   // Everything Vite can bundle for the client, plus the SSR head/layout.
   const CLIENT_DIRS = ["frontend", "components", "pages", "layouts", "lib", "hooks", "context", "shared"];

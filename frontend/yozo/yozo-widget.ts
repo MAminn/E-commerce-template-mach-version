@@ -1,5 +1,3 @@
-import type { ConsentState } from "#root/shared/types/pixel-tracking";
-import { isConfigAllowedByConsent } from "#root/shared/utils/consent-gate";
 import { isAdminPath } from "#root/lib/admin-navigation";
 
 // ─── Yozo AI storefront widget ──────────────────────────────────────────────
@@ -13,6 +11,10 @@ import { isAdminPath } from "#root/lib/admin-navigation";
 // implemented: BLOCKER_YOZO_EVENT_API_SPEC_REQUIRED (no official Yozo event /
 // signature specification is available yet; do not reverse-engineer the
 // widget's own endpoints in its place).
+//
+// Yozo is the storefront's AI assistant and is available to every visitor:
+// it is deliberately NOT gated on the cookie-consent state (unlike the
+// pixels, which still are). Only the route decides whether it loads.
 
 /** Provider-supplied URL. Do not change the version without Yozo's say-so. */
 export const YOZO_WIDGET_SRC =
@@ -27,19 +29,6 @@ export const YOZO_LOADER_ATTRIBUTE = "data-mach-yozo-loader";
  * started in this document — never used to manipulate Yozo's state.
  */
 const YOZO_BUNDLE_SELECTOR = "script[data-yozo-widgets]";
-
-/**
- * Yozo performs session/impression tracking and IP-country lookups, and
- * nothing documents it as functional-only — so it is gated exactly like a
- * pixel in the marketing category, through the same rule the tracking
- * runtime and the beacon endpoint use.
- */
-export function isYozoAllowedByConsent(consent: ConsentState | null): boolean {
-  return isConfigAllowedByConsent(
-    { consentRequired: true, consentCategory: "marketing" },
-    consent,
-  );
-}
 
 /** Public storefront only: never the admin app, never template previews. */
 export function isYozoEligiblePath(pathname: string): boolean {

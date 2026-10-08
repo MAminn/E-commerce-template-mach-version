@@ -357,10 +357,10 @@ function LayoutShell({
           {/* Storefront only — the dashboard is staff, not a visitor
               subject to the marketing-consent banner. */}
           {!isDashboardRoute && <ConsentBanner />}
-          {/* Yozo AI widget: marketing consent + public storefront routes
-              only. Mounted on every route on purpose — it also reloads a
-              document that ran Yozo and then reached the dashboard or had
-              consent withdrawn (see the component). */}
+          {/* Yozo AI widget: every visitor, public storefront routes only
+              (not consent-gated). Mounted on every route on purpose — it
+              also reloads a document that ran Yozo and then reached the
+              dashboard (see the component). */}
           <YozoWidget />
         </TrackingProvider>
         </ConsentProvider>
