@@ -68,7 +68,8 @@ export function MediaUploadField({
 
       if (outcome.ok) {
         onChange(outcome.url);
-        toast.success("Uploaded");
+        if (outcome.notice) toast.warning(outcome.notice, { duration: 12000 });
+        else toast.success("Uploaded");
       } else {
         toast.error(outcome.message);
       }

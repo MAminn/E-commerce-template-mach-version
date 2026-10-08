@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { faviconExtension, resolveFavicon } from "../favicon";
@@ -119,22 +120,37 @@ describe("resolveFavicon", () => {
   });
 
   it("matches the Content-Type the upload route serves for each extension", () => {
-    // server.ts maps extension → Content-Type for /uploads/*. The head must
-    // agree with it or the declaration is a lie on every request.
-    const server = read("server/server.ts");
-    const mapBlock = server.slice(
-      server.indexOf("const mimeTypes: Record<string, string> = {"),
+    // Every /uploads/* file is served by @fastify/static — through its boot-
+    // time routes, or `reply.sendFile` for files uploaded since — so its mime
+    // table is the Content-Type. The head must agree with it or the
+    // declaration is a lie on every request.
+    const server = read("server/uploads-route.ts");
+    const served = server.slice(
+      server.indexOf("const SERVED_MEDIA_EXTENSIONS = new Set(["),
     );
+    const staticRequire = createRequire(
+      createRequire(import.meta.url).resolve("@fastify/static"),
+    );
+    const { mime } = staticRequire("@fastify/send") as {
+      mime: { getType(ext: string): string | null };
+    };
     for (const [extension, type] of [
       ["png", "image/png"],
       ["svg", "image/svg+xml"],
-      ["ico", "image/x-icon"],
       ["webp", "image/webp"],
-    ]) {
-      expect(mapBlock).toContain(`${extension}: "${type}"`);
+    ] as const) {
+      expect(served).toContain(`"${extension}"`);
+      expect(mime.getType(extension)).toBe(type);
       expect(resolveFavicon(`/uploads/layout/f.${extension}`, DEFAULT_HREF).type)
         .toBe(type);
     }
+    // The one alias: the head says image/x-icon, the server the registered
+    // name for the same format. Browsers treat the two identically.
+    expect(served).toContain(`"ico"`);
+    expect(mime.getType("ico")).toBe("image/vnd.microsoft.icon");
+    expect(resolveFavicon("/uploads/layout/f.ico", DEFAULT_HREF).type).toBe(
+      "image/x-icon",
+    );
   });
 });
 

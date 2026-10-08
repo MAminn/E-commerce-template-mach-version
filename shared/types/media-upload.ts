@@ -53,26 +53,44 @@ export function normalizeMediaUploadPrefix(
 }
 
 /**
- * The largest video the CMS will try to send, in bytes. Applies to every CMS
- * video slot, because they all upload through `uploadMediaFile`.
+ * The largest video the CMS accepts, in bytes — inclusive, so a file of exactly
+ * this size is accepted and one byte more is not. Applies to every CMS video
+ * slot, because they all upload through `uploadMediaFile`.
  *
- * Not the server's own ceiling (`upload-media` says 40MB) but the one the
- * transport imposes first. The file travels inside a tRPC mutation, and
- * SuperJSON encodes a `Uint8Array` as a JSON array of numbers: each byte
- * becomes one to three digits plus a comma, ~3.57 characters for compressed
- * video and never more than 4. The request limit is 100MiB (server.ts, and
- * the tRPC plugin's `maxBodySize`), so:
- *
- *  - 25MiB is the largest file that fits whatever its bytes are (100 / 4);
- *  - a typical video fits up to ~28MB, depending on its bytes;
- *  - anything from ~29MB is refused by Fastify with 413 before the procedure
- *    runs. Measured against the real endpoint: 28MB → 200, 29/30/35/40MB →
- *    413 FST_ERR_CTP_BODY_TOO_LARGE. The server's 40MB is unreachable.
- *
- * Checked before the file is read into memory, so the owner is told the real
- * reason instead of a transport error.
+ * Videos do not travel through tRPC. They used to, and that capped them at
+ * 25MB: SuperJSON encodes a `Uint8Array` as a JSON array of numbers (up to
+ * four characters per byte) inside a 100MiB request, so anything from ~29MB
+ * was refused with 413 before the procedure ran. They now go as a plain
+ * multipart body to `MEDIA_UPLOAD_VIDEO_ENDPOINT`, streamed to disk, and this
+ * number is enforced there (busboy's `fileSize`) and checked here before the
+ * file is read, so the owner is told the real reason instead of a transport
+ * error. Images and PDFs keep their own, smaller server-side limits.
  */
-export const MEDIA_UPLOAD_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+export const MEDIA_UPLOAD_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+
+/** Where `uploadMediaFile` sends videos, as `multipart/form-data`. */
+export const MEDIA_UPLOAD_VIDEO_ENDPOINT = "/api/admin/homepage/media/video";
+
+/**
+ * Header the video endpoint requires.
+ *
+ * A multipart POST is a "simple" request a cross-site form can send with the
+ * admin's cookie attached; a custom header cannot be added without a CORS
+ * preflight this server never grants. The tRPC path gets the same protection
+ * from its JSON content type.
+ */
+export const MEDIA_UPLOAD_VIDEO_HEADER = "x-mach-cms-upload";
+
+/**
+ * Above this, an uploaded video is accepted but the admin is warned.
+ *
+ * The hero plays with `autoplay` + `preload="auto"` and loops, so every
+ * visitor's browser downloads the whole file; a well-compressed 1080p loop is
+ * a few MB. Advice only — nothing is refused or re-encoded.
+ */
+export const LARGE_STOREFRONT_VIDEO_BYTES = 20 * 1024 * 1024;
+
+const wholeMb = (bytes: number) => Math.ceil(bytes / (1024 * 1024));
 
 /** An admin-facing refusal for an oversize video, or null when it fits. */
 export function oversizeVideoMessage(file: {
@@ -81,6 +99,27 @@ export function oversizeVideoMessage(file: {
 }): string | null {
   if (!file.type.toLowerCase().startsWith("video/")) return null;
   if (file.size <= MEDIA_UPLOAD_VIDEO_MAX_BYTES) return null;
-  const mb = (bytes: number) => Math.ceil(bytes / (1024 * 1024));
-  return `Video is ${mb(file.size)}MB. Videos must be ${mb(MEDIA_UPLOAD_VIDEO_MAX_BYTES)}MB or smaller — export at 1080p or compress it, then upload again.`;
+  return videoTooLargeMessage(file.size);
+}
+
+/**
+ * The refusal itself, shared with the server so both sides say the same
+ * thing. `size` is omitted when the server stopped reading at the limit and
+ * never learned the real one.
+ */
+export function videoTooLargeMessage(size?: number): string {
+  const limit = `${wholeMb(MEDIA_UPLOAD_VIDEO_MAX_BYTES)}MB`;
+  const subject =
+    size === undefined ? `Video is over ${limit}.` : `Video is ${wholeMb(size)}MB.`;
+  return `${subject} Videos must be ${limit} or smaller — export at 1080p or compress it, then upload again.`;
+}
+
+/** A warning for a video that uploaded but will be heavy on the storefront. */
+export function largeVideoAdvisory(file: {
+  type: string;
+  size: number;
+}): string | null {
+  if (!file.type.toLowerCase().startsWith("video/")) return null;
+  if (file.size <= LARGE_STOREFRONT_VIDEO_BYTES) return null;
+  return `Uploaded, but this video is ${wholeMb(file.size)}MB and visitors download all of it when it plays. A compressed 1080p export under ${wholeMb(LARGE_STOREFRONT_VIDEO_BYTES)}MB — and a smaller Mobile version — will load much faster.`;
 }

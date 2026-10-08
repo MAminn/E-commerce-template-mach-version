@@ -180,23 +180,25 @@ describe("video upload rules", () => {
     expect(types).not.toContain("video/quicktime");
   });
 
-  it("refuses a video over the transport limit, before reading it", () => {
+  it("refuses a video over the 100MB limit, before reading it", () => {
     const limit = MEDIA_UPLOAD_VIDEO_MAX_BYTES;
+    expect(limit).toBe(100 * 1024 * 1024);
     expect(oversizeVideoMessage({ type: "video/mp4", size: limit })).toBeNull();
     expect(oversizeVideoMessage({ type: "video/mp4", size: limit + 1 })).toBe(
-      "Video is 26MB. Videos must be 25MB or smaller — export at 1080p or compress it, then upload again.",
+      "Video is 101MB. Videos must be 100MB or smaller — export at 1080p or compress it, then upload again.",
     );
     // Images keep their own server-side limits; this rule is video-only.
     expect(oversizeVideoMessage({ type: "image/png", size: limit * 2 })).toBeNull();
   });
 
-  it("is the largest video that always fits the 100MiB request", () => {
+  it("is past what the tRPC transport could ever carry, so video cannot go that way", () => {
     // SuperJSON sends a Uint8Array as a JSON array of numbers. The worst byte
     // (100-255) costs three digits and a comma, so four characters per byte
-    // bounds any file, and 25MiB x 4 = the 100MiB body limit in server.ts.
+    // bounds any file — and 25MiB x 4 already fills the 100MiB request. That
+    // is why video streams to its own multipart endpoint instead.
     const worst = new Uint8Array(10_000).fill(255);
     const encoded = JSON.stringify(SuperJSON.serialize({ buffer: worst }).json);
     expect(encoded.length / worst.length).toBeLessThanOrEqual(4.01);
-    expect(MEDIA_UPLOAD_VIDEO_MAX_BYTES * 4).toBe(100 * 1024 * 1024);
+    expect(MEDIA_UPLOAD_VIDEO_MAX_BYTES).toBeGreaterThan((100 * 1024 * 1024) / 4);
   });
 });

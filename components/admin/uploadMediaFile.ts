@@ -1,6 +1,9 @@
 import { trpc } from "#root/shared/trpc/client";
 import {
   DEFAULT_MEDIA_UPLOAD_PREFIX,
+  MEDIA_UPLOAD_VIDEO_ENDPOINT,
+  MEDIA_UPLOAD_VIDEO_HEADER,
+  largeVideoAdvisory,
   normalizeMediaUploadPrefix,
   oversizeVideoMessage,
 } from "#root/shared/types/media-upload";
@@ -24,11 +27,17 @@ import {
  *     explain (unsupported type, file too large) in its result; anything
  *     thrown is a transport or validation fault, which used to collapse into
  *     one generic message with the real reason only in the console.
+ *
+ * Videos are the one exception to "through the mutation": they are streamed
+ * as multipart to their own endpoint, because tRPC's encoding of a byte array
+ * capped them at 25MB. Callers see the same outcome either way.
  */
 
 export interface MediaUploadSuccess {
   ok: true;
   url: string;
+  /** Uploaded fine, but worth a word to the admin (a very heavy video). */
+  notice?: string;
 }
 
 export interface MediaUploadFailure {
@@ -91,10 +100,15 @@ export async function uploadMediaFile(
 ): Promise<MediaUploadOutcome | null> {
   if (!file) return null;
 
-  // Refused before the file is read: a video past what the transport can
-  // carry would otherwise fail in flight with no useful message.
+  // Refused before the file is sent, with the same limit the server enforces.
   const oversize = oversizeVideoMessage(file);
   if (oversize) return { ok: false, message: oversize };
+
+  if (file.type.toLowerCase().startsWith("video/")) {
+    const outcome = await uploadVideoFile(file, prefix);
+    const notice = largeVideoAdvisory(file);
+    return outcome.ok && notice ? { ...outcome, notice } : outcome;
+  }
 
   try {
     const buffer = new Uint8Array(await file.arrayBuffer());
@@ -114,5 +128,49 @@ export async function uploadMediaFile(
       ok: false,
       message: safeUploadErrorMessage(error) ?? "Error uploading file",
     };
+  }
+}
+
+/**
+ * Streams a video to the multipart endpoint.
+ *
+ * The browser sends the `File` itself — it is never read into a buffer here —
+ * and the server writes it to disk as it arrives.
+ */
+async function uploadVideoFile(
+  file: File,
+  prefix: string | undefined,
+): Promise<MediaUploadOutcome> {
+  const body = new FormData();
+  body.append("file", file, file.name);
+  const query = new URLSearchParams({
+    prefix: normalizeMediaUploadPrefix(prefix, DEFAULT_MEDIA_UPLOAD_PREFIX),
+  });
+
+  try {
+    const response = await fetch(`${MEDIA_UPLOAD_VIDEO_ENDPOINT}?${query}`, {
+      method: "POST",
+      body,
+      credentials: "same-origin",
+      headers: { [MEDIA_UPLOAD_VIDEO_HEADER]: "1" },
+    });
+    const result = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      data?: { url?: string };
+      error?: string;
+    } | null;
+
+    if (response.ok && result?.success && result.data?.url) {
+      return { ok: true, url: result.data.url };
+    }
+    return {
+      ok: false,
+      message:
+        safeUploadErrorMessage(new Error(result?.error ?? "")) ??
+        `Upload failed (${response.status})`,
+    };
+  } catch (error) {
+    console.error("Media upload error:", error);
+    return { ok: false, message: "Error uploading file" };
   }
 }

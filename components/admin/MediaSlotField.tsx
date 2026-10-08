@@ -112,7 +112,8 @@ export function MediaSlotField({
 
       if (outcome.ok) {
         patch({ [target]: outcome.url } as Partial<MediaSlot>);
-        toast.success("Uploaded");
+        if (outcome.notice) toast.warning(outcome.notice, { duration: 12000 });
+        else toast.success("Uploaded");
       } else {
         toast.error(outcome.message);
       }

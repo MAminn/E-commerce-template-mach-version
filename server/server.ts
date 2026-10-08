@@ -11,6 +11,8 @@ import { authFasitfyMiddleware } from "#root/backend/auth/middleware.js";
 import { authFastifyPlugin } from "#root/backend/auth/api.js";
 import { auth } from "#root/backend/auth/auth.server.js";
 import { uploadFileApiPlugin } from "#root/backend/file/upload-file/api";
+import { homepageVideoUploadApiPlugin } from "#root/backend/homepage/upload-media/video-api";
+import { uploadsServingPlugin } from "./uploads-route";
 import { emailServiceMiddleware } from "#root/shared/email/middleware.server";
 import { fincartWebhookPlugin } from "#root/backend/orders/fincart-webhook/api.js";
 import { bostaWebhookPlugin } from "#root/backend/orders/bosta/webhook-api.js";
@@ -201,71 +203,10 @@ async function buildServer() {
     await instance.use(viteDevMiddleware);
   }
 
-  await instance.register(import("@fastify/static"), {
-    root: `${root}/uploads`,
-    decorateReply: false,
-    wildcard: false,
-    prefix: "/uploads",
-    // helmet's default Cross-Origin-Resource-Policy: same-origin blocks any
-    // cross-origin embedder from loading these files — but uploads (logos,
-    // product photos, share images) are deliberately public assets meant to
-    // be embedded elsewhere: marketing emails (Gmail/Outlook render message
-    // bodies as an opaque/foreign origin), social-preview scrapers, and this
-    // admin's own sandboxed (`sandbox=""`, opaque-origin) preview iframe.
-    // Same-origin CORP was silently breaking all three.
-    setHeaders: (res) => {
-      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-    },
-  });
-
-  // Dynamic route for uploaded files (wildcard: false only registers files existing at boot)
-  instance.get("/uploads/*", async (request, reply) => {
-    const filePath = (request.params as { "*": string })["*"];
-    const fullPath = `${root}/uploads/${filePath}`;
-    reply.header("Cross-Origin-Resource-Policy", "cross-origin");
-    const { createReadStream, existsSync } = await import("node:fs");
-    if (!existsSync(fullPath)) {
-      // Dev-only: DB records synced down from prod (see env-sync) reference
-      // files that intentionally stay on prod's storage rather than being
-      // copied locally. Fetch the real file from there and stream it back
-      // same-origin — a redirect would send the browser straight to prod,
-      // and prod's Cross-Origin-Resource-Policy: same-origin header (from
-      // helmet) makes browsers silently block that cross-origin image load.
-      const fallbackOrigin = !isProduction ? process.env.PROD_ASSET_ORIGIN : "";
-      if (fallbackOrigin) {
-        try {
-          const upstream = await fetch(`${fallbackOrigin}/uploads/${filePath}`);
-          if (!upstream.ok || !upstream.body) {
-            return reply.code(404).send({ error: "File not found" });
-          }
-          reply.header(
-            "Content-Type",
-            upstream.headers.get("content-type") ?? "application/octet-stream",
-          );
-          const { Readable } = await import("node:stream");
-          return reply.send(Readable.fromWeb(upstream.body as import("stream/web").ReadableStream));
-        } catch (err) {
-          console.error("[uploads fallback] failed to fetch from PROD_ASSET_ORIGIN:", err);
-          return reply.code(404).send({ error: "File not found" });
-        }
-      }
-      return reply.code(404).send({ error: "File not found" });
-    }
-    const stream = createReadStream(fullPath);
-    // Determine content type from extension
-    const ext = fullPath.split(".").pop()?.toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      png: "image/png",
-      gif: "image/gif",
-      webp: "image/webp",
-      svg: "image/svg+xml",
-      avif: "image/avif",
-      ico: "image/x-icon",
-    };
-    const contentType = mimeTypes[ext || ""] || "application/octet-stream";
-    return reply.type(contentType).send(stream);
+  // /uploads/*: boot-time files and everything uploaded since
+  await instance.register(uploadsServingPlugin, {
+    uploadsRoot: resolve(root, "uploads"),
+    fallbackOrigin: !isProduction ? process.env.PROD_ASSET_ORIGIN ?? "" : "",
   });
 
   await instance.register(drizzleFastifyPlugin);
@@ -317,6 +258,9 @@ async function buildServer() {
   });
 
   await instance.register(uploadFileApiPlugin);
+
+  // CMS video uploads, streamed as multipart rather than inside tRPC
+  await instance.register(homepageVideoUploadApiPlugin);
 
   // Register Fincart webhook endpoint
   await instance.register(fincartWebhookPlugin, {

@@ -84,6 +84,10 @@ import {
   patchUgcItem,
   removeUgcItem,
 } from "#root/shared/types/homepage-ugc";
+import { MEDIA_UPLOAD_VIDEO_MAX_BYTES } from "#root/shared/types/media-upload";
+
+/** The video ceiling as admins read it, from the limit the server enforces. */
+const VIDEO_MAX_MB = MEDIA_UPLOAD_VIDEO_MAX_BYTES / (1024 * 1024);
 
 /**
  * Homepage Admin editors for the Mach storefront sections.
@@ -2005,7 +2009,7 @@ export function MachUgcCard({
             </span>
           </div>
           <p className='text-xs text-muted-foreground'>
-            MP4 (H.264) or WebM, up to 25MB each. Vertical 9:16 clips fill the
+            MP4 (H.264) or WebM, up to {VIDEO_MAX_MB}MB each. Vertical 9:16 clips fill the
             frame; other shapes are shown whole. iPhone .MOV files often do not
             play outside Safari, so export or convert them to MP4 first.
           </p>

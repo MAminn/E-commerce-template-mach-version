@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 import {
   MEDIA_UPLOAD_PREFIX_MAX_LENGTH,
+  MEDIA_UPLOAD_VIDEO_ENDPOINT,
+  MEDIA_UPLOAD_VIDEO_HEADER,
+  MEDIA_UPLOAD_VIDEO_MAX_BYTES,
   normalizeMediaUploadPrefix,
 } from "#root/shared/types/media-upload";
 import { homepageRouter } from "#root/backend/homepage/trpc";
@@ -50,6 +53,24 @@ function file(name = "shot.png", type = "image/png"): File {
   return new File([new Uint8Array([1, 2, 3, 4])], name, { type });
 }
 
+const MB = 1024 * 1024;
+
+/** A file that reports `size` without allocating it. */
+function sized(f: File, size: number): File {
+  Object.defineProperty(f, "size", { value: size });
+  return f;
+}
+
+const fetchMock = vi.fn();
+vi.stubGlobal("fetch", (...args: unknown[]) => fetchMock(...args));
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 /** Whether the real mutation would accept what the client is about to send. */
 function accepted(payload: unknown): z.SafeParseReturnType<unknown, unknown> {
   return uploadMediaInput.safeParse(payload);
@@ -57,6 +78,7 @@ function accepted(payload: unknown): z.SafeParseReturnType<unknown, unknown> {
 
 beforeEach(() => {
   mutate.mockReset();
+  fetchMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -176,11 +198,10 @@ describe("the upload payload", () => {
     });
   });
 
-  it("refuses an oversize video before reading it or calling the mutation", async () => {
-    // Every CMS video slot uploads through here, so this is the one place the
-    // transport limit is enforced. The file is never read into memory.
-    const big = file("clip.mp4", "video/mp4");
-    Object.defineProperty(big, "size", { value: 30 * 1024 * 1024 });
+  it("refuses an oversize video before reading or sending it", async () => {
+    // Every CMS video slot uploads through here, with the limit the server
+    // enforces. The file is never read into memory or put on the wire.
+    const big = sized(file("clip.mp4", "video/mp4"), MEDIA_UPLOAD_VIDEO_MAX_BYTES + 1);
     const read = vi.spyOn(big, "arrayBuffer");
 
     const outcome = await uploadMediaFile(big, "ugc");
@@ -188,22 +209,81 @@ describe("the upload payload", () => {
     expect(outcome).toEqual({
       ok: false,
       message:
-        "Video is 30MB. Videos must be 25MB or smaller — export at 1080p or compress it, then upload again.",
+        "Video is 101MB. Videos must be 100MB or smaller — export at 1080p or compress it, then upload again.",
     });
     expect(read).not.toHaveBeenCalled();
     expect(mutate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("sends a video at the limit, and never size-checks images here", async () => {
-    mutate.mockResolvedValue({ success: true, data: { url: "/u.mp4" } });
-    const atLimit = file("clip.mp4", "video/mp4");
-    Object.defineProperty(atLimit, "size", { value: 25 * 1024 * 1024 });
-    const bigImage = file("shot.png", "image/png");
-    Object.defineProperty(bigImage, "size", { value: 60 * 1024 * 1024 });
+  it("streams a 59MB hero video to the multipart endpoint, not through tRPC", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { success: true, data: { url: "/uploads/homepage/hero-1.mp4" } }),
+    );
+    const hero = sized(file("hero.mp4", "video/mp4"), 59 * MB);
+    const read = vi.spyOn(hero, "arrayBuffer");
 
-    expect((await uploadMediaFile(atLimit, "ugc"))?.ok).toBe(true);
+    const outcome = await uploadMediaFile(hero, "hero");
+
+    expect(mutate).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${MEDIA_UPLOAD_VIDEO_ENDPOINT}?prefix=hero`);
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("same-origin");
+    expect(init.headers[MEDIA_UPLOAD_VIDEO_HEADER]).toBe("1");
+    // The file itself is the body part, never a buffer read from it; the
+    // browser streams it.
+    const part = (init.body as FormData).get("file");
+    expect(part).toBeInstanceOf(File);
+    expect(part).toMatchObject({ name: "hero.mp4", type: "video/mp4" });
+    expect(outcome).toMatchObject({ ok: true, url: "/uploads/homepage/hero-1.mp4" });
+    // Accepted, with a word about what it costs the storefront.
+    expect(outcome?.ok && outcome.notice).toMatch(/59MB/);
+  });
+
+  it("sends a video of exactly 100MB, and warns only about heavy ones", async () => {
+    fetchMock.mockImplementation(async () =>
+      jsonResponse(200, { success: true, data: { url: "/u.mp4" } }),
+    );
+    const atLimit = sized(file("clip.mp4", "video/mp4"), MEDIA_UPLOAD_VIDEO_MAX_BYTES);
+    const light = sized(file("loop.mp4", "video/mp4"), 8 * MB);
+
+    expect((await uploadMediaFile(atLimit, "hero"))?.ok).toBe(true);
+    expect(await uploadMediaFile(light, "hero")).toEqual({ ok: true, url: "/u.mp4" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("still sends images through the mutation, never size-checked here", async () => {
+    mutate.mockResolvedValue({ success: true, data: { url: "/u.webp" } });
+    const bigImage = sized(file("shot.png", "image/png"), 60 * MB);
+
     expect((await uploadMediaFile(bigImage, "hero"))?.ok).toBe(true);
-    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's own refusal, and a plain one when a proxy answers", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, { success: false, error: "Unsupported video type. Allowed: MP4, WebM, MOV." }),
+    );
+    fetchMock.mockResolvedValueOnce(new Response("<html>413</html>", { status: 413 }));
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const clip = () => file("clip.mp4", "video/mp4");
+
+    expect(await uploadMediaFile(clip(), "hero")).toEqual({
+      ok: false,
+      message: "Unsupported video type. Allowed: MP4, WebM, MOV.",
+    });
+    expect(await uploadMediaFile(clip(), "hero")).toEqual({
+      ok: false,
+      message: "Upload failed (413)",
+    });
+    expect(await uploadMediaFile(clip(), "hero")).toEqual({
+      ok: false,
+      message: "Error uploading file",
+    });
   });
 
   it("does nothing at all when no file was chosen", async () => {

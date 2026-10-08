@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { v7 } from "uuid";
 import sharp from "sharp";
 import { existsSync } from "node:fs";
+import { MEDIA_UPLOAD_VIDEO_MAX_BYTES } from "#root/shared/types/media-upload";
 
 /**
  * Generic homepage CMS media upload.
@@ -51,16 +52,33 @@ const DOCUMENT_TYPES = ["application/pdf"];
 /**
  * Per-kind ceilings. Video is the outlier — a short loop still runs large.
  *
- * The 40MB video ceiling is never the binding one for CMS uploads: the file
- * arrives SuperJSON-encoded inside a 100MiB tRPC request, which carries ~25-
- * 28MB of video at most. The CMS enforces that real limit before sending —
- * see `MEDIA_UPLOAD_VIDEO_MAX_BYTES` in shared/types/media-upload.ts.
+ * The CMS no longer sends video through this function: it streams it to
+ * `video-api.ts`, which enforces the same shared number without buffering.
+ * Video stays accepted here at that number so the two paths cannot disagree,
+ * although the tRPC transport refuses anything past ~28MB before this runs.
  */
-const MAX_BYTES: Record<UploadMediaKind, number> = {
+export const MAX_BYTES: Record<UploadMediaKind, number> = {
   image: 10 * 1024 * 1024,
-  video: 40 * 1024 * 1024,
+  video: MEDIA_UPLOAD_VIDEO_MAX_BYTES,
   document: 10 * 1024 * 1024,
 };
+
+/** Where every homepage CMS upload lands; served under `/uploads/homepage/`. */
+export const HOMEPAGE_UPLOADS_DIR = "./uploads/homepage";
+
+/** The on-disk name for a stored-as-is upload (video, PDF). */
+export function storedMediaFilename(
+  mimeType: string,
+  prefix: string,
+  fileId: string = v7(),
+): string {
+  const extension = EXTENSION_BY_MIME[mimeType.toLowerCase()] ?? "bin";
+  return `${safeMediaPrefix(prefix)}-${fileId}.${extension}`;
+}
+
+function safeMediaPrefix(prefix: string): string {
+  return prefix.replace(/[^a-z0-9-]/gi, "").slice(0, 24) || "media";
+}
 
 const EXTENSION_BY_MIME: Record<string, string> = {
   "video/mp4": "mp4",
@@ -75,6 +93,10 @@ function classify(mimeType: string): UploadMediaKind | null {
   if (VIDEO_TYPES.includes(type)) return "video";
   if (DOCUMENT_TYPES.includes(type)) return "document";
   return null;
+}
+
+export function isVideoMimeType(mimeType: string): boolean {
+  return VIDEO_TYPES.includes(mimeType.toLowerCase());
 }
 
 function humanMb(bytes: number): string {
@@ -108,7 +130,7 @@ export const uploadHomepageMedia = ({
       );
     }
 
-    const uploadsDir = "./uploads/homepage";
+    const uploadsDir = HOMEPAGE_UPLOADS_DIR;
     if (!existsSync(uploadsDir)) {
       yield* Effect.tryPromise({
         try: () => mkdir(uploadsDir, { recursive: true }),
@@ -117,7 +139,7 @@ export const uploadHomepageMedia = ({
     }
 
     const fileId = v7();
-    const safePrefix = prefix.replace(/[^a-z0-9-]/gi, "").slice(0, 24) || "media";
+    const safePrefix = safeMediaPrefix(prefix);
 
     if (kind === "image") {
       // Aspect is preserved deliberately: campaign and category slots are
@@ -140,8 +162,7 @@ export const uploadHomepageMedia = ({
       };
     }
 
-    const extension = EXTENSION_BY_MIME[mimeType.toLowerCase()] ?? "bin";
-    const filename = `${safePrefix}-${fileId}.${extension}`;
+    const filename = storedMediaFilename(mimeType, safePrefix, fileId);
     const filePath = `${uploadsDir}/${filename}`;
     yield* Effect.tryPromise({
       try: () => writeFile(filePath, Buffer.from(buffer)),
