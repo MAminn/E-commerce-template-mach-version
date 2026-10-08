@@ -165,6 +165,7 @@ function LegacyResetPasswordPage() {
             </div>
 
             <form
+              method='post'
               onSubmit={form.handleSubmit(onSubmit)}
               className='relative flex flex-col gap-8 w-full'>
               {/* Password */}

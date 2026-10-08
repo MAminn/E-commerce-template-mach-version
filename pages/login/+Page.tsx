@@ -136,6 +136,7 @@ function LegacyLoginPage() {
         </div>
 
         <form
+          method='post'
           onSubmit={form.handleSubmit(onSubmit)}
           autoComplete='on'
           className='relative flex flex-col gap-8 w-full'>

@@ -164,6 +164,7 @@ function LegacyRegisterPage() {
             </div>
 
             <form
+              method='post'
               onSubmit={form.handleSubmit(onSubmit)}
               className='relative flex flex-col gap-6 w-full'>
               {/* Name + Email — side by side on md+ */}

@@ -276,7 +276,7 @@ export default function UsersPage() {
             <DialogTitle>Create New User</DialogTitle>
             <DialogDescription>Add a new user account</DialogDescription>
           </DialogHeader>
-          <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
+          <form method="post" onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="space-y-1">
               <Label>Name</Label>
               <Input {...createForm.register("name")} placeholder="Full name" />
@@ -373,7 +373,7 @@ export default function UsersPage() {
             <DialogTitle>Set Password</DialogTitle>
             <DialogDescription>Set a new password for {passwordUser?.name}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={passwordForm.handleSubmit(handleSetPassword)} className="space-y-4">
+          <form method="post" onSubmit={passwordForm.handleSubmit(handleSetPassword)} className="space-y-4">
             <div className="space-y-1">
               <Label>New Password</Label>
               <Input {...passwordForm.register("newPassword")} type="password" placeholder="Min 8 characters" />

@@ -34,6 +34,7 @@ export default function LoginForm({ onSubmit }: { onSubmit: LoginOnSubmit }) {
   return (
     <Form {...form}>
       <form
+        method='post'
         onSubmit={form.handleSubmit(async (values) => {
           setSubmitting(true);
           await onSubmit(values);

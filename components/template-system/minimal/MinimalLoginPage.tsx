@@ -99,7 +99,7 @@ export function MinimalLoginPage() {
             <p className='text-sm text-stone-500'>{t("login.subtitle")}</p>
           </div>
 
-          <form onSubmit={form.handleSubmit(onSubmit)} autoComplete='on' className='flex flex-col gap-6'>
+          <form method='post' onSubmit={form.handleSubmit(onSubmit)} autoComplete='on' className='flex flex-col gap-6'>
             {/* Email */}
             <div>
               <label

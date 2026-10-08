@@ -109,6 +109,7 @@ export function MachLoginPage() {
       <AuthRule className="mt-8" />
 
       <form
+        method="post"
         onSubmit={form.handleSubmit(onSubmit)}
         autoComplete="on"
         className="mt-8 flex flex-col gap-7">

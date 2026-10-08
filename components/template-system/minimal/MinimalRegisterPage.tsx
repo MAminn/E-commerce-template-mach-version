@@ -120,7 +120,7 @@ export function MinimalRegisterPage() {
                 <p className='text-sm text-stone-500'>{t("register.subtitle")}</p>
               </div>
 
-              <form onSubmit={form.handleSubmit(onSubmit)} className='flex flex-col gap-7'>
+              <form method='post' onSubmit={form.handleSubmit(onSubmit)} className='flex flex-col gap-7'>
                 {/* Name + Email side-by-side on sm+ */}
                 <div className='grid grid-cols-1 sm:grid-cols-2 gap-7'>
                   {/* Name */}

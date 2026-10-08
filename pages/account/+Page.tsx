@@ -225,7 +225,7 @@ function AccountTab({ session, onProfileUpdated }: { session: { name?: string | 
           <h3 className="text-[15px] font-medium text-stone-900 mach-dark:text-white">Change Password</h3>
           <p className="text-[12px] text-stone-400 mach-dark:text-white/40 mt-0.5">Leave blank to keep your current password</p>
         </div>
-        <form onSubmit={pwForm.handleSubmit(onChangePassword)} className="px-6 py-5 space-y-4">
+        <form method="post" onSubmit={pwForm.handleSubmit(onChangePassword)} className="px-6 py-5 space-y-4">
           {(
             [
               { name: "currentPassword" as const, label: "Current Password", show: showCurrentPw, setShow: setShowCurrentPw },
