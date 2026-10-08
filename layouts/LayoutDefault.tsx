@@ -31,6 +31,7 @@ import {
 import { TrackingProvider } from "#root/frontend/contexts/TrackingContext";
 import { ConsentProvider } from "#root/frontend/contexts/ConsentContext";
 import { ConsentBanner } from "#root/frontend/components/ConsentBanner";
+import { YozoWidget } from "#root/frontend/components/YozoWidget";
 import { Toaster as ShadcnToaster } from "#root/components/ui/toaster";
 import {
   NavbarModeContext,
@@ -356,6 +357,11 @@ function LayoutShell({
           {/* Storefront only — the dashboard is staff, not a visitor
               subject to the marketing-consent banner. */}
           {!isDashboardRoute && <ConsentBanner />}
+          {/* Yozo AI widget: marketing consent + public storefront routes
+              only. Mounted on every route on purpose — it also reloads a
+              document that ran Yozo and then reached the dashboard or had
+              consent withdrawn (see the component). */}
+          <YozoWidget />
         </TrackingProvider>
         </ConsentProvider>
       </NavbarModeContext.Provider>
