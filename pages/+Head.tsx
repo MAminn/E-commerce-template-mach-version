@@ -163,6 +163,13 @@ export default function HeadDefault() {
       <meta httpEquiv='Content-Type' content='text/html; charset=utf-8' />
       <meta name='description' content={siteDescription} />
 
+      {/* Meta Business domain verification. Declared once, here only — it is
+          independent of the Meta Pixel, which is configured in the dashboard. */}
+      <meta
+        name='facebook-domain-verification'
+        content='e8dx9mf8bo78ymgiggsj6agtji5vmf'
+      />
+
       {/* Open Graph / social link previews */}
       <meta property='og:type' content='website' />
       <meta property='og:site_name' content={siteTitle} />
