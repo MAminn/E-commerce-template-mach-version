@@ -12,6 +12,7 @@ import { authFastifyPlugin } from "#root/backend/auth/api.js";
 import { auth } from "#root/backend/auth/auth.server.js";
 import { uploadFileApiPlugin } from "#root/backend/file/upload-file/api";
 import { homepageVideoUploadApiPlugin } from "#root/backend/homepage/upload-media/video-api";
+import { ordersExportApiPlugin } from "#root/backend/orders/export-orders/api";
 import { uploadsServingPlugin } from "./uploads-route";
 import { emailServiceMiddleware } from "#root/shared/email/middleware.server";
 import { fincartWebhookPlugin } from "#root/backend/orders/fincart-webhook/api.js";
@@ -261,6 +262,9 @@ async function buildServer() {
 
   // CMS video uploads, streamed as multipart rather than inside tRPC
   await instance.register(homepageVideoUploadApiPlugin);
+
+  // Admin Orders → CSV download, streamed rather than inside tRPC
+  await instance.register(ordersExportApiPlugin);
 
   // Register Fincart webhook endpoint
   await instance.register(fincartWebhookPlugin, {

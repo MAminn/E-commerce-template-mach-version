@@ -68,6 +68,7 @@ import {
   History,
   ChevronRight,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 import { usePageContext } from "vike-react/usePageContext";
 import { trpc } from "#root/shared/trpc/client";
@@ -81,6 +82,10 @@ import {
   type PaymentMethod,
 } from "#root/shared/config/payment-methods";
 import { displayOrderNumber, matchesOrderReference } from "#root/shared/orders/order-reference";
+import {
+  ORDERS_EXPORT_COUNT_HEADER,
+  ORDERS_EXPORT_ENDPOINT,
+} from "#root/shared/orders/order-export";
 
 interface OrderItem {
   id: string;
@@ -299,6 +304,68 @@ export default function Orders() {
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  // CSV export of every order matching the active filters (not just this page)
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      const { from, to } = getDateRange();
+      if (from) params.set("dateFrom", from);
+      if (to) params.set("dateTo", to);
+      if (paymentIssueOnly) params.set("paymentIssueOnly", "true");
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+
+      const query = params.toString();
+      const res = await fetch(`${ORDERS_EXPORT_ENDPOINT}${query ? `?${query}` : ""}`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || "Could not export orders. Please try again.");
+      }
+
+      // Reading the whole body first means a download cut off mid-stream
+      // fails here instead of saving a partial file.
+      const blob = await res.blob();
+      const filename =
+        res.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+        "MACH_Orders.csv";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+
+      const count = Number(res.headers.get(ORDERS_EXPORT_COUNT_HEADER) ?? Number.NaN);
+      toast({
+        title: "Orders exported",
+        description: Number.isFinite(count)
+          ? `${count} order${count === 1 ? "" : "s"} saved to ${filename}`
+          : `Saved to ${filename}`,
+      });
+    } catch (err) {
+      toast({
+        title: "Export failed",
+        description:
+          err instanceof Error && err.message !== "Failed to fetch"
+            ? err.message
+            : "Could not export orders. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const hasActiveFilters =
+    statusFilter !== "all" || dateFilter !== "all" || paymentIssueOnly || !!searchQuery.trim();
 
   // Full-order editing (customer, address, items, money, payment, status, notes)
   const [isEditingOrder, setIsEditingOrder] = useState(false);
@@ -659,6 +726,29 @@ export default function Orders() {
               Track and manage your store's orders
             </p>
           </div>
+          {isAdmin && (
+            <Button
+              type='button'
+              className='gap-2'
+              disabled={isExporting}
+              title={
+                hasActiveFilters
+                  ? "Download every order matching the current filters as CSV"
+                  : "Download the complete order history as CSV"
+              }
+              onClick={handleExportCsv}>
+              {isExporting ? (
+                <Loader2 className='h-4 w-4 animate-spin' />
+              ) : (
+                <Download className='h-4 w-4' />
+              )}
+              {isExporting
+                ? "Exporting…"
+                : hasActiveFilters
+                  ? "Export Filtered CSV"
+                  : "Export CSV"}
+            </Button>
+          )}
         </div>
 
         <Card>

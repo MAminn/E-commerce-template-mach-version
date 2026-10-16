@@ -44,6 +44,48 @@ export const viewOrdersSchema = z.object({
   paymentIssueOnly: z.boolean().optional(),
 });
 
+export type OrderFilters = Pick<
+  z.infer<typeof viewOrdersSchema>,
+  "status" | "dateFrom" | "dateTo" | "paymentIssueOnly"
+>;
+
+/** The dashboard's server-side order filters — shared with the CSV export so
+ * an export always matches what the filtered list shows. */
+export function buildOrderFilterConditions({
+  status,
+  dateFrom,
+  dateTo,
+  paymentIssueOnly,
+}: OrderFilters): SQL<unknown>[] {
+  const conditions: SQL<unknown>[] = [];
+
+  if (status) {
+    conditions.push(eq(order.status, status));
+  }
+
+  if (dateFrom) {
+    conditions.push(gte(order.createdAt, new Date(dateFrom)));
+  }
+  if (dateTo) {
+    conditions.push(lt(order.createdAt, new Date(dateTo)));
+  }
+
+  if (paymentIssueOnly) {
+    conditions.push(
+      and(
+        inArray(order.paymentMethod, [...ONLINE_PAYMENT_METHODS]),
+        notInArray(order.paymentStatus, ["paid", "refunded"]),
+        or(
+          isNotNull(order.bostaDeliveryId),
+          inArray(order.bostaSyncStatus, ["sent", "pending"]),
+        )!,
+      )!,
+    );
+  }
+
+  return conditions;
+}
+
 export const viewOrders = (
   input: z.infer<typeof viewOrdersSchema>,
   session?: ClientSession,
@@ -71,31 +113,12 @@ export const viewOrders = (
     return yield* $(
       query(async (db) => {
         return await db.transaction(async (tx) => {
-          const conditions: SQL<unknown>[] = [];
-
-          if (status) {
-            conditions.push(eq(order.status, status));
-          }
-
-          if (dateFrom) {
-            conditions.push(gte(order.createdAt, new Date(dateFrom)));
-          }
-          if (dateTo) {
-            conditions.push(lt(order.createdAt, new Date(dateTo)));
-          }
-
-          if (paymentIssueOnly) {
-            conditions.push(
-              and(
-                inArray(order.paymentMethod, [...ONLINE_PAYMENT_METHODS]),
-                notInArray(order.paymentStatus, ["paid", "refunded"]),
-                or(
-                  isNotNull(order.bostaDeliveryId),
-                  inArray(order.bostaSyncStatus, ["sent", "pending"]),
-                )!,
-              )!,
-            );
-          }
+          const conditions = buildOrderFilterConditions({
+            status,
+            dateFrom,
+            dateTo,
+            paymentIssueOnly,
+          });
 
           // Users (non-admins) only see their own orders
           if (!isAdmin) {
