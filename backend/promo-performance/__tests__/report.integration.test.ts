@@ -236,8 +236,25 @@ describeIfDb("promo performance report (integration)", () => {
     expect((await summaryRow({ from: "2026-11-01", to: "2026-11-30" }, "AHMED10"))!.orders).toBe(1);
     expect((await summaryRow({ from: "2026-10-01", to: "2026-10-01" }, "AHMED10"))!.orders).toBe(1);
     expect((await summaryRow({ from: "2026-10-31", to: "2026-10-31" }, "AHMED10"))!.orders).toBe(1);
-    expect((await summaryRow({}, "AHMED10"))!.orders).toBe(17 + FILLER);
-    expect((await summaryRow({ from: "2026-10-01" }, "AHMED10"))!.orders).toBe(16 + FILLER);
+    // Across the month edge: 30 Sep 23:59 and 1 Oct 00:00 Cairo.
+    expect((await summaryRow({ from: "2026-09-30", to: "2026-10-01" }, "AHMED10"))!.orders).toBe(2);
+  });
+
+  it("enforces the 31-day bound in the service as well as the API", async () => {
+    expect((await summaryRow({ from: "2026-10-01", to: "2026-10-31" }, "AHMED10"))!.orders).toBe(15 + FILLER);
+    await expect(service.getPromoPerformanceSummary(db as never, {})).rejects.toThrow();
+    await expect(service.getPromoPerformanceSummary(db as never, { from: "2026-10-01" })).rejects.toThrow();
+    await expect(
+      service.getPromoPerformanceSummary(db as never, { from: "2026-09-30", to: "2026-10-31" }),
+    ).rejects.toThrow(/31 days/);
+    await expect(
+      service.getPromoOrders(db as never, {
+        range: { from: "2026-09-30", to: "2026-10-31" },
+        code: "AHMED10",
+        limit: 25,
+        offset: 0,
+      }),
+    ).rejects.toThrow(/31 days/);
   });
 
   it("drill-down pages reconcile exactly with the summary row", async () => {
