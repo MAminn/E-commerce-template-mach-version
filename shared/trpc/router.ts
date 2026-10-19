@@ -28,6 +28,7 @@ import { emailQueueRouter } from "#root/backend/email-automations/queue/trpc";
 import { typographyRouter } from "#root/backend/typography/trpc";
 import { upsellRouter } from "#root/backend/upsells/trpc";
 import { whatsappRouter } from "#root/backend/whatsapp/trpc";
+import { promoPerformanceRouter } from "#root/backend/promo-performance/trpc";
 import { publicProcedure, router, t } from "./server";
 
 const authRouter = t.router({
@@ -68,6 +69,7 @@ export const appRouter = router({
   typography: typographyRouter,
   upsell: upsellRouter,
   whatsapp: whatsappRouter,
+  promoPerformance: promoPerformanceRouter,
 });
 
 export type AppRouter = typeof appRouter;

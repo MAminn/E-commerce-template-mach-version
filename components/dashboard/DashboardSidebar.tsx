@@ -20,6 +20,7 @@ import {
   Type,
   BellRing,
   CreditCard,
+  HandCoins,
 } from "lucide-react";
 
 import {
@@ -95,6 +96,7 @@ export function DashboardSidebar() {
         { label: "Entry Popup", href: "/dashboard/admin/popup", icon: Gift },
         { label: "Social Proof", href: "/dashboard/admin/social-proof", icon: BellRing },
         { label: "Analytics", href: "/dashboard/admin/analytics", icon: BarChart3 },
+        { label: "Promo Performance", href: "/dashboard/promo-performance", icon: HandCoins },
       ],
     },
     {
