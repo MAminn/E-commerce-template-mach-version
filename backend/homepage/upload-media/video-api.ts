@@ -100,28 +100,40 @@ function refuse(reply: FastifyReply, statusCode: number, error: string) {
   return reply.code(statusCode).send({ success: false as const, error });
 }
 
-function isAdmin(request: FastifyRequest): boolean {
-  const role = request.clientSession?.role;
+function isAdmin(role: string): boolean {
   return role === "admin" || role === "superadmin";
 }
 
 export interface HomepageVideoUploadOptions {
   /** Defaults to the homepage uploads directory; tests point it elsewhere. */
   uploadsDir?: string;
+  /**
+   * The route and who may use it. Default: the homepage CMS route, admins
+   * only. The Landing 2 page registers a second instance on its own route
+   * that media buyers may also use — same pipeline, same directory.
+   */
+  endpoint?: string;
+  isAllowedRole?: (role: string) => boolean;
+  forbiddenMessage?: string;
 }
 
 export const homepageVideoUploadApiPlugin = async (
   app: FastifyInstance,
-  { uploadsDir = HOMEPAGE_UPLOADS_DIR }: HomepageVideoUploadOptions = {},
+  {
+    uploadsDir = HOMEPAGE_UPLOADS_DIR,
+    endpoint = MEDIA_UPLOAD_VIDEO_ENDPOINT,
+    isAllowedRole = isAdmin,
+    forbiddenMessage = "Unauthorized. Only admins can upload homepage media.",
+  }: HomepageVideoUploadOptions = {},
 ) => {
-  app.post(MEDIA_UPLOAD_VIDEO_ENDPOINT, async (request, reply) => {
+  app.post(endpoint, async (request, reply) => {
     // Everything that can be decided from the headers is decided before a
     // byte of the body is read.
     if (!request.clientSession) {
       return refuse(reply, 401, "Please sign in again to upload media.");
     }
-    if (!isAdmin(request)) {
-      return refuse(reply, 403, "Unauthorized. Only admins can upload homepage media.");
+    if (!isAllowedRole(request.clientSession.role)) {
+      return refuse(reply, 403, forbiddenMessage);
     }
     if (request.headers[MEDIA_UPLOAD_VIDEO_HEADER] !== "1") {
       return refuse(reply, 403, "Upload refused.");

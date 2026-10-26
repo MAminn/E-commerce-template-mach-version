@@ -8,6 +8,7 @@ import { Link } from "#root/components/utils/Link";
 import { authClient } from "#root/lib/auth-client.js";
 import { toast } from "sonner";
 import { useMinimalI18n } from "#root/lib/i18n/MinimalI18nContext";
+import { dashboardHomeForRole } from "#root/shared/landing-page/config";
 import {
   minimalAuthT,
   type MinimalAuthKey,
@@ -75,11 +76,7 @@ export function MinimalLoginPage() {
 
       toast.success("Login successful");
       const role = (result.data?.user as { role?: string } | null)?.role;
-      if (role === "admin" || role === "superadmin") {
-        window.location.href = "/dashboard";
-      } else {
-        window.location.href = "/";
-      }
+      window.location.href = dashboardHomeForRole(role) ?? "/";
     } catch {
       toast.error("Something went wrong. Please refresh the page and try again.");
       setIsSubmitting(false);

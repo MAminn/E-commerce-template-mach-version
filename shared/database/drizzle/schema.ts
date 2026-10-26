@@ -15,12 +15,22 @@ import { v7 } from "uuid";
 import type { SupplementInfo } from "#root/shared/types/supplement-info";
 import type { UpsellSettings } from "#root/shared/upsell/config";
 import type { WhatsAppSettings } from "#root/shared/whatsapp/config";
+import type { LandingPageSettings } from "#root/shared/landing-page/config";
 import type {
   PaymentAttemptItemSnapshot,
   PaymentAttemptOrderSnapshot,
 } from "#root/shared/types/payment-attempt";
 
-export const userRole = pgEnum("user_role", ["admin", "vendor", "user", "superadmin"]);
+// `media_buyer` may edit the Landing 2 page and nothing else (see
+// shared/landing-page/config.ts). Every other admin gate allow-lists
+// admin/superadmin, so the role is refused there by default.
+export const userRole = pgEnum("user_role", [
+  "admin",
+  "vendor",
+  "user",
+  "superadmin",
+  "media_buyer",
+]);
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -1653,6 +1663,9 @@ export const storeSettings = pgTable("store_settings", {
   /** Floating WhatsApp (click-to-chat) button. Null/partial rows inherit the
    * defaults in shared/whatsapp/config.ts — off, no number. */
   whatsappConfig: jsonb("whatsapp_config").$type<Partial<WhatsAppSettings>>(),
+  /** The fixed /landing-2 marketing page: hero + ordered product ids. Null/
+   * partial rows inherit the defaults in shared/landing-page/config.ts. */
+  landingPageConfig: jsonb("landing_page_config").$type<Partial<LandingPageSettings>>(),
   updatedAt: timestamp("updated_at", {
     withTimezone: true,
     mode: "date",

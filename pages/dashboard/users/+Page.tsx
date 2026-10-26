@@ -36,8 +36,8 @@ interface UserActivityData {
 
 const PAGE_SIZE = 20;
 
-const createUserSchema = z.object({ name: z.string().min(1), email: z.string().email(), password: z.string().min(8), phone: z.string().default(""), role: z.enum(["admin", "vendor", "user"]), emailVerified: z.boolean() });
-const editUserSchema = z.object({ name: z.string().min(1).optional(), email: z.string().email().optional(), phone: z.string().optional(), role: z.enum(["admin", "vendor", "user"]).optional() });
+const createUserSchema = z.object({ name: z.string().min(1), email: z.string().email(), password: z.string().min(8), phone: z.string().default(""), role: z.enum(["admin", "vendor", "user", "media_buyer"]), emailVerified: z.boolean() });
+const editUserSchema = z.object({ name: z.string().min(1).optional(), email: z.string().email().optional(), phone: z.string().optional(), role: z.enum(["admin", "vendor", "user", "media_buyer"]).optional() });
 const setPasswordSchema = z.object({ newPassword: z.string().min(8) });
 type CreateUserValues = z.infer<typeof createUserSchema>;
 type EditUserValues = z.infer<typeof editUserSchema>;
@@ -104,7 +104,7 @@ export default function UsersPage() {
     finally { setIsSubmitting(false); }
   };
 
-  const openEdit = (u: UserRow) => { setEditUser(u); editForm.reset({ name: u.name, email: u.email, phone: u.phone ?? "", role: u.role as "admin" | "vendor" | "user" }); };
+  const openEdit = (u: UserRow) => { setEditUser(u); editForm.reset({ name: u.name, email: u.email, phone: u.phone ?? "", role: u.role as "admin" | "vendor" | "user" | "media_buyer" }); };
 
   const handleEdit = async (values: EditUserValues) => {
     if (!editUser) return;
@@ -208,7 +208,7 @@ export default function UsersPage() {
                         <TableCell className="text-sm">{u.phone ?? "-"}</TableCell>
                         <TableCell>
                           <Badge variant={u.role === "admin" ? "default" : "secondary"} className="capitalize">
-                            {u.role}
+                            {u.role.replace("_", " ")}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -298,12 +298,13 @@ export default function UsersPage() {
             </div>
             <div className="space-y-1">
               <Label>Role</Label>
-              <Select defaultValue="user" onValueChange={(val) => createForm.setValue("role", val as "admin" | "vendor" | "user")}>
+              <Select defaultValue="user" onValueChange={(val) => createForm.setValue("role", val as "admin" | "vendor" | "user" | "media_buyer")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">User</SelectItem>
                   <SelectItem value="vendor">Vendor</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="media_buyer">Media Buyer (Landing 2 only)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -346,12 +347,13 @@ export default function UsersPage() {
             </div>
             <div className="space-y-1">
               <Label>Role</Label>
-              <Select defaultValue={editUser?.role ?? "user"} onValueChange={(val) => editForm.setValue("role", val as "admin" | "vendor" | "user")}>
+              <Select defaultValue={editUser?.role ?? "user"} onValueChange={(val) => editForm.setValue("role", val as "admin" | "vendor" | "user" | "media_buyer")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">User</SelectItem>
                   <SelectItem value="vendor">Vendor</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="media_buyer">Media Buyer (Landing 2 only)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -427,7 +429,7 @@ export default function UsersPage() {
               </DialogHeader>
               <div className="space-y-1 text-sm mt-2">
                 <div className="flex gap-2"><span className="text-muted-foreground w-20">Phone</span><span>{selectedUser.phone ?? "-"}</span></div>
-                <div className="flex gap-2"><span className="text-muted-foreground w-20">Role</span><Badge variant={selectedUser.role === "admin" ? "default" : "secondary"} className="capitalize h-5 text-xs">{selectedUser.role}</Badge></div>
+                <div className="flex gap-2"><span className="text-muted-foreground w-20">Role</span><Badge variant={selectedUser.role === "admin" ? "default" : "secondary"} className="capitalize h-5 text-xs">{selectedUser.role.replace("_", " ")}</Badge></div>
                 <div className="flex gap-2"><span className="text-muted-foreground w-20">Verified</span><span>{selectedUser.emailVerified ? "Yes" : "No"}</span></div>
                 <div className="flex gap-2"><span className="text-muted-foreground w-20">Joined</span><span>{formatDate(selectedUser.createdAt)}</span></div>
               </div>

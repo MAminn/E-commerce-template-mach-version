@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Input } from "#root/components/ui/input";
 import { Link } from "#root/components/utils/Link";
 import { authClient } from "#root/lib/auth-client.js";
+import { dashboardHomeForRole } from "#root/shared/landing-page/config";
 import { CTA_ON_DARK, HEADING_SHOP } from "./machTokens";
 import {
   AUTH_FIELD,
@@ -83,11 +84,7 @@ export function MachLoginPage() {
 
       // Redirect based on role
       const role = (result.data?.user as { role?: string } | null)?.role;
-      if (role === "admin" || role === "superadmin") {
-        window.location.href = "/dashboard";
-      } else {
-        window.location.href = "/";
-      }
+      window.location.href = dashboardHomeForRole(role) ?? "/";
     } catch {
       toast.error(
         "Something went wrong. Please refresh the page and try again.",

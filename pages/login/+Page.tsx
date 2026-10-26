@@ -10,6 +10,7 @@ import { Link } from "#root/components/utils/Link";
 import { useLayoutSettings } from "#root/frontend/contexts/LayoutSettingsContext";
 import { MinimalLoginPage } from "#root/components/template-system/minimal/MinimalLoginPage";
 import { MachLoginPage } from "#root/components/template-system/mach/MachLoginPage";
+import { dashboardHomeForRole } from "#root/shared/landing-page/config";
 import { isSupplementStore } from "#root/shared/config/branding";
 import { authClient } from "#root/lib/auth-client.js";
 
@@ -94,11 +95,7 @@ function LegacyLoginPage() {
 
       // Redirect based on role
       const role = (result.data?.user as { role?: string } | null)?.role;
-      if (role === "admin" || role === "superadmin") {
-        window.location.href = "/dashboard";
-      } else {
-        window.location.href = "/";
-      }
+      window.location.href = dashboardHomeForRole(role) ?? "/";
     } catch (error) {
       toast.error("Something went wrong. Please refresh the page and try again.");
       setIsSubmitting(false);

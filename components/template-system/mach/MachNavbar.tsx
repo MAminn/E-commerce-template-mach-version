@@ -35,6 +35,7 @@ import type { NavigationLink } from "#root/shared/types/layout-settings";
 import { useNavbarMode } from "#root/components/globals/NavbarContext";
 import { HeaderLogo } from "#root/components/globals/HeaderLogo";
 import { MACH_THEME_CLASS } from "./machTheme";
+import { dashboardHomeForRole } from "#root/shared/landing-page/config";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -138,6 +139,8 @@ export function MachNavbar() {
   const handleCloseSheet = () => setIsSheetOpen(false);
 
   const linkCls = "!text-white/75 hover:!text-white";
+  // Admins get the dashboard; a media buyer gets the one page they manage.
+  const dashboardHref = dashboardHomeForRole(session?.role);
   const iconCls = "!text-white/75 hover:!text-white hover:bg-transparent";
   const sheetLinkCls =
     "flex items-center justify-between py-3.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-white/70 transition-colors hover:text-white";
@@ -288,10 +291,9 @@ export function MachNavbar() {
                             onClick={handleCloseSheet}>
                             <Heart className="h-3.5 w-3.5" /> Wishlist
                           </Link>
-                          {(session.role === "admin" ||
-                            session.role === "superadmin") && (
+                          {dashboardHref && (
                             <Link
-                              href="/dashboard"
+                              href={dashboardHref}
                               className="flex items-center gap-2.5 text-[11px] uppercase tracking-[0.18em] text-white/50 transition-colors hover:text-white"
                               onClick={handleCloseSheet}>
                               <LayoutDashboard className="h-3.5 w-3.5" />{" "}
@@ -433,13 +435,12 @@ export function MachNavbar() {
                       <Heart className="h-4 w-4 text-white/55" /> Wishlist
                     </Link>
                   </DropdownMenuItem>
-                  {(session.role === "admin" ||
-                    session.role === "superadmin") && (
+                  {dashboardHref && (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
                         <Link
-                          href="/dashboard"
+                          href={dashboardHref}
                           className="flex cursor-pointer items-center gap-2.5">
                           <LayoutDashboard className="h-4 w-4 text-white/55" />{" "}
                           Dashboard

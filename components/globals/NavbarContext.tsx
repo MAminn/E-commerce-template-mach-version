@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import { LANDING_PAGE_PATH } from "#root/shared/landing-page/config";
 
 /**
  * Navbar display mode:
@@ -27,8 +28,10 @@ export function useNavbarMode(): NavbarMode {
  * Everything else gets solid mode automatically.
  */
 const OVERLAY_ROUTES: ((path: string) => boolean)[] = [
-  // Landing / homepage — the only route that opens on a full-height hero.
+  // Landing / homepage — opens on a full-height hero.
   (p) => p === "/",
+  // The Landing 2 marketing page opens on the same full-bleed hero.
+  (p) => p === LANDING_PAGE_PATH,
   // /shop and /categories/* are deliberately NOT overlay routes. The Mach
   // storefront is product-first: those pages open on a heading and a product
   // count, not a hero, so a transparent navbar would float white type over

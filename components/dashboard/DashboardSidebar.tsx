@@ -21,6 +21,7 @@ import {
   BellRing,
   CreditCard,
   HandCoins,
+  Megaphone,
 } from "lucide-react";
 
 import {
@@ -39,6 +40,7 @@ import {
 import { Link } from "#root/components/utils/Link";
 import { useRole } from "#root/lib/context/RoleContext";
 import { isSingleShopMode } from "#root/shared/config/app";
+import { LANDING_PAGE_DASHBOARD_PATH } from "#root/shared/landing-page/config";
 import { usePageContext } from "vike-react/usePageContext";
 
 interface SidebarItem {
@@ -97,6 +99,7 @@ export function DashboardSidebar() {
         { label: "Social Proof", href: "/dashboard/admin/social-proof", icon: BellRing },
         { label: "Analytics", href: "/dashboard/admin/analytics", icon: BarChart3 },
         { label: "Promo Performance", href: "/dashboard/promo-performance", icon: HandCoins },
+        { label: "Landing 2", href: LANDING_PAGE_DASHBOARD_PATH, icon: Megaphone },
       ],
     },
     {
@@ -119,7 +122,20 @@ export function DashboardSidebar() {
     },
   ];
 
-  const sections = userRole === "admin" ? adminSections : defaultSections;
+  // A media buyer's whole dashboard is the one page they manage.
+  const mediaBuyerSections: SidebarSection[] = [
+    {
+      label: null,
+      items: [{ label: "Landing 2", href: LANDING_PAGE_DASHBOARD_PATH, icon: Megaphone }],
+    },
+  ];
+
+  const sections =
+    userRole === "admin"
+      ? adminSections
+      : userRole === "media_buyer"
+        ? mediaBuyerSections
+        : defaultSections;
 
   const isItemActive = (href: string) =>
     href === "/dashboard" ? urlPathname === href : urlPathname.startsWith(href);

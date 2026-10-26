@@ -17,6 +17,7 @@ import { usePageContext } from "vike-react/usePageContext";
 import { RoleProvider, useRole } from "#root/lib/context/RoleContext";
 import { STORE_NAME } from "#root/shared/config/branding";
 import { HomeIcon, Home, Menu } from "lucide-react";
+import { LANDING_PAGE_DASHBOARD_PATH } from "#root/shared/landing-page/config";
 
 export default function DashboardLayout({
   children,
@@ -66,12 +67,15 @@ function Content({ children }: { children: React.ReactNode }) {
     if (pathname.includes("/dashboard/settings")) {
       return "settings";
     }
+    if (pathname.includes(LANDING_PAGE_DASHBOARD_PATH)) {
+      return "landing-2";
+    }
     return "overview";
   };
 
   const activeTab = getActiveTab();
 
-  const tabs = [
+  const defaultTabs = [
     {
       label: "Overview",
       href: "/dashboard",
@@ -113,6 +117,12 @@ function Content({ children }: { children: React.ReactNode }) {
       href: "/dashboard/orders",
     },
   ];
+
+  // A media buyer's whole dashboard is the one page they manage.
+  const tabs =
+    userRole === "media_buyer"
+      ? [{ label: "Landing 2", href: LANDING_PAGE_DASHBOARD_PATH }]
+      : defaultTabs;
 
   return (
     <main className='flex-1 w-full h-full'>

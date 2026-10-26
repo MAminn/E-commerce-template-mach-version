@@ -48,6 +48,24 @@ export interface MediaUploadFailure {
 
 export type MediaUploadOutcome = MediaUploadSuccess | MediaUploadFailure;
 
+/**
+ * Where a file goes: the mutation for images (and PDFs), and the multipart
+ * route for videos. Every CMS slot uses the homepage target; the Landing 2
+ * page passes its own, whose routes also admit media buyers. The behaviour
+ * around them — validation, messages, the video advisory — is shared.
+ */
+export interface MediaUploadTarget {
+  uploadFile: (
+    payload: ReturnType<typeof mediaUploadPayload>,
+  ) => Promise<{ success: boolean; data?: { url: string }; error?: string }>;
+  videoEndpoint: string;
+}
+
+export const HOMEPAGE_MEDIA_UPLOAD_TARGET: MediaUploadTarget = {
+  uploadFile: (payload) => trpc.homepage.uploadMedia.mutate(payload),
+  videoEndpoint: MEDIA_UPLOAD_VIDEO_ENDPOINT,
+};
+
 /** What the mutation is sent, as a pure function of the file and the prefix. */
 export function mediaUploadPayload(
   file: { name: string; type: string },
@@ -97,6 +115,7 @@ export function safeUploadErrorMessage(error: unknown): string | null {
 export async function uploadMediaFile(
   file: File | undefined | null,
   prefix: string | undefined,
+  target: MediaUploadTarget = HOMEPAGE_MEDIA_UPLOAD_TARGET,
 ): Promise<MediaUploadOutcome | null> {
   if (!file) return null;
 
@@ -105,14 +124,14 @@ export async function uploadMediaFile(
   if (oversize) return { ok: false, message: oversize };
 
   if (file.type.toLowerCase().startsWith("video/")) {
-    const outcome = await uploadVideoFile(file, prefix);
+    const outcome = await uploadVideoFile(file, prefix, target.videoEndpoint);
     const notice = largeVideoAdvisory(file);
     return outcome.ok && notice ? { ...outcome, notice } : outcome;
   }
 
   try {
     const buffer = new Uint8Array(await file.arrayBuffer());
-    const result = await trpc.homepage.uploadMedia.mutate(
+    const result = await target.uploadFile(
       mediaUploadPayload(file, buffer, prefix),
     );
 
@@ -140,6 +159,7 @@ export async function uploadMediaFile(
 async function uploadVideoFile(
   file: File,
   prefix: string | undefined,
+  endpoint: string,
 ): Promise<MediaUploadOutcome> {
   const body = new FormData();
   body.append("file", file, file.name);
@@ -148,7 +168,7 @@ async function uploadVideoFile(
   });
 
   try {
-    const response = await fetch(`${MEDIA_UPLOAD_VIDEO_ENDPOINT}?${query}`, {
+    const response = await fetch(`${endpoint}?${query}`, {
       method: "POST",
       body,
       credentials: "same-origin",

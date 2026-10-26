@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { uploadMediaFile } from "./uploadMediaFile";
+import { uploadMediaFile, type MediaUploadTarget } from "./uploadMediaFile";
 import { Button } from "#root/components/ui/button";
 import { Input } from "#root/components/ui/input";
 import { Label } from "#root/components/ui/label";
@@ -69,6 +69,8 @@ export interface MediaSlotFieldProps {
   /** Hide the video option for slots that only ever hold a still. */
   imageOnly?: boolean;
   disabled?: boolean;
+  /** Where uploads go. Defaults to the homepage CMS routes. */
+  uploadTarget?: MediaUploadTarget;
 }
 
 export function MediaSlotField({
@@ -80,6 +82,7 @@ export function MediaSlotField({
   prefix = "media",
   imageOnly = false,
   disabled = false,
+  uploadTarget,
 }: MediaSlotFieldProps) {
   const slot: MediaSlot = value ?? { ...EMPTY_MEDIA_SLOT };
   const [uploading, setUploading] = useState<SubSlot | null>(null);
@@ -107,7 +110,7 @@ export function MediaSlotField({
       // The shared upload path, not a copy of it. This behaviour is the one
       // that has always worked here; `uploadMediaFile` is it, lifted out so
       // the compact control cannot drift from it.
-      const outcome = await uploadMediaFile(file, prefix);
+      const outcome = await uploadMediaFile(file, prefix, uploadTarget);
       if (!outcome) return;
 
       if (outcome.ok) {

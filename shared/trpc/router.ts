@@ -29,6 +29,7 @@ import { typographyRouter } from "#root/backend/typography/trpc";
 import { upsellRouter } from "#root/backend/upsells/trpc";
 import { whatsappRouter } from "#root/backend/whatsapp/trpc";
 import { promoPerformanceRouter } from "#root/backend/promo-performance/trpc";
+import { landingPageRouter } from "#root/backend/landing-page/trpc";
 import { publicProcedure, router, t } from "./server";
 
 const authRouter = t.router({
@@ -70,6 +71,7 @@ export const appRouter = router({
   upsell: upsellRouter,
   whatsapp: whatsappRouter,
   promoPerformance: promoPerformanceRouter,
+  landingPage: landingPageRouter,
 });
 
 export type AppRouter = typeof appRouter;

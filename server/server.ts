@@ -13,6 +13,10 @@ import { auth } from "#root/backend/auth/auth.server.js";
 import { uploadFileApiPlugin } from "#root/backend/file/upload-file/api";
 import { homepageVideoUploadApiPlugin } from "#root/backend/homepage/upload-media/video-api";
 import { ordersExportApiPlugin } from "#root/backend/orders/export-orders/api";
+import {
+  LANDING_MEDIA_VIDEO_ENDPOINT,
+  canEditLandingPage,
+} from "#root/shared/landing-page/config";
 import { uploadsServingPlugin } from "./uploads-route";
 import { emailServiceMiddleware } from "#root/shared/email/middleware.server";
 import { fincartWebhookPlugin } from "#root/backend/orders/fincart-webhook/api.js";
@@ -262,6 +266,13 @@ async function buildServer() {
 
   // CMS video uploads, streamed as multipart rather than inside tRPC
   await instance.register(homepageVideoUploadApiPlugin);
+  // The same handler for the Landing 2 hero, open to its editors (media buyers
+  // included). Same directory, same limits and checks.
+  await instance.register(homepageVideoUploadApiPlugin, {
+    endpoint: LANDING_MEDIA_VIDEO_ENDPOINT,
+    isAllowedRole: canEditLandingPage,
+    forbiddenMessage: "You do not have access to the landing page settings.",
+  });
 
   // Admin Orders → CSV download, streamed rather than inside tRPC
   await instance.register(ordersExportApiPlugin);

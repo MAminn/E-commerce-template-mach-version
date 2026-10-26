@@ -36,7 +36,7 @@ export const authFasitfyMiddleware = fp((app: FastifyInstance) => {
         name: user.name,
         phone: user.phone ?? "",
         expiresAt: session.session.expiresAt,
-        role: (user.role as "admin" | "vendor" | "user" | "superadmin") ?? "user",
+        role: (user.role as ClientSession["role"]) ?? "user",
         emailVerified: user.emailVerified,
         profilePicture: user.profilePicture ?? user.image,
       };

@@ -5,7 +5,7 @@ export interface ClientSession {
   name: string;
   phone: string;
   expiresAt: Date;
-  role: "admin" | "vendor" | "user" | "superadmin";
+  role: "admin" | "vendor" | "user" | "superadmin" | "media_buyer";
   emailVerified?: boolean;
   profilePicture?: string | null;
   image?: string | null;

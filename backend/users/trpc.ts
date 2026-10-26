@@ -125,7 +125,7 @@ export const usersRouter = router({
         email: z.string().email("Invalid email"),
         password: z.string().min(8, "Password must be at least 8 characters"),
         phone: z.string().default(""),
-        role: z.enum(["admin", "vendor", "user"]).default("user"),
+        role: z.enum(["admin", "vendor", "user", "media_buyer"]).default("user"),
         emailVerified: z.boolean().default(false),
       }),
     )
@@ -185,7 +185,7 @@ export const usersRouter = router({
         name: z.string().min(1).optional(),
         email: z.string().email().optional(),
         phone: z.string().optional(),
-        role: z.enum(["admin", "vendor", "user"]).optional(),
+        role: z.enum(["admin", "vendor", "user", "media_buyer"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
