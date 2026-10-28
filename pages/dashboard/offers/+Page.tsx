@@ -78,6 +78,7 @@ const CONDITION_LABELS: Record<OfferCondition["type"], string> = {
   quantity_threshold: "Min Quantity",
   cart_total: "Min Cart Total",
   product_bundle: "Product Bundle",
+  buy_x_get_y: "Buy X Get Y",
 };
 
 const REWARD_LABELS: Record<OfferReward["type"], string> = {
@@ -85,10 +86,41 @@ const REWARD_LABELS: Record<OfferReward["type"], string> = {
   fixed_off: "Fixed Discount",
   free_shipping: "Free Shipping",
   free_items: "Free Items",
+  free_gift: "Free Gift (same product)",
 };
+
+// The Buy X Get Y condition and the Free Gift reward only work as a pair, so
+// they're picked through the "Offer Type" switch, not the generic selects.
+const STANDARD_CONDITION_TYPES = (
+  Object.keys(CONDITION_LABELS) as OfferCondition["type"][]
+).filter((t) => t !== "buy_x_get_y");
+const STANDARD_REWARD_TYPES = (
+  Object.keys(REWARD_LABELS) as OfferReward["type"][]
+).filter((t) => t !== "free_gift");
 
 const emptyCondition: OfferCondition = { type: "always" };
 const emptyReward: OfferReward = { type: "percentage_off", percentOff: 10 };
+
+const bogoCondition: OfferCondition = {
+  type: "buy_x_get_y",
+  buyQuantity: 1,
+  productIds: [],
+  repeatsPerMultiple: true,
+};
+const bogoReward: OfferReward = {
+  type: "free_gift",
+  getQuantity: 1,
+  sameProduct: true,
+  autoAdd: true,
+};
+
+/** A stored date as the value a datetime-local input expects — in the
+ * admin's local time, matching how the input's value is parsed on save. */
+function toDateTimeLocal(value: Date | string): string {
+  const d = new Date(value);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 type FormState = {
   name: string;
@@ -128,6 +160,26 @@ function ProductMultiSelect({
   const [results, setResults] = useState<ProductOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [selectedNames, setSelectedNames] = useState<Record<string, string>>({});
+
+  // An offer opened for editing only stores ids — look up their names once.
+  const unnamedKey = selectedIds.filter((id) => !selectedNames[id]).join(",");
+  useEffect(() => {
+    if (!unnamedKey) return;
+    let cancelled = false;
+    trpc.product.getByIds
+      .query({ ids: unnamedKey.split(",").slice(0, 100) })
+      .then((res) => {
+        if (cancelled || !res.success) return;
+        setSelectedNames((m) => ({
+          ...m,
+          ...Object.fromEntries(res.result.map((p) => [p.id, p.name])),
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [unnamedKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -265,13 +317,11 @@ function ConditionFields({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {(Object.entries(CONDITION_LABELS) as [OfferCondition["type"], string][]).map(
-            ([k, label]) => (
-              <SelectItem key={k} value={k}>
-                {label}
-              </SelectItem>
-            ),
-          )}
+          {STANDARD_CONDITION_TYPES.map((k) => (
+            <SelectItem key={k} value={k}>
+              {CONDITION_LABELS[k]}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 
@@ -375,13 +425,11 @@ function RewardFields({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {(Object.entries(REWARD_LABELS) as [OfferReward["type"], string][]).map(
-            ([k, label]) => (
-              <SelectItem key={k} value={k}>
-                {label}
-              </SelectItem>
-            ),
-          )}
+          {STANDARD_REWARD_TYPES.map((k) => (
+            <SelectItem key={k} value={k}>
+              {REWARD_LABELS[k]}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 
@@ -446,6 +494,157 @@ function RewardFields({
   );
 }
 
+type CategoryOption = { id: string; name: string };
+
+function CategoryMultiSelect({
+  selectedIds,
+  onChange,
+}: {
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    trpc.category.view
+      .query()
+      .then((res) => {
+        if (cancelled || !res.success) return;
+        setCategories(
+          res.result.map((c) => ({ id: c.id, name: `${c.displayName} (${c.type})` })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (categories.length === 0) {
+    return <p className="text-xs text-muted-foreground">No categories available.</p>;
+  }
+
+  return (
+    <div className="max-h-40 overflow-y-auto rounded-md border p-2 space-y-1">
+      {categories.map((c) => (
+        <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={selectedIds.includes(c.id)}
+            onChange={() =>
+              onChange(
+                selectedIds.includes(c.id)
+                  ? selectedIds.filter((id) => id !== c.id)
+                  : [...selectedIds, c.id],
+              )
+            }
+          />
+          {c.name}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function BogoFields({
+  condition,
+  reward,
+  onChange,
+}: {
+  condition: Extract<OfferCondition, { type: "buy_x_get_y" }>;
+  reward: Extract<OfferReward, { type: "free_gift" }>;
+  onChange: (
+    c: Extract<OfferCondition, { type: "buy_x_get_y" }>,
+    r: Extract<OfferReward, { type: "free_gift" }>,
+  ) => void;
+}) {
+  const hasEligible =
+    (condition.productIds?.length ?? 0) + (condition.categoryIds?.length ?? 0) > 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <Label>Buy Quantity</Label>
+          <Input
+            type="number"
+            min={1}
+            value={condition.buyQuantity}
+            onChange={(e) =>
+              onChange({ ...condition, buyQuantity: Number(e.target.value) }, reward)
+            }
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>Get Free Quantity</Label>
+          <Input
+            type="number"
+            min={1}
+            value={reward.getQuantity}
+            onChange={(e) =>
+              onChange(condition, { ...reward, getQuantity: Number(e.target.value) })
+            }
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <Label>Eligible Products</Label>
+        <ProductMultiSelect
+          selectedIds={condition.productIds ?? []}
+          onChange={(ids) => onChange({ ...condition, productIds: ids }, reward)}
+        />
+      </div>
+
+      <div className="space-y-1">
+        <Label>Eligible Categories (optional)</Label>
+        <CategoryMultiSelect
+          selectedIds={condition.categoryIds ?? []}
+          onChange={(ids) => onChange({ ...condition, categoryIds: ids }, reward)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Every product whose main category is ticked qualifies, in addition to the
+          products picked above.
+        </p>
+      </div>
+      {!hasEligible && (
+        <p className="text-xs text-destructive">
+          Pick at least one eligible product or category.
+        </p>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div>
+          <Label>Repeat per multiple</Label>
+          <p className="text-xs text-muted-foreground">
+            On: every {condition.buyQuantity} bought of a product gives{" "}
+            {reward.getQuantity} free (buy 2 → 2 free with Buy 1 Get 1). Off: the
+            offer gives its free units once per order, on the first eligible item
+            in the cart.
+          </p>
+        </div>
+        <Switch
+          checked={condition.repeatsPerMultiple ?? false}
+          onCheckedChange={(v) => onChange({ ...condition, repeatsPerMultiple: v }, reward)}
+        />
+      </div>
+
+      <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground space-y-1">
+        <p>
+          The free unit is always the same product and variant the customer buys. It is
+          added to the cart automatically as a separate EGP 0 line the customer can't
+          edit, and it updates when they change the paid quantity.
+        </p>
+        <p>
+          Stock must cover the paid and free units together; otherwise the customer is
+          asked to lower the quantity at checkout.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function Page() {
   const [offers, setOffers] = useState<CartOfferRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -490,12 +689,8 @@ export function Page() {
       isExclusive: offer.isExclusive,
       condition: offer.condition,
       reward: offer.reward,
-      startsAt: offer.startsAt
-        ? new Date(offer.startsAt).toISOString().slice(0, 16)
-        : "",
-      endsAt: offer.endsAt
-        ? new Date(offer.endsAt).toISOString().slice(0, 16)
-        : "",
+      startsAt: offer.startsAt ? toDateTimeLocal(offer.startsAt) : "",
+      endsAt: offer.endsAt ? toDateTimeLocal(offer.endsAt) : "",
     });
     setDialogOpen(true);
   }
@@ -504,6 +699,23 @@ export function Page() {
     if (!form.name.trim()) {
       toast.error("Name is required");
       return;
+    }
+    if (form.condition.type === "buy_x_get_y") {
+      const { condition: c, reward: r } = form;
+      if ((c.productIds?.length ?? 0) + (c.categoryIds?.length ?? 0) === 0) {
+        toast.error("Pick at least one eligible product or category");
+        return;
+      }
+      if (
+        !Number.isInteger(c.buyQuantity) ||
+        c.buyQuantity < 1 ||
+        r.type !== "free_gift" ||
+        !Number.isInteger(r.getQuantity) ||
+        r.getQuantity < 1
+      ) {
+        toast.error("Buy and free quantities must be whole numbers of at least 1");
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -526,7 +738,7 @@ export function Page() {
           setDialogOpen(false);
           loadOffers();
         } else {
-          toast.error("Failed to update offer");
+          toast.error(result.error || "Failed to update offer");
         }
       } else {
         const result = await trpc.offer.create.mutate(payload);
@@ -535,11 +747,13 @@ export function Page() {
           setDialogOpen(false);
           loadOffers();
         } else {
-          toast.error("Failed to create offer");
+          toast.error(result.error || "Failed to create offer");
         }
       }
-    } catch {
-      toast.error("An error occurred");
+    } catch (error) {
+      // Input validation (e.g. an unpaired Buy X Get Y) is rejected before the
+      // procedure runs; its message is the useful part.
+      toast.error(error instanceof Error && error.message ? error.message : "An error occurred");
     } finally {
       setSaving(false);
     }
@@ -574,8 +788,25 @@ export function Page() {
     if (reward.type === "free_shipping") return "Free shipping";
     if (reward.type === "free_items")
       return `${reward.quantity} free item(s) (${reward.which})`;
+    if (reward.type === "free_gift")
+      return `${reward.getQuantity} free (same product & variant, auto-added)`;
     return "";
   }
+
+  function describeCondition(condition: OfferCondition): string {
+    if (condition.type !== "buy_x_get_y") return CONDITION_LABELS[condition.type];
+    const products = condition.productIds?.length ?? 0;
+    const categories = condition.categoryIds?.length ?? 0;
+    const scope = [
+      products ? `${products} product${products > 1 ? "s" : ""}` : "",
+      categories ? `${categories} categor${categories > 1 ? "ies" : "y"}` : "",
+    ]
+      .filter(Boolean)
+      .join(" + ");
+    return `Buy ${condition.buyQuantity} · ${scope}`;
+  }
+
+  const isBogo = form.condition.type === "buy_x_get_y";
 
   return (
     <div className="p-6 space-y-6">
@@ -628,8 +859,9 @@ export function Page() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{CONDITION_LABELS[offer.condition.type]}</Badge>
-                      {offer.condition.type === "quantity_threshold" &&
+                      <Badge variant="outline">{describeCondition(offer.condition)}</Badge>
+                      {(offer.condition.type === "quantity_threshold" ||
+                        offer.condition.type === "buy_x_get_y") &&
                         offer.condition.repeatsPerMultiple && (
                           <Badge variant="secondary" className="ml-1">
                             Repeats per multiple
@@ -713,7 +945,9 @@ export function Page() {
                     setForm((f) => ({ ...f, priority: Number(e.target.value) }))
                   }
                 />
-                <p className="text-xs text-muted-foreground">Higher = evaluated first</p>
+                <p className="text-xs text-muted-foreground">
+                  Lower = evaluated first (0 runs before 1)
+                </p>
               </div>
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
@@ -750,14 +984,45 @@ export function Page() {
                 />
               </div>
             </div>
-            <ConditionFields
-              condition={form.condition}
-              onChange={(c) => setForm((f) => ({ ...f, condition: c }))}
-            />
-            <RewardFields
-              reward={form.reward}
-              onChange={(r) => setForm((f) => ({ ...f, reward: r }))}
-            />
+            <div className="space-y-2">
+              <Label>Offer Type</Label>
+              <Select
+                value={isBogo ? "bogo" : "standard"}
+                onValueChange={(v) =>
+                  setForm((f) =>
+                    v === "bogo"
+                      ? { ...f, condition: bogoCondition, reward: bogoReward }
+                      : { ...f, condition: emptyCondition, reward: emptyReward },
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Condition + reward</SelectItem>
+                  <SelectItem value="bogo">Buy X Get Y Free (same product)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {form.condition.type === "buy_x_get_y" && form.reward.type === "free_gift" ? (
+              <BogoFields
+                condition={form.condition}
+                reward={form.reward}
+                onChange={(c, r) => setForm((f) => ({ ...f, condition: c, reward: r }))}
+              />
+            ) : (
+              <>
+                <ConditionFields
+                  condition={form.condition}
+                  onChange={(c) => setForm((f) => ({ ...f, condition: c }))}
+                />
+                <RewardFields
+                  reward={form.reward}
+                  onChange={(r) => setForm((f) => ({ ...f, reward: r }))}
+                />
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>

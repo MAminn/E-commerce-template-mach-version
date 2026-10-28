@@ -51,6 +51,10 @@ function bottleImageFor(condition: OfferCondition): string {
     if (condition.minQuantity === 2) return twoBottles;
     return threeBottles;
   }
+  if (condition.type === "buy_x_get_y") {
+    // Buy 1 Get 1 leaves with two bottles.
+    return condition.buyQuantity === 1 ? twoBottles : threeBottles;
+  }
   return oneBottle;
 }
 

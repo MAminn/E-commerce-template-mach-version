@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { ChevronDown, Gift } from "lucide-react";
 import { cn } from "#root/lib/utils";
+import { offerAmountText } from "./FreeGiftCartRow";
 
 export interface AppliedOfferSummary {
   name: string;
   discountAmount: number;
   freeShipping?: boolean;
+  gifts?: Array<{ quantity: number }>;
 }
 
 interface AppliedOffersSavingsProps {
@@ -21,10 +23,7 @@ function formatOfferAmount(
   offer: AppliedOfferSummary,
   currency: string,
 ): string {
-  if (offer.freeShipping && offer.discountAmount === 0) {
-    return "Free shipping";
-  }
-  return `−${offer.discountAmount.toFixed(2)} ${currency}`;
+  return offerAmountText(offer, (amount) => `${amount.toFixed(2)} ${currency}`);
 }
 
 export function AppliedOffersSavings({

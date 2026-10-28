@@ -306,7 +306,8 @@ export const validatePromoCode = (
       const row = productRows.find((p) => p.id === item.id);
       if (!row) return [];
       const price = Number.parseFloat(row.discountPrice ?? row.price);
-      return [{ id: item.id, name: row.name, quantity: item.quantity, price }];
+      const categoryIds = row.categoryId ? [row.categoryId] : [];
+      return [{ id: item.id, name: row.name, quantity: item.quantity, price, categoryIds }];
     });
     const pricedSubtotal = pricedLines.reduce(
       (s, l) => s + l.price * l.quantity,

@@ -64,6 +64,11 @@ export interface CheckoutOrderSummaryItem {
   quantity: number;
   imageUrl?: string | null;
   variant?: string | null;
+  /** A unit added at price 0 by a Buy X Get Y offer. */
+  isFreeGift?: boolean;
+  giftOfferName?: string;
+  /** Stock can't cover this gift — checkout will refuse the order. */
+  stockWarning?: string;
 }
 
 /**
@@ -78,6 +83,7 @@ export interface CheckoutTotals {
     name: string;
     discountAmount: number;
     freeShipping: boolean;
+    gifts?: Array<{ quantity: number }>;
   }>;
 }
 
@@ -261,7 +267,8 @@ export function CheckoutPageModernTemplate({
 
   const appliedOffers = totals.appliedOffers ?? [];
   const cartSubtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-  const cartQuantity = items.reduce((s, i) => s + i.quantity, 0);
+  // Free-gift units never count toward quantity offers.
+  const cartQuantity = items.reduce((s, i) => s + (i.isFreeGift ? 0 : i.quantity), 0);
   const originalCartTotal = items.reduce(
     (s, i) => s + (i.originalPrice ?? i.price) * i.quantity,
     0,
@@ -306,19 +313,37 @@ export function CheckoutPageModernTemplate({
             <p className='text-xs text-muted-foreground'>
               Qty: {item.quantity}
             </p>
+            {item.isFreeGift && (
+              <p className='text-xs font-medium text-emerald-700'>
+                Free gift{item.giftOfferName ? ` · ${item.giftOfferName}` : ""}
+              </p>
+            )}
+            {item.stockWarning && (
+              <p role='alert' className='text-xs font-medium text-red-600'>
+                {item.stockWarning}
+              </p>
+            )}
           </div>
           <div className='text-right shrink-0'>
-            {item.originalPrice != null &&
-              item.originalPrice > item.price && (
-                <p className='text-xs text-muted-foreground line-through'>
+            {item.isFreeGift ? (
+              <p className='font-semibold text-sm uppercase text-emerald-600'>
+                {t("cart.free") || "Free"}
+              </p>
+            ) : (
+              <>
+                {item.originalPrice != null &&
+                  item.originalPrice > item.price && (
+                    <p className='text-xs text-muted-foreground line-through'>
+                      {currency}
+                      {(item.originalPrice * item.quantity).toFixed(2)}
+                    </p>
+                  )}
+                <p className='font-semibold text-sm'>
                   {currency}
-                  {(item.originalPrice * item.quantity).toFixed(2)}
+                  {(item.price * item.quantity).toFixed(2)}
                 </p>
-              )}
-            <p className='font-semibold text-sm'>
-              {currency}
-              {(item.price * item.quantity).toFixed(2)}
-            </p>
+              </>
+            )}
           </div>
         </div>
       ))}

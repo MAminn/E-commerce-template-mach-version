@@ -3,6 +3,8 @@
  * materialize the exact order the customer paid for, without re-pricing.
  */
 
+import type { OrderAppliedOfferSnapshot } from "#root/shared/database/drizzle/schema";
+
 /** One cart line exactly as priced when the attempt was created. */
 export interface PaymentAttemptItemSnapshot {
   productId: string;
@@ -18,6 +20,9 @@ export interface PaymentAttemptItemSnapshot {
   /** The unit price the subtotal was computed from (discountPrice ?? listPrice). */
   unitPrice: number;
   lineTotal: number;
+  /** Present on a free unit added by an offer (e.g. Buy 1 Get 1). Such a line
+   * has every price at 0; `unitValue` is the paid unit's price, for audit. */
+  freeGift?: { offerId: string; offerName: string; unitValue: number };
 }
 
 /** Order-row fields that are not money and not payment. */
@@ -33,6 +38,7 @@ export interface PaymentAttemptOrderSnapshot {
   shippingPostalCode: string | null | undefined;
   shippingCountry: string | null | undefined;
   notes: string | null | undefined;
-  /** Automatic offers applied at checkout — audit only. */
-  appliedOffers: Array<{ id?: string; name?: string; discountAmount: number; freeShipping?: boolean }>;
+  /** Automatic offers applied at checkout — audit only. Copied to
+   * order.applied_offers when the order is materialized. */
+  appliedOffers: OrderAppliedOfferSnapshot[];
 }

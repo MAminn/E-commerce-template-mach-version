@@ -19,6 +19,7 @@ import type {
 import { EditorialChrome } from "../editorial/EditorialChrome";
 import { Reveal } from "../motion/Reveal";
 import { StaggerContainer, StaggerItem } from "../motion/Stagger";
+import { FreeGiftCartRow, offerAmountText } from "./FreeGiftCartRow";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -192,7 +193,13 @@ export function CartPageEditorialTemplate({
           {/*  Items List                                               */}
           {/* -------------------------------------------------------- */}
           <StaggerContainer className="lg:col-span-8 space-y-0 divide-y divide-stone-200 mach-dark:divide-white/12">
-            {items.map((item) => (
+            {items.map((item) => item.isFreeGift ? (
+              // Not a StaggerItem: gifts arrive after the evaluate round trip, and a
+              // stagger child mounted after the once-only entrance stays hidden.
+              <div key={item.id}>
+                <FreeGiftCartRow item={item} currency={currency} />
+              </div>
+            ) : (
               <StaggerItem key={item.id}>
               <div
                 className={`flex gap-4 py-6 first:pt-0 ${isUpdating ? "opacity-60 pointer-events-none" : ""}`}
@@ -320,9 +327,7 @@ export function CartPageEditorialTemplate({
                       <span className="truncate">{offer.name}</span>
                     </span>
                     <span className="font-semibold shrink-0">
-                      {offer.freeShipping && offer.discountAmount === 0
-                        ? "Free shipping"
-                        : `−${formatPrice(offer.discountAmount, currency)}`}
+                      {offerAmountText(offer, (amount) => formatPrice(amount, currency))}
                     </span>
                   </div>
                 ))}

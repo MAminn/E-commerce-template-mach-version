@@ -37,6 +37,8 @@ function getRewardLabel(reward: OfferReward): string {
       return "free shipping";
     case "free_items":
       return `${reward.quantity} item${reward.quantity > 1 ? "s" : ""} free`;
+    case "free_gift":
+      return `${reward.getQuantity} free gift${reward.getQuantity > 1 ? "s" : ""}`;
     default:
       return "a discount";
   }
@@ -44,7 +46,7 @@ function getRewardLabel(reward: OfferReward): string {
 
 function getIcon(reward: OfferReward): "tag" | "truck" | "zap" {
   if (reward.type === "free_shipping") return "truck";
-  if (reward.type === "free_items") return "zap";
+  if (reward.type === "free_items" || reward.type === "free_gift") return "zap";
   return "tag";
 }
 

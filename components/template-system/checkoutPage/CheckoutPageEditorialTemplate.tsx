@@ -21,6 +21,7 @@ import type {
 import { EditorialChrome } from "../editorial/EditorialChrome";
 import { Reveal } from "../motion/Reveal";
 import { StaggerContainer, StaggerItem } from "../motion/Stagger";
+import { offerAmountText } from "../cartPage/FreeGiftCartRow";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -196,17 +197,35 @@ export function CheckoutPageEditorialTemplate({
               <p className='text-xs text-stone-400 mach-dark:text-white/40'>{item.variant}</p>
             )}
             <p className='text-xs text-stone-500 mach-dark:text-white/55'>Qty: {item.quantity}</p>
+            {item.isFreeGift && (
+              <p className='text-xs font-medium text-emerald-700 mach-dark:text-emerald-400'>
+                Free gift{item.giftOfferName ? ` · ${item.giftOfferName}` : ""}
+              </p>
+            )}
+            {item.stockWarning && (
+              <p role='alert' className='text-xs font-medium text-red-600 mach-dark:text-red-400'>
+                {item.stockWarning}
+              </p>
+            )}
           </div>
           <div className='text-right shrink-0'>
-            {item.originalPrice != null &&
-              item.originalPrice > item.price && (
-                <p className='text-xs text-stone-400 mach-dark:text-white/40 line-through'>
-                  {formatPrice(item.originalPrice * item.quantity, currency)}
+            {item.isFreeGift ? (
+              <p className='text-sm font-semibold uppercase text-emerald-600 mach-dark:text-emerald-400'>
+                Free
+              </p>
+            ) : (
+              <>
+                {item.originalPrice != null &&
+                  item.originalPrice > item.price && (
+                    <p className='text-xs text-stone-400 mach-dark:text-white/40 line-through'>
+                      {formatPrice(item.originalPrice * item.quantity, currency)}
+                    </p>
+                  )}
+                <p className='text-sm font-medium text-stone-900 mach-dark:text-white'>
+                  {formatPrice(item.price * item.quantity, currency)}
                 </p>
-              )}
-            <p className='text-sm font-medium text-stone-900 mach-dark:text-white'>
-              {formatPrice(item.price * item.quantity, currency)}
-            </p>
+              </>
+            )}
           </div>
         </div>
       ))}
@@ -239,9 +258,7 @@ export function CheckoutPageEditorialTemplate({
               🎁 <span className='truncate'>{offer.name}</span>
             </span>
             <span className='font-semibold shrink-0'>
-              {offer.freeShipping && offer.discountAmount === 0
-                ? "Free shipping"
-                : `−${formatPrice(offer.discountAmount, currency)}`}
+              {offerAmountText(offer, (amount) => formatPrice(amount, currency))}
             </span>
           </div>
         ))}

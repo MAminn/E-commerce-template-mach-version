@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import type { Product } from "../mock-data/products";
 import { trpc } from "#root/shared/trpc/client";
-import type { AppliedOffer } from "#root/backend/offers/service";
+import type { AppliedOffer, AppliedOfferGift } from "#root/backend/offers/service";
 import { getCartSessionToken } from "#root/lib/cart-session";
 import { computeLinePromoDiscount, deriveEffectiveShipping, computeFreeItemQuantities } from "#root/shared/pricing/cart-math";
 
@@ -41,6 +41,36 @@ export function promoDiscountLabel(
       ? `${info.discountValue}% off`
       : `${info.discountValue.toFixed(2)} EGP off`)
   );
+}
+
+/**
+ * A cart line's options as checkout sends them to the server ("Size: L,
+ * Color: Red"). Offers key free gifts by this string, so the cart and the
+ * order agree on which variant a gift belongs to.
+ */
+export function formatSelectedOptions(
+  options: CartItem["selectedOptions"] | undefined,
+): string {
+  return options
+    ? Object.entries(options)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ")
+    : "";
+}
+
+/** Free units an offer added to a paid cart line (same product + variant). */
+export function giftsForCartItem(
+  gifts: readonly AppliedOfferGift[],
+  item: Pick<CartItem, "id" | "selectedOptions">,
+): AppliedOfferGift[] {
+  const options = formatSelectedOptions(item.selectedOptions) || null;
+  return gifts.filter((g) => g.productId === item.id && g.selectedOptions === options);
+}
+
+/** Shopper-facing note for a gift that stock can't cover (checkout refuses it). */
+export function giftStockWarning(gift: AppliedOfferGift): string | undefined {
+  if (!gift.insufficientStock) return undefined;
+  return `Only ${gift.insufficientStock.available} left in stock — not enough to include your free gift. Lower the quantity to continue.`;
 }
 
 const sameIds = (a: readonly string[] = [], b: readonly string[] = []) =>
@@ -90,6 +120,10 @@ interface CartContextType {
   /** How many units of each cart item (by index, same order as `items`) an
    * offer made free — e.g. [0, 1, 0] means the second item has 1 free unit. */
   freeQuantities: number[];
+  /** Extra units added at price 0 by Buy X Get Y offers, as the server
+   * computed them for the current cart. Not cart items: they can't be edited
+   * and follow the paid quantity (see giftsForCartItem). */
+  freeGifts: AppliedOfferGift[];
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -122,6 +156,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [baseShippingFee, setBaseShippingFee] = useState<number>(0);
   const [appliedOffers, setAppliedOffers] = useState<AppliedOffer[]>([]);
   const [offerDiscount, setOfferDiscount] = useState<number>(0);
+  const offerEvaluationRef = useRef(0);
 
   useEffect(() => {
     const savedCart = localStorage.getItem("cart");
@@ -232,6 +267,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [items, appliedOffers],
   );
 
+  const freeGifts = useMemo(
+    () => appliedOffers.flatMap((o) => o.gifts ?? []),
+    [appliedOffers],
+  );
+
   useEffect(() => {
     localStorage.setItem("cart", JSON.stringify(items));
 
@@ -282,18 +322,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
         });
     }
 
-    // Re-evaluate automatic offers when cart changes
+    // Re-evaluate automatic offers when cart changes. The server prices the
+    // lines itself; the variant tells it which one a free gift belongs to.
     const cartItems = items.map((item) => ({
       id: item.id,
       name: item.name,
       quantity: item.quantity,
       price: item.price,
+      selectedOptions: formatSelectedOptions(item.selectedOptions) || null,
     }));
     const currentSubtotal = items.reduce((t, i) => t + i.price * i.quantity, 0);
+    // Only the newest evaluation may land: quick +/− clicks can answer out of
+    // order, and a stale answer would show the wrong number of free gifts.
+    const evaluation = ++offerEvaluationRef.current;
     if (cartItems.length > 0) {
       trpc.offer.evaluate
         .query({ cartItems, subtotal: currentSubtotal })
         .then((result) => {
+          if (evaluation !== offerEvaluationRef.current) return;
           if (result.success && result.result) {
             setAppliedOffers(result.result);
             const totalOfferDiscount = result.result.reduce((s, o) => s + o.discountAmount, 0);
@@ -306,6 +352,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch(() => {
+          if (evaluation !== offerEvaluationRef.current) return;
           setAppliedOffers([]);
           setOfferDiscount(0);
         });
@@ -579,6 +626,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         appliedOffers,
         offerDiscount,
         freeQuantities,
+        freeGifts,
       }}>
       {children}
     </CartContext.Provider>
