@@ -1,7 +1,7 @@
 "use client";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { cn } from "#root/lib/utils";
@@ -69,6 +69,21 @@ export interface FileMetadata {
   url?: string;
   diskname?: string;
   isPrimary?: boolean;
+}
+
+/** First error message in schema order, including nested fields. */
+function firstErrorMessage(errors: FieldErrors): string | undefined {
+  for (const value of Object.values(errors)) {
+    if (!value || typeof value !== "object") continue;
+    if (typeof value.message === "string" && value.message) return value.message;
+    // A leaf FieldError carries `type` (and a DOM `ref`) — only recurse into
+    // nested objects/arrays of errors.
+    if (!("type" in value)) {
+      const nested = firstErrorMessage(value as FieldErrors);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -666,6 +681,19 @@ export function ProductForm({
   }, [form]);
 
   const [submitting, setSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // zod rejected the form, so handleFormSubmit never ran. The image uploader
+  // and category picker can't take focus, so their errors would otherwise sit
+  // out of view in the scrolling form and Submit would appear to do nothing.
+  const handleInvalidSubmit = (errors: FieldErrors) => {
+    toast.error(firstErrorMessage(errors) ?? "Please fix the highlighted fields");
+    requestAnimationFrame(() => {
+      formRef.current
+        ?.querySelector('[data-slot="form-message"]')
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
 
   const handleFormSubmit = async (values: z.infer<typeof formSchema>) => {
     setSubmitting(true);
@@ -782,7 +810,8 @@ export function ProductForm({
         </div>
       ) : (
         <form
-          onSubmit={form.handleSubmit(handleFormSubmit)}
+          ref={formRef}
+          onSubmit={form.handleSubmit(handleFormSubmit, handleInvalidSubmit)}
           className='space-y-4 max-h-[70vh] overflow-y-auto p-3'>
           <FormField
             control={form.control}
