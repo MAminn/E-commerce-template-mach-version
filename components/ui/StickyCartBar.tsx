@@ -7,6 +7,7 @@ import type { OfferCondition, OfferReward } from "#root/shared/database/drizzle/
 import type { AppliedOffer } from "#root/backend/offers/service";
 import { cn } from "#root/lib/utils";
 import { computeOfferSavingsTotal } from "#root/components/template-system/cartPage/AppliedOffersSavings";
+import { offerAmountText } from "#root/components/template-system/cartPage/FreeGiftCartRow";
 import { STORE_CURRENCY } from "#root/shared/config/branding";
 
 const HIDDEN_PATHS = ["/cart", "/checkout", "/login", "/register", "/dashboard"];
@@ -52,6 +53,8 @@ function rewardHeadline(reward: OfferReward): string {
       return "GET FREE SHIPPING";
     case "free_items":
       return `GET ${reward.quantity} FREE`;
+    case "free_gift":
+      return `GET ${reward.getQuantity} FREE`;
     default:
       return "GET A DEAL";
   }
@@ -65,16 +68,15 @@ function unlockedHeadline(reward: OfferReward, name: string): string {
       return `${reward.amountOff} OFF UNLOCKED`;
     case "free_shipping":
       return "FREE SHIPPING UNLOCKED";
+    case "free_gift":
+      return "FREE GIFT UNLOCKED";
     default:
       return `${name.toUpperCase()} UNLOCKED`;
   }
 }
 
 function formatOfferSaving(offer: AppliedOffer, currency: string): string {
-  if (offer.freeShipping && offer.discountAmount === 0) {
-    return "Free shipping";
-  }
-  return `−${offer.discountAmount.toFixed(2)} ${currency}`;
+  return offerAmountText(offer, (amount) => `${amount.toFixed(2)} ${currency}`);
 }
 
 function buildStripState(
@@ -93,9 +95,11 @@ function buildStripState(
     const rewardText =
       totalSavings > 0
         ? `SAVING ${totalSavings.toFixed(2)} ${currency}`
-        : latestApplied.freeShipping && latestApplied.discountAmount === 0
-          ? "APPLIED AT CHECKOUT"
-          : `SAVING ${latestApplied.discountAmount.toFixed(2)} ${currency}`;
+        : latestApplied.gifts?.length
+          ? "FREE GIFT ADDED"
+          : latestApplied.freeShipping && latestApplied.discountAmount === 0
+            ? "APPLIED AT CHECKOUT"
+            : `SAVING ${latestApplied.discountAmount.toFixed(2)} ${currency}`;
 
     return {
       kind: "unlocked",

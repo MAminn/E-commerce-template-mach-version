@@ -194,12 +194,7 @@ export async function startOnlineCheckout(
     shippingPostalCode: address.shippingPostalCode,
     shippingCountry: address.shippingCountry,
     notes: address.notes,
-    appliedOffers: priced.appliedOffers.map((o) => ({
-      id: o.id,
-      name: o.name,
-      discountAmount: o.discountAmount,
-      freeShipping: o.freeShipping,
-    })),
+    appliedOffers: priced.appliedOfferSnapshots,
   };
   const promoCodeId = priced.promoCodeData?.id ?? null;
   const fingerprint = computeCheckoutFingerprint({
@@ -927,6 +922,7 @@ export async function materializeAttempt(
           fulfillmentHoldNote: holdNote,
           // A held order took no stock, so cancelling it must not give any back.
           stockRestored: held,
+          appliedOffers: snap.appliedOffers?.length ? snap.appliedOffers : null,
         })
         .execute();
 
@@ -942,6 +938,8 @@ export async function materializeAttempt(
             discountPrice: line.discountPrice,
             name: line.name,
             vendorName: null,
+            isFreeGift: !!line.freeGift,
+            offerId: line.freeGift?.offerId ?? null,
           })
           .execute();
       }

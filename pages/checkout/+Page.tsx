@@ -6,6 +6,9 @@ import {
   type CartItem as ContextCartItem,
   type PromoCodeInfo,
   promoDiscountLabel,
+  formatSelectedOptions,
+  giftsForCartItem,
+  giftStockWarning,
 } from "#root/lib/context/CartContext";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
@@ -82,6 +85,7 @@ export default function CheckoutPage() {
     clearPromoCodeNotice,
     clearCart,
     appliedOffers,
+    freeGifts,
   } = useCart();
   const { getTemplateId } = useTemplate();
   const { trackEvent } = useTracking();
@@ -173,22 +177,37 @@ export default function CheckoutPage() {
     });
   }, [items, total, promoCode, trackEvent]);
 
-  // Convert cart items to checkout order summary items
+  // Convert cart items to checkout order summary items, each paid line
+  // followed by the free-gift line(s) an offer added for it. The server adds
+  // the gifts itself — they are never part of the order payload.
   const orderItems: CheckoutOrderSummaryItem[] = useMemo(() => {
-    return items.map((item: ContextCartItem) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      originalPrice: item.originalPrice ?? undefined,
-      quantity: item.quantity,
-      imageUrl: item.imageUrl ?? undefined,
-      variant: item.selectedOptions
-        ? Object.entries(item.selectedOptions)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(", ") || undefined
-        : undefined,
-    }));
-  }, [items]);
+    return items.flatMap((item: ContextCartItem) => {
+      const variant = formatSelectedOptions(item.selectedOptions) || undefined;
+      const paid: CheckoutOrderSummaryItem = {
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        originalPrice: item.originalPrice ?? undefined,
+        quantity: item.quantity,
+        imageUrl: item.imageUrl ?? undefined,
+        variant,
+      };
+      const gifts = giftsForCartItem(freeGifts, item).map(
+        (gift): CheckoutOrderSummaryItem => ({
+          id: `gift|${gift.offerId}|${item.id}|${variant ?? ""}`,
+          name: item.name,
+          price: 0,
+          quantity: gift.quantity,
+          imageUrl: item.imageUrl ?? undefined,
+          variant,
+          isFreeGift: true,
+          giftOfferName: gift.offerName,
+          stockWarning: giftStockWarning(gift),
+        }),
+      );
+      return [paid, ...gifts];
+    });
+  }, [items, freeGifts]);
 
   // Build totals object
   const totals: CheckoutTotals = useMemo(() => {
@@ -219,13 +238,13 @@ export default function CheckoutPage() {
         );
       }
 
-      // Prepare order items
+      // Same refusal the server gives, without the round trip.
+      const uncoveredGift = freeGifts.map(giftStockWarning).find(Boolean);
+      if (uncoveredGift) throw new Error(uncoveredGift);
+
+      // Paid lines only: the server works out any free gifts itself.
       const orderItemsPayload = items.map((item) => {
-        const variantStr = item.selectedOptions
-          ? Object.entries(item.selectedOptions)
-              .map(([k, v]) => `${k}: ${v}`)
-              .join(", ")
-          : "";
+        const variantStr = formatSelectedOptions(item.selectedOptions);
         return {
           productId: item.id,
           quantity: item.quantity,

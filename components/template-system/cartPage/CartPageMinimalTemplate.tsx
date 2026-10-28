@@ -2,6 +2,7 @@ import React from "react";
 import { Trash2, Plus, Minus, ShoppingCart, ArrowRight } from "lucide-react";
 import type { CartPageModernTemplateProps } from "./CartPageModernTemplate";
 import { OfferProgressBanner } from "./OfferProgressBanner";
+import { FreeGiftCartRow } from "./FreeGiftCartRow";
 import {
   AppliedOffersSavings,
   computeOfferSavingsTotal,
@@ -104,7 +105,7 @@ export function CartPageMinimalTemplate({
           {/* Offer progress banner */}
           <OfferProgressBanner
             cartSubtotal={cartSubtotal}
-            cartQuantity={items.reduce((s, i) => s + i.quantity, 0)}
+            cartQuantity={items.reduce((s, i) => s + (i.isFreeGift ? 0 : i.quantity), 0)}
             appliedOffers={appliedOffers}
             currency={currency}
           />
@@ -124,6 +125,9 @@ export function CartPageMinimalTemplate({
               {/* Items list */}
               <div className="divide-y divide-gray-100">
                 {items.map((item) => {
+                  if (item.isFreeGift) {
+                    return <FreeGiftCartRow key={item.id} item={item} currency={currency} />;
+                  }
                   const lineTotal = item.price * item.quantity;
                   const hasDiscount = item.originalPrice != null && item.originalPrice > item.price;
                   const freeQty = item.freeQuantity ?? 0;

@@ -19,6 +19,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useMinimalI18n } from "#root/lib/i18n/MinimalI18nContext";
+import { FreeGiftCartRow } from "./FreeGiftCartRow";
 
 /**
  * Cart item interface
@@ -36,6 +37,14 @@ export interface CartPageCartItem {
   variant?: string | null;
   stock?: number | null;
   available: boolean;
+  /** A unit added at price 0 by a Buy X Get Y offer — rendered read-only by
+   * FreeGiftCartRow, right after the paid line it belongs to. */
+  isFreeGift?: boolean;
+  giftOfferName?: string;
+  /** What one gift unit would have cost (shown struck through). */
+  giftUnitValue?: number;
+  /** Stock can't cover this gift: tell the shopper to lower the quantity. */
+  stockWarning?: string;
 }
 
 /**
@@ -50,6 +59,7 @@ export interface CartPageTotals {
     name: string;
     discountAmount: number;
     freeShipping: boolean;
+    gifts?: Array<{ quantity: number }>;
   }>;
 }
 
@@ -165,7 +175,8 @@ export function CartPageModernTemplate({
   );
 
   const cartSubtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-  const cartQuantity = items.reduce((s, i) => s + i.quantity, 0);
+  // Free-gift units never count toward quantity offers.
+  const cartQuantity = items.reduce((s, i) => s + (i.isFreeGift ? 0 : i.quantity), 0);
   const appliedOffers = totals.appliedOffers ?? [];
 
   return (
@@ -204,7 +215,9 @@ export function CartPageModernTemplate({
 
             {/* Items */}
             <div className='divide-y'>
-              {items.map((item) => (
+              {items.map((item) => item.isFreeGift ? (
+                <FreeGiftCartRow key={item.id} item={item} currency={currency} />
+              ) : (
                 <div
                   key={item.id}
                   className={`py-6 transition-opacity ${isUpdating ? "opacity-50 pointer-events-none" : ""}`}>

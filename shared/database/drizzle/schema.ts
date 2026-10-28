@@ -551,6 +551,11 @@ export const order = pgTable("order", {
    * order_reference. NULL on legacy orders, which display the first 8 hex
    * characters of their id (see shared/orders/order-reference.ts). */
   reference: text("reference"), // unique index order_reference_idx (migration 0059)
+  /** Automatic offers applied when the order was priced (conditions, rewards,
+   * discounts, generated free gifts), frozen so later edits or deletion of an
+   * offer never change the record. NULL on orders created before migration
+   * 0062. Audit only — the money columns above are what was charged. */
+  appliedOffers: jsonb("applied_offers").$type<OrderAppliedOfferSnapshot[]>(),
 });
 
 export const orderItem = pgTable("order_item", {
@@ -586,6 +591,13 @@ export const orderItem = pgTable("order_item", {
     scale: 2,
   }),
   name: text("name").notNull(),
+  /** A unit given away by an automatic offer (e.g. Buy 1 Get 1): stored at
+   * price 0, so every "price × quantity" consumer counts it as free, while
+   * stock is still taken and restored for it like any other line. */
+  isFreeGift: boolean("is_free_gift").notNull().default(false),
+  /** cart_offer that generated this gift line. No FK on purpose: the order
+   * keeps it after the offer is deleted (order.applied_offers has the rest). */
+  offerId: uuid("offer_id"),
   createdAt: timestamp("created_at", {
     withTimezone: true,
     mode: "date",
@@ -1781,8 +1793,12 @@ export const cartOffer = pgTable("cart_offer", {
    *   { type: "quantity_threshold"; minQuantity: number; productIds?: string[]; categoryIds?: string[]; repeatsPerMultiple?: boolean }
    *   { type: "cart_total"; minTotal: number }
    *   { type: "product_bundle"; requiredProductIds: string[] }
+   *   { type: "buy_x_get_y"; buyQuantity: number; productIds?: string[]; categoryIds?: string[]; repeatsPerMultiple?: boolean }
    *
-   * `repeatsPerMultiple` (quantity_threshold only) is unrelated to
+   * `buy_x_get_y` is only valid with the `free_gift` reward (and vice versa) —
+   * see backend/offers/service.ts.
+   *
+   * `repeatsPerMultiple` (quantity_threshold / buy_x_get_y) is unrelated to
    * `isExclusive`/"stackable" below — that controls combining with OTHER
    * offers, this controls whether THIS offer's own reward multiplies when
    * the cart clears the threshold more than once (e.g. Buy 2 Get 1: qty 6
@@ -1795,6 +1811,7 @@ export const cartOffer = pgTable("cart_offer", {
    *   { type: "fixed_off"; amountOff: number }
    *   { type: "free_shipping" }
    *   { type: "free_items"; quantity: number; which: "cheapest" | "most_expensive" }
+   *   { type: "free_gift"; getQuantity: number; sameProduct: true; autoAdd: true }
    */
   reward: jsonb("reward").notNull().$type<OfferReward>(),
   startsAt: timestamp("starts_at", { withTimezone: true, mode: "date" }),
@@ -1820,13 +1837,61 @@ export type OfferCondition =
       repeatsPerMultiple?: boolean;
     }
   | { type: "cart_total"; minTotal: number }
-  | { type: "product_bundle"; requiredProductIds: string[] };
+  | { type: "product_bundle"; requiredProductIds: string[] }
+  | {
+      /** Same-product "Buy X Get Y Free" (BOGO). Counted per cart line
+       * (product + variant); the gift is extra units of that same line. */
+      type: "buy_x_get_y";
+      buyQuantity: number;
+      productIds?: string[];
+      categoryIds?: string[];
+      /** On: every full set of buyQuantity on a line earns a gift. Off: the
+       * offer gives one gift set per order, on the first qualifying line. */
+      repeatsPerMultiple?: boolean;
+    };
 
 export type OfferReward =
   | { type: "percentage_off"; percentOff: number }
   | { type: "fixed_off"; amountOff: number }
   | { type: "free_shipping" }
-  | { type: "free_items"; quantity: number; which: "cheapest" | "most_expensive" };
+  | { type: "free_items"; quantity: number; which: "cheapest" | "most_expensive" }
+  | {
+      /** Units added on top of the paid ones at price 0 (never a discount on
+       * units already in the cart). Only valid with a buy_x_get_y condition. */
+      type: "free_gift";
+      getQuantity: number;
+      sameProduct: true;
+      autoAdd: true;
+    };
+
+/**
+ * A free unit an offer added to the cart: same product and variant as the
+ * paid line that earned it. `unitValue` is that line's unit price at
+ * evaluation time — what the customer saved, for display and audit only.
+ */
+export interface OfferGiftLine {
+  offerId: string;
+  offerName: string;
+  productId: string;
+  /** "Size: L, Color: Red" as checkout sends it; null for no options. */
+  selectedOptions: string | null;
+  name: string;
+  quantity: number;
+  unitValue: number;
+}
+
+/** What an order keeps of each automatic offer applied at checkout. */
+export interface OrderAppliedOfferSnapshot {
+  id: string;
+  name: string;
+  /** Condition/reward as configured at checkout. Absent on payment attempts
+   * started before migration 0062, which only kept the amounts. */
+  condition?: OfferCondition;
+  reward?: OfferReward;
+  discountAmount: number;
+  freeShipping: boolean;
+  gifts?: OfferGiftLine[];
+}
 
 // ─── Email Automation Queue ─────────────────────────────────────────────────
 // Backs the marketing-automation suite (welcome, abandoned cart, win-back,

@@ -2,7 +2,12 @@
 
 import { useState, useMemo } from "react";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
-import { useCart, promoDiscountLabel } from "#root/lib/context/CartContext";
+import {
+  useCart,
+  promoDiscountLabel,
+  giftsForCartItem,
+  giftStockWarning,
+} from "#root/lib/context/CartContext";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import type {
   CartPageModernTemplateProps,
@@ -28,6 +33,7 @@ export default function CartPage() {
     shipping,
     appliedOffers,
     freeQuantities,
+    freeGifts,
   } = useCart();
   const { getTemplateId } = useTemplate();
   const [isLoading, setIsLoading] = useState(false);
@@ -42,25 +48,44 @@ export default function CartPage() {
     return item.id;
   };
 
-  // Transform cart items to new template format
+  // Transform cart items to new template format. Each paid line is followed
+  // by the free-gift line(s) an offer added for it — read-only rows whose ids
+  // match no cart item, so quantity/remove handlers ignore them.
   const cartItems: CartPageCartItem[] = useMemo(() => {
-    return items.map((item, index) => ({
-      id: getCartItemKey(item),
-      name: item.name,
-      price: item.price,
-      originalPrice: item.originalPrice ?? undefined,
-      freeQuantity: freeQuantities[index] ?? 0,
-      quantity: item.quantity,
-      imageUrl: item.imageUrl ?? undefined,
-      variant: item.selectedOptions
+    return items.flatMap((item, index) => {
+      const variant = item.selectedOptions
         ? Object.entries(item.selectedOptions)
             .map(([key, value]) => `${key}: ${value}`)
             .join(", ") || undefined
-        : undefined,
-      stock: item.stock || 0,
-      available: (item.stock || 0) > 0,
-    }));
-  }, [items, freeQuantities]);
+        : undefined;
+      const paid: CartPageCartItem = {
+        id: getCartItemKey(item),
+        name: item.name,
+        price: item.price,
+        originalPrice: item.originalPrice ?? undefined,
+        freeQuantity: freeQuantities[index] ?? 0,
+        quantity: item.quantity,
+        imageUrl: item.imageUrl ?? undefined,
+        variant,
+        stock: item.stock || 0,
+        available: (item.stock || 0) > 0,
+      };
+      const gifts: CartPageCartItem[] = giftsForCartItem(freeGifts, item).map((gift) => ({
+        id: `gift|${gift.offerId}|${getCartItemKey(item)}`,
+        name: item.name,
+        price: 0,
+        quantity: gift.quantity,
+        imageUrl: item.imageUrl ?? undefined,
+        variant,
+        available: true,
+        isFreeGift: true,
+        giftOfferName: gift.offerName,
+        giftUnitValue: gift.unitValue,
+        stockWarning: giftStockWarning(gift),
+      }));
+      return [paid, ...gifts];
+    });
+  }, [items, freeQuantities, freeGifts]);
 
   // Find the original cart item by its composite key
   const findCartItem = (cartItemKey: string) => {
