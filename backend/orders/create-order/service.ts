@@ -26,7 +26,11 @@ import {
   selectActiveOffers,
   snapshotAppliedOffers,
 } from "#root/backend/offers/service";
-import { computeLinePromoDiscount } from "#root/shared/pricing/cart-math";
+import {
+  computeLinePromoDiscount,
+  deriveEffectiveShipping,
+} from "#root/shared/pricing/cart-math";
+import { isFreeShippingPromo } from "#root/shared/promo-codes/discount-types";
 import { resolvePromoEligibleProductIds } from "#root/backend/promo-codes/promo-eligibility";
 import { getStoreOwnerId } from "#root/shared/config/store";
 import { getShippingFeeRaw } from "#root/backend/settings/get-shipping-fee";
@@ -374,8 +378,11 @@ export interface PricedCheckout {
   promoDiscount: number;
   /** Offers + promo. */
   combinedDiscount: number;
-  /** Shipping after any free-shipping offer. */
+  /** What the shopper pays for shipping: 0 after a free-shipping offer or
+   * free-shipping promo code, otherwise the store's shipping fee. */
   shipping: number;
+  /** A validated free-shipping promo code zeroed the shipping charge. */
+  promoFreeShipping: boolean;
   total: number;
 }
 
@@ -517,12 +524,10 @@ export async function priceCheckout(
       clientMessage: `Sorry, only ${available} of ${name} left in stock — not enough to include your free gift. Please lower the quantity and try again.`,
     });
   }
-  const hasFreeShippingFromOffer = appliedOffers.some((o) => o.freeShipping);
-  const effectiveShipping = hasFreeShippingFromOffer ? 0 : shipping;
-
   // Check if a promo code is applied
   let discount = 0;
   let promoCodeData: typeof promoCode.$inferSelect | null = null;
+  let promoFreeShipping = false;
 
   if (input.promoCodeId) {
     // Get the promo code first to get its code
@@ -634,7 +639,18 @@ export async function priceCheckout(
       })),
       appliedOffers,
     ).discount;
+
+    // A free-shipping code passed every check above (status, dates, usage,
+    // minimum, eligible items), so the shopper's shipping charge is 0. The
+    // shipment itself is unaffected: it is still created and dispatched.
+    promoFreeShipping = isFreeShippingPromo(promo.discountType);
   }
+
+  const effectiveShipping = deriveEffectiveShipping(
+    shipping,
+    appliedOffers,
+    promoFreeShipping,
+  );
 
   const combinedDiscount = discount + offerDiscount;
   const discountedSubtotal = subtotal - combinedDiscount;
@@ -692,6 +708,7 @@ export async function priceCheckout(
     promoDiscount: discount,
     combinedDiscount,
     shipping: effectiveShipping,
+    promoFreeShipping,
     total,
   };
 }

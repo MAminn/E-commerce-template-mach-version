@@ -10,6 +10,7 @@ import {
   giftsForCartItem,
   giftStockWarning,
 } from "#root/lib/context/CartContext";
+import { isFreeShippingPromo } from "#root/shared/promo-codes/discount-types";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import { trpc } from "#root/shared/trpc/client";
@@ -214,11 +215,16 @@ export default function CheckoutPage() {
     return {
       subtotal,
       discount: discount > 0 ? discount : undefined,
-      shipping: shipping > 0 ? shipping : undefined,
+      // A Free Shipping code shows Shipping as "Free" (0) instead of hiding
+      // the row, so the shopper sees the benefit; otherwise unchanged.
+      shipping:
+        shipping > 0 || isFreeShippingPromo(promoCode?.discountType)
+          ? shipping
+          : undefined,
       grandTotal: total,
       appliedOffers: appliedOffers.length > 0 ? appliedOffers : undefined,
     };
-  }, [subtotal, discount, shipping, total, appliedOffers]);
+  }, [subtotal, discount, shipping, total, appliedOffers, promoCode?.discountType]);
 
   // Handle form submit
   const handleSubmit = async (

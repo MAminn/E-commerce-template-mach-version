@@ -1,0 +1,16 @@
+-- Additive: Free Shipping promo codes.
+--
+-- discount_type gains 'free_shipping'. Such a code takes nothing off product
+-- prices; it sets the shopper's shipping charge to 0 when valid. Its
+-- discount_value is stored as 0 (the column stays NOT NULL), so no existing
+-- row or column changes. ADD VALUE cannot run inside a transaction block on
+-- older Postgres; the boot runner executes each statement on its own.
+--
+-- Numbered 0063: 0060 is reserved by the uncommitted TikTok tracking work,
+-- 0061/0062 are on main. The runner is filename-based, so order is safe.
+--
+-- FORMATTING: shared/database/auto-migrate.ts splits this file on the
+-- statement-breakpoint marker and DISCARDS any chunk beginning with a SQL
+-- line comment, so this header ends with its own breakpoint.
+--> statement-breakpoint
+ALTER TYPE "public"."discount_type" ADD VALUE IF NOT EXISTS 'free_shipping';

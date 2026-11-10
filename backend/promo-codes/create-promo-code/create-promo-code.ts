@@ -10,9 +10,13 @@ import { ServerError } from "#root/shared/error/server";
 import { Effect } from "effect";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
+import {
+  PROMO_DISCOUNT_TYPES,
+  isFreeShippingPromo,
+} from "#root/shared/promo-codes/discount-types";
 
-// Define enum values directly for Zod, matching the Drizzle schema pgEnums
-const discountTypes = ["percentage", "fixed_amount"] as const;
+// Matches the Drizzle discount_type pgEnum.
+const discountTypes = PROMO_DISCOUNT_TYPES;
 const promoCodeStatuses = [
   "active",
   "inactive",
@@ -37,7 +41,12 @@ export const createPromoCodeSchema = z
       .max(255, "Description can be at most 255 characters")
       .optional(),
     discountType: z.enum(discountTypes),
-    discountValue: z.number().positive("Discount value must be positive"),
+    // Required (and > 0) for percentage / fixed amount; not used by free
+    // shipping, which always stores 0 — see the refine below.
+    discountValue: z
+      .number()
+      .nonnegative("Discount value must be positive")
+      .optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
     usageLimit: z
@@ -72,9 +81,19 @@ export const createPromoCodeSchema = z
     }
   )
   .refine(
+    (data) =>
+      isFreeShippingPromo(data.discountType) ||
+      (data.discountValue !== undefined && data.discountValue > 0),
+    {
+      message: "Discount value must be positive",
+      path: ["discountValue"],
+    }
+  )
+  .refine(
     (data) => {
       if (
         data.discountType === "percentage" &&
+        data.discountValue !== undefined &&
         (data.discountValue <= 0 || data.discountValue > 100)
       ) {
         return false;
@@ -205,7 +224,11 @@ export const createPromoCode = (
             .values({
               ...input,
               code: upperCaseCode,
-              discountValue: String(input.discountValue),
+              // Free shipping carries no value; the schema guarantees one
+              // for every other type.
+              discountValue: isFreeShippingPromo(input.discountType)
+                ? "0"
+                : String(input.discountValue),
               minPurchaseAmount: input.minPurchaseAmount
                 ? String(input.minPurchaseAmount)
                 : undefined,

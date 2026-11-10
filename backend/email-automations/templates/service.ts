@@ -8,11 +8,12 @@ import {
   listAllTemplateKeys,
 } from "./defaults";
 import type { EmailAutomationType } from "../queue/service";
+import type { PromoDiscountType } from "#root/shared/promo-codes/discount-types";
 
 export interface AttachedPromoCode {
   id: string;
   code: string;
-  discountType: "percentage" | "fixed_amount";
+  discountType: PromoDiscountType;
   discountValue: number;
 }
 

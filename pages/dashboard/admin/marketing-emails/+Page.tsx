@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "#root/shared/trpc/client";
 import { toast } from "sonner";
 import { relevantTokenKeysFor, tokenDefsFor, type EmailTokenDef } from "#root/shared/email-tokens";
+import type { PromoDiscountType } from "#root/shared/promo-codes/discount-types";
 import {
   Card,
   CardHeader,
@@ -68,7 +69,7 @@ interface TemplateContent {
 interface AttachedPromoCode {
   id: string;
   code: string;
-  discountType: "percentage" | "fixed_amount";
+  discountType: PromoDiscountType;
   discountValue: number;
 }
 
@@ -89,7 +90,7 @@ interface EffectiveTemplate {
 interface PromoCodeOption {
   id: string;
   code: string;
-  discountType: "percentage" | "fixed_amount";
+  discountType: PromoDiscountType;
   discountValue: number;
 }
 
@@ -1087,9 +1088,11 @@ export default function MarketingEmailsPage() {
                         promoCodeOptions.map((pc) => (
                           <SelectItem key={pc.id} value={pc.id}>
                             {pc.code} —{" "}
-                            {pc.discountType === "percentage"
-                              ? `${pc.discountValue}% off`
-                              : `${pc.discountValue.toFixed(2)} off`}
+                            {pc.discountType === "free_shipping"
+                              ? "Free shipping"
+                              : pc.discountType === "percentage"
+                                ? `${pc.discountValue}% off`
+                                : `${pc.discountValue.toFixed(2)} off`}
                           </SelectItem>
                         ))
                       )}

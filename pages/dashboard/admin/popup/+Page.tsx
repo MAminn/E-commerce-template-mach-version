@@ -396,9 +396,11 @@ export default function PopupSettingsPage() {
                 {promoCodes.map((pc) => (
                   <SelectItem key={pc.id} value={pc.id}>
                     {pc.code} (
-                    {pc.discountType === "percentage"
-                      ? `${pc.discountValue}%`
-                      : `$${pc.discountValue}`}
+                    {pc.discountType === "free_shipping"
+                      ? "Free shipping"
+                      : pc.discountType === "percentage"
+                        ? `${pc.discountValue}%`
+                        : `$${pc.discountValue}`}
                     )
                   </SelectItem>
                 ))}

@@ -10,8 +10,13 @@ import { ServerError } from "#root/shared/error/server";
 import { Effect } from "effect";
 import { z } from "zod";
 import { eq, and, sql, ne, inArray } from "drizzle-orm";
+import {
+  PROMO_DISCOUNT_TYPES,
+  isFreeShippingPromo,
+} from "#root/shared/promo-codes/discount-types";
 
-const discountTypes = ["percentage", "fixed_amount"] as const;
+// Matches the Drizzle discount_type pgEnum.
+const discountTypes = PROMO_DISCOUNT_TYPES;
 const promoCodeStatusesList = [
   "active",
   "inactive",
@@ -40,9 +45,11 @@ export const updatePromoCodeSchema = z
       .nullable()
       .optional(),
     discountType: z.enum(discountTypes).optional(),
+    // Checked against the code's final type in the service: > 0 for
+    // percentage / fixed amount, ignored (stored as 0) for free shipping.
     discountValue: z
       .number()
-      .positive("Discount value must be positive")
+      .nonnegative("Discount value must be positive")
       .optional(),
     status: z.enum(promoCodeStatusesList).optional(),
     startDate: z.coerce.date().nullable().optional(),
@@ -127,6 +134,34 @@ export const updatePromoCode = (
           })
         )
       );
+    }
+
+    // The value must make sense for the type the code ends up with.
+    const finalDiscountType = input.discountType ?? existingPromo.discountType;
+    const finalDiscountValue = isFreeShippingPromo(finalDiscountType)
+      ? 0
+      : (input.discountValue ??
+        (isFreeShippingPromo(existingPromo.discountType)
+          ? 0
+          : Number(existingPromo.discountValue)));
+    if (!isFreeShippingPromo(finalDiscountType)) {
+      const invalidValue =
+        !(finalDiscountValue > 0) ||
+        (finalDiscountType === "percentage" && finalDiscountValue > 100);
+      if (invalidValue) {
+        return yield* $(
+          Effect.fail(
+            new ServerError({
+              tag: "BadRequest",
+              statusCode: 400,
+              clientMessage:
+                finalDiscountType === "percentage"
+                  ? "Percentage discount must be between 0 (exclusive) and 100 (inclusive)"
+                  : "Discount value must be positive",
+            })
+          )
+        );
+      }
     }
 
     if (input.code && input.code !== existingPromo.code) {
@@ -225,8 +260,11 @@ export const updatePromoCode = (
       valuesToUpdate.description = input.description;
     if (input.discountType !== undefined)
       valuesToUpdate.discountType = input.discountType;
-    if (input.discountValue !== undefined)
-      valuesToUpdate.discountValue = String(input.discountValue);
+    if (
+      input.discountValue !== undefined ||
+      finalDiscountType !== existingPromo.discountType
+    )
+      valuesToUpdate.discountValue = String(finalDiscountValue);
     if (input.status !== undefined) valuesToUpdate.status = input.status;
     if (input.startDate !== undefined)
       valuesToUpdate.startDate = input.startDate;

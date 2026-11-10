@@ -11,6 +11,10 @@ import {
   listActiveOffers,
 } from "#root/backend/offers/service";
 import { computeLinePromoDiscount } from "#root/shared/pricing/cart-math";
+import {
+  describePromoDiscount,
+  isFreeShippingPromo,
+} from "#root/shared/promo-codes/discount-types";
 import { resolvePromoEligibleProductIds } from "../promo-eligibility";
 import { ServerError } from "#root/shared/error/server";
 import { Effect } from "effect";
@@ -42,15 +46,6 @@ export const validatePromoCodeSchema = z.object({
 });
 
 export type ValidatePromoCodeInput = z.infer<typeof validatePromoCodeSchema>;
-
-/** Human-readable label for a discount, used in success/summary messaging. */
-const describeDiscount = (
-  discountType: "percentage" | "fixed_amount",
-  discountValue: number,
-) =>
-  discountType === "percentage"
-    ? `${discountValue}% off`
-    : `${discountValue.toFixed(2)} EGP off`;
 
 /**
  * Validates a promo code against the current cart.
@@ -341,10 +336,12 @@ export const validatePromoCode = (
       eligibleProductIds: [...eligibleProductIds],
       /** Subtotal of those products, at current store prices. */
       eligibleSubtotal,
-      /** What this code takes off this cart (after automatic offers), as order creation computes it. */
+      /** What this code takes off this cart's products (after automatic offers), as order creation computes it. Always 0 for free shipping. */
       discountAmount,
-      /** e.g. "10% off" / "50.00 EGP off" — ready to show to the shopper. */
-      discountLabel: describeDiscount(discountType, discountValue),
+      /** The code makes this cart's shipping charge 0 (products keep their prices). */
+      freeShipping: isFreeShippingPromo(discountType),
+      /** e.g. "10% off" / "50.00 EGP off" / "Free shipping" — ready to show to the shopper. */
+      discountLabel: describePromoDiscount(discountType, discountValue),
       description: foundPromoCode.description,
     };
   });

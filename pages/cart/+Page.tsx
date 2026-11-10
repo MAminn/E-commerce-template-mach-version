@@ -8,6 +8,7 @@ import {
   giftsForCartItem,
   giftStockWarning,
 } from "#root/lib/context/CartContext";
+import { isFreeShippingPromo } from "#root/shared/promo-codes/discount-types";
 import { getTemplateComponent } from "#root/components/template-system/templateConfig";
 import type {
   CartPageModernTemplateProps,
@@ -97,11 +98,16 @@ export default function CartPage() {
     return {
       subtotal,
       discount: discount > 0 ? discount : undefined,
-      shipping: shipping > 0 ? shipping : undefined,
+      // A Free Shipping code shows Shipping as "Free" (0) instead of hiding
+      // the row, so the shopper sees the benefit; otherwise unchanged.
+      shipping:
+        shipping > 0 || isFreeShippingPromo(promoCode?.discountType)
+          ? shipping
+          : undefined,
       grandTotal: total,
       appliedOffers: appliedOffers.length > 0 ? appliedOffers : undefined,
     };
-  }, [subtotal, discount, shipping, total, appliedOffers]);
+  }, [subtotal, discount, shipping, total, appliedOffers, promoCode?.discountType]);
 
   // Handle quantity change
   const handleQuantityChange = (

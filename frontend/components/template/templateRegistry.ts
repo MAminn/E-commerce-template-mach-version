@@ -143,7 +143,7 @@ interface CartTemplateData {
   promoCode?: {
     id: string;
     code: string;
-    discountType: "percentage" | "fixed_amount";
+    discountType: "percentage" | "fixed_amount" | "free_shipping";
     discountValue: number;
   } | null;
   isLoading: boolean;
@@ -176,7 +176,7 @@ interface CheckoutTemplateData {
   promoCode?: {
     id: string;
     code: string;
-    discountType: "percentage" | "fixed_amount";
+    discountType: "percentage" | "fixed_amount" | "free_shipping";
     discountValue: number;
   } | null;
   formData: {
@@ -214,7 +214,7 @@ interface CheckoutTemplateData {
     promoCode?: {
       id: string;
       code: string;
-      discountType: "percentage" | "fixed_amount";
+      discountType: "percentage" | "fixed_amount" | "free_shipping";
       discountValue: number;
     };
     notes?: string;

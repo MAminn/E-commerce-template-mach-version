@@ -7,12 +7,17 @@
  * ignoring the automatic offer discount entirely).
  */
 
-export type PromoDiscountType = "percentage" | "fixed_amount";
+import type { PromoDiscountType } from "#root/shared/promo-codes/discount-types";
+
+export type { PromoDiscountType };
 
 /**
  * A promo code's discount always applies to what's left *after* automatic
  * offer discounts, not the raw subtotal — so a 5% code doesn't overcharge
  * on top of e.g. a "Buy 2 Get 1" offer that's already reduced the total.
+ *
+ * A free-shipping code takes nothing off products (its benefit is applied to
+ * shipping by deriveEffectiveShipping), whatever value is stored with it.
  */
 export function computePromoDiscount(
   discountType: PromoDiscountType,
@@ -20,6 +25,7 @@ export function computePromoDiscount(
   subtotal: number,
   offerDiscount: number,
 ): number {
+  if (discountType === "free_shipping") return 0;
   const base = Math.max(0, subtotal - offerDiscount);
   if (discountType === "percentage") {
     return base * (discountValue / 100);
@@ -101,12 +107,19 @@ export function computeLinePromoDiscount(
  * imperatively — that's what caused it to get stuck at 0 after a
  * free-shipping offer stopped applying (e.g. removing a cart item that had
  * pushed the total over a free-shipping threshold).
+ *
+ * `promoFreeShipping` is true only when a free-shipping promo code was
+ * validated for this cart (server-side at order time). It changes what the
+ * shopper is charged, never the shipment or the courier's fee.
  */
 export function deriveEffectiveShipping(
   baseShippingFee: number,
   appliedOffers: readonly { freeShipping: boolean }[],
+  promoFreeShipping = false,
 ): number {
-  return appliedOffers.some((o) => o.freeShipping) ? 0 : baseShippingFee;
+  return promoFreeShipping || appliedOffers.some((o) => o.freeShipping)
+    ? 0
+    : baseShippingFee;
 }
 
 interface FreeQuantityCartItem {

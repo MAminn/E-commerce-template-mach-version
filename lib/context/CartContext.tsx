@@ -5,6 +5,11 @@ import { trpc } from "#root/shared/trpc/client";
 import type { AppliedOffer, AppliedOfferGift } from "#root/backend/offers/service";
 import { getCartSessionToken } from "#root/lib/cart-session";
 import { computeLinePromoDiscount, deriveEffectiveShipping, computeFreeItemQuantities } from "#root/shared/pricing/cart-math";
+import {
+  describePromoDiscount,
+  isFreeShippingPromo,
+  type PromoDiscountType,
+} from "#root/shared/promo-codes/discount-types";
 
 export interface CartItem extends Product {
   quantity: number;
@@ -14,7 +19,8 @@ export interface CartItem extends Product {
 export interface PromoCodeInfo {
   id: string;
   code: string;
-  discountType: "percentage" | "fixed_amount";
+  /** "free_shipping" makes shipping 0 and leaves product prices alone. */
+  discountType: PromoDiscountType;
   discountValue: number;
   appliesToAllProducts: boolean;
   /** Human-readable discount, e.g. "10% off". Absent on older cached copies. */
@@ -37,9 +43,7 @@ export function promoDiscountLabel(
 ): string {
   return (
     info.discountLabel ??
-    (info.discountType === "percentage"
-      ? `${info.discountValue}% off`
-      : `${info.discountValue.toFixed(2)} EGP off`)
+    describePromoDiscount(info.discountType, info.discountValue)
   );
 }
 
@@ -239,9 +243,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     0,
   );
 
-  // Derived, not state: recomputes from current offers every render, so it
-  // can never get stuck at 0 after a free-shipping offer stops applying.
-  const shipping = deriveEffectiveShipping(baseShippingFee, appliedOffers);
+  // Derived, not state: recomputes from current offers and the applied code
+  // every render, so it can never get stuck at 0 after a free-shipping offer
+  // stops applying or a free-shipping code is removed / invalidated (the
+  // cart re-validates the code on every change and drops it if it fails).
+  const shipping = deriveEffectiveShipping(
+    baseShippingFee,
+    appliedOffers,
+    isFreeShippingPromo(promoCode?.discountType),
+  );
 
   // Derived, not state — see shared/pricing/cart-math.ts for why. A
   // restricted code only discounts the lines the server said it applies to.

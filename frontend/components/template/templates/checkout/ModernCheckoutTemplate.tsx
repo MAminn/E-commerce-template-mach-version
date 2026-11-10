@@ -746,7 +746,7 @@ function ModernOrderSummary({
   promoCode?: {
     id: string;
     code: string;
-    discountType: "percentage" | "fixed_amount";
+    discountType: "percentage" | "fixed_amount" | "free_shipping";
     discountValue: number;
   } | null;
 }) {
@@ -842,10 +842,11 @@ function ModernOrderSummary({
                 </span>
               </div>
               <span className='font-medium text-gray-900'>
-                -
-                {promoCode.discountType === "percentage"
-                  ? `${promoCode.discountValue}%`
-                  : `EGP ${promoCode.discountValue}`}
+                {promoCode.discountType === "free_shipping"
+                  ? "Free shipping"
+                  : promoCode.discountType === "percentage"
+                    ? `-${promoCode.discountValue}%`
+                    : `-EGP ${promoCode.discountValue}`}
               </span>
             </div>
           </div>

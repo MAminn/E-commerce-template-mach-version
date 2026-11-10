@@ -47,6 +47,17 @@ import {
 } from "#root/components/ui/popover";
 import { Calendar as CalendarComponent } from "#root/components/ui/calendar";
 import { cn } from "#root/lib/utils";
+import {
+  PROMO_DISCOUNT_TYPES,
+  isFreeShippingPromo,
+  type PromoDiscountType,
+} from "#root/shared/promo-codes/discount-types";
+
+const DISCOUNT_TYPE_LABELS: Record<PromoDiscountType, string> = {
+  percentage: "Percentage",
+  fixed_amount: "Fixed Amount",
+  free_shipping: "Free Shipping",
+};
 
 type Product = {
   id: string;
@@ -69,7 +80,8 @@ interface PromoCodeFormProps {
 }
 
 // Form schema with validation
-const formSchema = z.object({
+const formSchema = z
+  .object({
   code: z
     .string()
     .min(3, "Code must be at least 3 characters")
@@ -82,7 +94,9 @@ const formSchema = z.object({
     .string()
     .max(255, "Description must be at most 255 characters")
     .optional(),
-  discountType: z.enum(["percentage", "fixed_amount"]),
+  discountType: z.enum(PROMO_DISCOUNT_TYPES),
+  // Not used (and not shown) for Free Shipping; required for the others —
+  // see the superRefine below.
   discountValue: z.coerce
     .number()
     .min(0, "Discount value must be positive")
@@ -100,7 +114,23 @@ const formSchema = z.object({
   productIds: z.array(z.string()).optional(),
   categoryIds: z.array(z.string()).optional(),
   showOnOffersPage: z.boolean().default(false),
-});
+})
+  .superRefine((values, ctx) => {
+    if (isFreeShippingPromo(values.discountType)) return;
+    if (!(values.discountValue > 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discountValue"],
+        message: "Enter a discount value greater than 0",
+      });
+    } else if (values.discountType === "percentage" && values.discountValue > 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discountValue"],
+        message: "A percentage discount can be at most 100",
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -206,7 +236,10 @@ export function PromoCodeForm({
         code: values.code,
         description: values.description || undefined,
         discountType: values.discountType,
-        discountValue: values.discountValue,
+        // Free shipping has no value; the server stores 0 for it.
+        discountValue: isFreeShippingPromo(values.discountType)
+          ? undefined
+          : values.discountValue,
         status: values.status,
         startDate: values.startDate || undefined,
         endDate: values.endDate || undefined,
@@ -372,10 +405,11 @@ export function PromoCodeForm({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="percentage">Percentage</SelectItem>
-                        <SelectItem value="fixed_amount">
-                          Fixed Amount
-                        </SelectItem>
+                        {PROMO_DISCOUNT_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {DISCOUNT_TYPE_LABELS[type]}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -383,6 +417,16 @@ export function PromoCodeForm({
                 )}
               />
 
+              {isFreeShippingPromo(discountType) ? (
+                <div
+                  data-testid="free-shipping-note"
+                  className="self-end rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground"
+                >
+                  The customer pays no shipping when this code is valid.
+                  Product prices are not discounted, and the order still
+                  ships as normal.
+                </div>
+              ) : (
               <FormField
                 control={form.control}
                 name="discountValue"
@@ -408,6 +452,7 @@ export function PromoCodeForm({
                   </FormItem>
                 )}
               />
+              )}
             </div>
 
             {/* Status */}

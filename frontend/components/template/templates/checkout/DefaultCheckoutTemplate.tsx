@@ -600,7 +600,7 @@ function OrderSummary({
   promoCode?: {
     id: string;
     code: string;
-    discountType: "percentage" | "fixed_amount";
+    discountType: "percentage" | "fixed_amount" | "free_shipping";
     discountValue: number;
   } | null;
 }) {
@@ -681,10 +681,11 @@ function OrderSummary({
               </span>
             </div>
             <span className='text-sm text-green-600'>
-              -
-              {promoCode.discountType === "percentage"
-                ? `${promoCode.discountValue}%`
-                : `EGP ${promoCode.discountValue}`}
+              {promoCode.discountType === "free_shipping"
+                ? "Free shipping"
+                : promoCode.discountType === "percentage"
+                  ? `-${promoCode.discountValue}%`
+                  : `-EGP ${promoCode.discountValue}`}
             </span>
           </div>
         )}

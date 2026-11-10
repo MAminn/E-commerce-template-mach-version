@@ -15,6 +15,7 @@ import type {
   OfferReward,
 } from "#root/shared/database/drizzle/schema";
 import { AuthContext } from "#root/context/AuthContext.js";
+import type { PromoDiscountType } from "#root/shared/promo-codes/discount-types";
 
 import oneBottle from "#root/assets/1-bottles.jpg.jpeg";
 import twoBottles from "#root/assets/2-bottles.jpg.jpeg";
@@ -32,7 +33,7 @@ interface PublicPromoCode {
   id: string;
   code: string;
   description: string | null;
-  discountType: "percentage" | "fixed_amount";
+  discountType: PromoDiscountType;
   discountValue: number;
   minPurchaseAmount: number | null;
 }
@@ -264,9 +265,13 @@ export default function OffersPage() {
                       {pc.code}
                     </p>
                     <p className='text-xs text-gray-500 mach-dark:text-white/55 mt-1 mb-3'>
-                      {pc.discountType === "percentage"
-                        ? `${pc.discountValue}% OFF`
-                        : `${pc.discountValue.toFixed(0)} ${STORE_CURRENCY} OFF`}
+                      {pc.discountType === "free_shipping"
+                        ? isAr
+                          ? "شحن مجاني"
+                          : "FREE SHIPPING"
+                        : pc.discountType === "percentage"
+                          ? `${pc.discountValue}% OFF`
+                          : `${pc.discountValue.toFixed(0)} ${STORE_CURRENCY} OFF`}
                       {pc.minPurchaseAmount
                         ? isAr
                           ? ` — بحد أدنى ${pc.minPurchaseAmount.toFixed(0)} ${STORE_CURRENCY}`

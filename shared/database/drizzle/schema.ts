@@ -850,10 +850,13 @@ export const templateAnalytics = pgTable("template_analytics", {
   }),
 });
 
-// Enum for discount type
+// Enum for discount type. `free_shipping` (migration 0063) zeroes the
+// shopper's shipping charge and stores discount_value 0 — see
+// shared/promo-codes/discount-types.ts.
 export const discountTypeEnum = pgEnum("discount_type", [
   "percentage",
   "fixed_amount",
+  "free_shipping",
 ]);
 
 // Enum for promo code status

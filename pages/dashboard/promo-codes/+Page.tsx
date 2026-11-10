@@ -35,6 +35,8 @@ import { usePageContext } from "vike-react/usePageContext";
 import { ErrorSection } from "#root/components/dashboard/ErrorSection";
 import { navigate } from "vike/client/router";
 import { Pagination } from "#root/components/utils/Pagination";
+import type { PromoDiscountType } from "#root/shared/promo-codes/discount-types";
+import { formatPromoDiscountCell } from "./components/format";
 
 // Define PromoCode type
 type PromoCodeStatus =
@@ -56,7 +58,7 @@ type PromoCode = {
   id: string;
   code: string;
   description: string | null;
-  discountType: "percentage" | "fixed_amount";
+  discountType: PromoDiscountType;
   discountValue: number;
   status: PromoCodeStatus;
   startDate: Date | string | null;
@@ -431,12 +433,7 @@ export default function PromoCodesPage() {
                             {promo.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          {promo.discountValue}
-                          {promo.discountType === "percentage"
-                            ? "%"
-                            : " (fixed)"}
-                        </TableCell>
+                        <TableCell>{formatPromoDiscountCell(promo)}</TableCell>
                         <TableCell>
                           {promo.usedCount} / {promo.usageLimit ?? "∞"}
                         </TableCell>
