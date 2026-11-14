@@ -31,6 +31,7 @@ import {
   type PaymentGateway,
   type PaymentMethod,
 } from "#root/shared/config/payment-methods";
+import { resolveCheckoutPaymentMethod } from "#root/shared/config/valu-installments";
 
 /** Parse a Zod validation error (JSON array) into a friendly message */
 function parseOrderError(error: unknown): string {
@@ -87,6 +88,7 @@ export default function CheckoutPage() {
     clearCart,
     appliedOffers,
     freeGifts,
+    pricingPending,
   } = useCart();
   const { getTemplateId } = useTemplate();
   const { trackEvent } = useTracking();
@@ -233,7 +235,12 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
     setErrorMessage(undefined);
 
-    const selectedPaymentMethod = formValues.paymentMethod || "cod";
+    // "valu_installments" is a display-only choice: valU is picked on
+    // Fawaterak's hosted page, so it is submitted as the existing Fawaterak
+    // flow. Every other value passes through unchanged.
+    const selectedPaymentMethod = resolveCheckoutPaymentMethod(
+      formValues.paymentMethod || "cod",
+    );
     const isOnlinePayment = isOnlinePaymentMethod(selectedPaymentMethod);
 
     try {
@@ -440,6 +447,7 @@ export default function CheckoutPage() {
   const templateProps: CheckoutPageModernTemplateProps = {
     items: orderItems,
     totals,
+    totalPending: pricingPending,
     isSubmitting,
     errorMessage,
     onSubmit: handleSubmit,

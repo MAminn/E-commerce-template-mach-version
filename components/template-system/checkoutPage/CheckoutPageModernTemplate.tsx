@@ -23,7 +23,14 @@ import {
   RotateCcw,
   FileText,
   ChevronDown,
+  CalendarClock,
 } from "lucide-react";
+import {
+  VALU_INSTALLMENTS_COPY,
+  VALU_INSTALLMENTS_METHOD_ID,
+  estimateMonthlyInstallment,
+  isValuInstallmentsAvailable,
+} from "#root/shared/config/valu-installments";
 import { cn } from "#root/lib/utils";
 import { useMinimalI18n } from "#root/lib/i18n/MinimalI18nContext";
 import { OfferProgressBanner } from "#root/components/template-system/cartPage/OfferProgressBanner";
@@ -126,6 +133,9 @@ export interface CheckoutPageModernTemplateProps
   paymentMethods?: PaymentMethodOption[];
   /** Whether payment methods are loading */
   paymentMethodsLoading?: boolean;
+  /** `totals.grandTotal` is still settling (CartContext `pricingPending`):
+   * figures derived from it, like the valU estimate, are withheld. */
+  totalPending?: boolean;
 }
 
 /**
@@ -146,6 +156,7 @@ export function CheckoutPageModernTemplate({
   currency = "EGP",
   paymentMethods,
   paymentMethodsLoading = false,
+  totalPending = false,
 }: CheckoutPageModernTemplateProps) {
   const { t } = useMinimalI18n();
   const [form, setForm] = useState({
@@ -256,6 +267,16 @@ export function CheckoutPageModernTemplate({
         return <Banknote className='w-5 h-5' />;
     }
   };
+
+  // valU installments — display-only; submitted as Fawaterak by pages/checkout
+  // (see shared/config/valu-installments.ts).
+  const showValu = isValuInstallmentsAvailable(methods);
+  const valuSelected = form.paymentMethod === VALU_INSTALLMENTS_METHOD_ID;
+  // Withheld while the total is settling or the bag is empty (shipping only).
+  const valuMonthly =
+    totalPending || items.length === 0
+      ? null
+      : estimateMonthlyInstallment(totals.grandTotal);
 
   // Auto-select the only payment method when there's exactly one
   useEffect(() => {
@@ -655,6 +676,8 @@ export function CheckoutPageModernTemplate({
                     "Loading payment options..."}
                 </div>
               ) : (
+                (() => {
+                const payInFullOptions = (
                 <div className='space-y-3'>
                   {methods.map((method) => (
                     <label
@@ -695,6 +718,84 @@ export function CheckoutPageModernTemplate({
                     </label>
                   ))}
                 </div>
+                );
+                // Without Fawaterak there is no valU: the list is unchanged.
+                if (!showValu) return payInFullOptions;
+                // One radio group (same `name`) in two labelled fieldsets.
+                const legendCls =
+                  "mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground";
+                return (
+                  <div className='space-y-5'>
+                    <fieldset className='m-0 min-w-0 border-0 p-0'>
+                      <legend className={legendCls}>
+                        {VALU_INSTALLMENTS_COPY.groupPayInFull}
+                      </legend>
+                      {payInFullOptions}
+                    </fieldset>
+                    <fieldset className='m-0 min-w-0 border-0 p-0'>
+                      <legend className={legendCls}>
+                        {VALU_INSTALLMENTS_COPY.groupInstallments}
+                      </legend>
+                      <label
+                        data-testid='valu-installments-option'
+                        className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
+                          valuSelected
+                            ? "border-green-600 bg-muted/40"
+                            : "border-border hover:border-muted-foreground/40"
+                        }`}>
+                        <input
+                          type='radio'
+                          name='paymentMethod'
+                          value={VALU_INSTALLMENTS_METHOD_ID}
+                          checked={valuSelected}
+                          onChange={(e) =>
+                            updateField("paymentMethod", e.target.value)
+                          }
+                          aria-labelledby='checkout-valu-title'
+                          aria-describedby='checkout-valu-term checkout-valu-estimate checkout-valu-disclaimer'
+                          className='mt-1 accent-foreground'
+                        />
+                        <div className='flex items-start gap-3 flex-1 min-w-0'>
+                          <div
+                            className={`mt-0.5 ${valuSelected ? "text-foreground" : "text-muted-foreground"}`}>
+                            <CalendarClock className='w-5 h-5' />
+                          </div>
+                          <div className='flex-1 min-w-0'>
+                            <p id='checkout-valu-title' className='font-semibold'>
+                              {VALU_INSTALLMENTS_COPY.title}
+                            </p>
+                            <p
+                              id='checkout-valu-term'
+                              className='text-sm text-muted-foreground'>
+                              {VALU_INSTALLMENTS_COPY.term}
+                            </p>
+                            <p
+                              id='checkout-valu-estimate'
+                              data-testid='valu-installment-estimate'
+                              aria-live={valuSelected ? "polite" : undefined}
+                              className={`mt-2 text-sm ${valuMonthly === null ? "text-muted-foreground" : "font-semibold"}`}>
+                              {valuMonthly === null
+                                ? VALU_INSTALLMENTS_COPY.calculating
+                                : VALU_INSTALLMENTS_COPY.estimate(
+                                    `${currency} ${valuMonthly.toFixed(2)}`,
+                                  )}
+                            </p>
+                            <p
+                              id='checkout-valu-disclaimer'
+                              className='mt-1 text-xs text-muted-foreground'>
+                              {VALU_INSTALLMENTS_COPY.disclaimer}
+                            </p>
+                          </div>
+                        </div>
+                        <div className='flex items-center gap-1 text-xs text-green-600 shrink-0 mt-1'>
+                          <Shield className='w-3 h-3' />
+                          {t("checkout.secure") || "SECURE"}
+                        </div>
+                      </label>
+                    </fieldset>
+                  </div>
+                );
+                })()
               )}
             </div>
           </div>

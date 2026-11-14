@@ -22,6 +22,12 @@ import { EditorialChrome } from "../editorial/EditorialChrome";
 import { Reveal } from "../motion/Reveal";
 import { StaggerContainer, StaggerItem } from "../motion/Stagger";
 import { offerAmountText } from "../cartPage/FreeGiftCartRow";
+import {
+  VALU_INSTALLMENTS_COPY,
+  VALU_INSTALLMENTS_METHOD_ID,
+  estimateMonthlyInstallment,
+  isValuInstallmentsAvailable,
+} from "#root/shared/config/valu-installments";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -38,6 +44,7 @@ export interface CheckoutPageEditorialTemplateProps
     | "onRemoveCoupon"
     | "couponNotice"
     | "onDismissCouponNotice"
+    | "totalPending"
   > {
   customer?: CheckoutCustomerInfo;
   shippingAddress?: CheckoutAddress;
@@ -82,6 +89,7 @@ export function CheckoutPageEditorialTemplate({
   onRemoveCoupon,
   couponNotice,
   onDismissCouponNotice,
+  totalPending = false,
 }: CheckoutPageEditorialTemplateProps) {
   /* Internal form state — field names match the Modern template so
      pages/checkout/+Page.tsx's submit handler works for either template. */
@@ -183,6 +191,29 @@ export function CheckoutPageEditorialTemplate({
   );
   const originalTotal = originalCartTotal + (totals.shipping ?? 0);
   const hasDiscount = originalTotal > totals.grandTotal + 0.001;
+
+  /* valU installments — a display-only choice; the order still goes through
+     Fawaterak (see shared/config/valu-installments.ts). The estimate is
+     derived from the displayed total on every render, and withheld while
+     that total is still settling (cart pricing or a promo being applied) or
+     the bag is empty (the total would be shipping alone). */
+  const showValu = isValuInstallmentsAvailable(paymentMethods);
+  const valuSelected = formValues.paymentMethod === VALU_INSTALLMENTS_METHOD_ID;
+  const valuMonthly =
+    totalPending || isApplyingCoupon || items.length === 0
+      ? null
+      : estimateMonthlyInstallment(totals.grandTotal);
+
+  const paymentOptionCls = (selected: boolean) =>
+    `flex cursor-pointer gap-4 rounded-xl border px-5 py-4 transition-colors ${
+      selected
+        ? "border-stone-900 mach-dark:border-white bg-stone-50 mach-dark:bg-[var(--mach-ink)]"
+        : "border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] hover:border-stone-300 mach-dark:hover:border-white/40"
+    }`;
+  const paymentRadioCls =
+    "h-4 w-4 border-stone-300 mach-dark:border-white/30 text-stone-900 mach-dark:text-white mach-dark:accent-white focus:ring-stone-900/20 mach-dark:focus:ring-white/30";
+  const paymentGroupLegendCls =
+    "mb-2 text-[11px] font-medium tracking-[0.2em] uppercase text-stone-400 mach-dark:text-white/45";
 
   // Shared item rows — used by both the desktop card and the mobile expanded panel
   const renderItemsList = () => (
@@ -595,38 +626,113 @@ export function CheckoutPageEditorialTemplate({
                         <Skeleton className='h-12 w-full rounded-xl mach-dark:bg-white/[0.08]' />
                       </div>
                     ) : paymentMethods && paymentMethods.length > 0 ? (
-                      <div className='space-y-2'>
-                        {paymentMethods.map((pm) => (
-                          <label
-                            key={pm.id}
-                            className={`flex cursor-pointer items-center gap-4 rounded-xl border px-5 py-4 transition-colors ${
-                              formValues.paymentMethod === pm.id
-                                ? "border-stone-900 mach-dark:border-white bg-stone-50 mach-dark:bg-[var(--mach-ink)]"
-                                : "border-stone-200 mach-dark:border-white/15 bg-white mach-dark:bg-[var(--mach-ink-soft)] hover:border-stone-300 mach-dark:hover:border-white/40"
-                            }`}>
-                            <input
-                              type='radio'
-                              name='paymentMethod'
-                              value={pm.id}
-                              checked={formValues.paymentMethod === pm.id}
-                              onChange={(e) =>
-                                updateField("paymentMethod", e.target.value)
-                              }
-                              className='h-4 w-4 border-stone-300 mach-dark:border-white/30 text-stone-900 mach-dark:text-white mach-dark:accent-white focus:ring-stone-900/20 mach-dark:focus:ring-white/30'
-                            />
-                            <div className='flex-1'>
-                              <p className='text-sm font-medium text-stone-900 mach-dark:text-white'>
-                                {pm.label}
-                              </p>
-                              {pm.description && (
-                                <p className='text-xs text-stone-500 mach-dark:text-white/55'>
-                                  {pm.description}
-                                </p>
-                              )}
-                            </div>
-                          </label>
-                        ))}
-                      </div>
+                      (() => {
+                        const payInFullOptions = (
+                          <div className='space-y-2'>
+                            {paymentMethods.map((pm) => (
+                              <label
+                                key={pm.id}
+                                className={cn(
+                                  paymentOptionCls(formValues.paymentMethod === pm.id),
+                                  "items-center",
+                                )}>
+                                <input
+                                  type='radio'
+                                  name='paymentMethod'
+                                  value={pm.id}
+                                  checked={formValues.paymentMethod === pm.id}
+                                  onChange={(e) =>
+                                    updateField("paymentMethod", e.target.value)
+                                  }
+                                  className={paymentRadioCls}
+                                />
+                                <div className='flex-1'>
+                                  <p className='text-sm font-medium text-stone-900 mach-dark:text-white'>
+                                    {pm.label}
+                                  </p>
+                                  {pm.description && (
+                                    <p className='text-xs text-stone-500 mach-dark:text-white/55'>
+                                      {pm.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        );
+                        // Without Fawaterak there is no valU, and the card
+                        // stays exactly as it was — no group headings.
+                        if (!showValu) return payInFullOptions;
+                        // One radio group (same `name`) split into two
+                        // labelled fieldsets; arrow keys move across both.
+                        return (
+                          <div className='space-y-5'>
+                            <fieldset className='m-0 min-w-0 border-0 p-0'>
+                              <legend className={paymentGroupLegendCls}>
+                                {VALU_INSTALLMENTS_COPY.groupPayInFull}
+                              </legend>
+                              {payInFullOptions}
+                            </fieldset>
+                            <fieldset className='m-0 min-w-0 border-0 p-0'>
+                              <legend className={paymentGroupLegendCls}>
+                                {VALU_INSTALLMENTS_COPY.groupInstallments}
+                              </legend>
+                              <label
+                                data-testid='valu-installments-option'
+                                className={cn(
+                                  paymentOptionCls(valuSelected),
+                                  "items-start",
+                                )}>
+                                <input
+                                  type='radio'
+                                  name='paymentMethod'
+                                  value={VALU_INSTALLMENTS_METHOD_ID}
+                                  checked={valuSelected}
+                                  onChange={(e) =>
+                                    updateField("paymentMethod", e.target.value)
+                                  }
+                                  aria-labelledby='checkout-valu-title'
+                                  aria-describedby='checkout-valu-term checkout-valu-estimate checkout-valu-disclaimer'
+                                  className={cn(paymentRadioCls, "mt-0.5 shrink-0")}
+                                />
+                                <div className='min-w-0 flex-1'>
+                                  <p
+                                    id='checkout-valu-title'
+                                    className='text-sm font-medium text-stone-900 mach-dark:text-white'>
+                                    {VALU_INSTALLMENTS_COPY.title}
+                                  </p>
+                                  <p
+                                    id='checkout-valu-term'
+                                    className='text-xs text-stone-500 mach-dark:text-white/55'>
+                                    {VALU_INSTALLMENTS_COPY.term}
+                                  </p>
+                                  <p
+                                    id='checkout-valu-estimate'
+                                    data-testid='valu-installment-estimate'
+                                    aria-live={valuSelected ? "polite" : undefined}
+                                    className={cn(
+                                      "mt-2 text-sm",
+                                      valuMonthly === null
+                                        ? "text-stone-500 mach-dark:text-white/55"
+                                        : "font-medium text-stone-900 mach-dark:text-white",
+                                    )}>
+                                    {valuMonthly === null
+                                      ? VALU_INSTALLMENTS_COPY.calculating
+                                      : VALU_INSTALLMENTS_COPY.estimate(
+                                          formatPrice(valuMonthly, currency),
+                                        )}
+                                  </p>
+                                  <p
+                                    id='checkout-valu-disclaimer'
+                                    className='mt-1 text-[11px] leading-snug text-stone-400 mach-dark:text-white/45'>
+                                    {VALU_INSTALLMENTS_COPY.disclaimer}
+                                  </p>
+                                </div>
+                              </label>
+                            </fieldset>
+                          </div>
+                        );
+                      })()
                     ) : (
                       <label className='flex cursor-pointer items-center gap-4 rounded-xl border border-stone-900 mach-dark:border-white bg-stone-50 mach-dark:bg-[var(--mach-ink)] px-5 py-4'>
                         <input

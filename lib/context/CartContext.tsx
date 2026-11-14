@@ -128,6 +128,12 @@ interface CartContextType {
    * computed them for the current cart. Not cart items: they can't be edited
    * and follow the paid quantity (see giftsForCartItem). */
   freeGifts: AppliedOfferGift[];
+  /** True while `total` may still change without the shopper doing anything:
+   * the saved cart or shipping fee hasn't loaded, a saved promo code is being
+   * restored, or the offer / promo checks for the current cart haven't
+   * answered yet. Lets UI derived from the total (e.g. the valU installment
+   * estimate) say "calculating" instead of showing a number about to change. */
+  pricingPending: boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -161,6 +167,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [appliedOffers, setAppliedOffers] = useState<AppliedOffer[]>([]);
   const [offerDiscount, setOfferDiscount] = useState<number>(0);
   const offerEvaluationRef = useRef(0);
+  // Pricing-settled bookkeeping for `pricingPending`. The two "…For" values
+  // hold the exact `items` array the latest offer evaluation / promo check
+  // answered for, so a cart edit makes the total pending in the same render
+  // that changes it — no frame where a stale figure is shown as settled.
+  const [cartHydrated, setCartHydrated] = useState(false);
+  const [shippingFeeResolved, setShippingFeeResolved] = useState(false);
+  const [promoRestorePending, setPromoRestorePending] = useState(false);
+  const [offersEvaluatedFor, setOffersEvaluatedFor] = useState<CartItem[] | null>(null);
+  const [promoCheckedFor, setPromoCheckedFor] = useState<CartItem[] | null>(null);
+  const promoCheckRef = useRef(0);
 
   useEffect(() => {
     const savedCart = localStorage.getItem("cart");
@@ -189,6 +205,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           (total: number, item: CartItem) => total + item.price * item.quantity,
           0,
         );
+        setPromoRestorePending(true);
         trpc.promoCode.validate
           .query({
             code: parsedPromoCode.code,
@@ -196,6 +213,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             subtotal: cartSubtotal,
           })
           .then((result) => {
+            setPromoRestorePending(false);
             if (result.success && result.result) {
               setPromoCode(result.result);
             } else {
@@ -215,14 +233,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
             }
           })
           .catch(() => {
+            setPromoRestorePending(false);
             setPromoCode(null);
             localStorage.removeItem("promoCode");
           });
       } catch (error) {
+        setPromoRestorePending(false);
         console.error("Failed to parse promo code from localStorage");
         localStorage.removeItem("promoCode");
       }
     }
+    setCartHydrated(true);
 
     // Fetch shipping fee from backend
     trpc.settings.getShippingFee
@@ -234,7 +255,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
       .catch((err) => {
         console.error("Failed to fetch shipping fee:", err);
-      });
+      })
+      .finally(() => setShippingFeeResolved(true));
   }, []);
 
   // Calculate subtotal
@@ -301,6 +323,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         (t, i) => t + i.price * i.quantity,
         0,
       );
+      const check = ++promoCheckRef.current;
       trpc.promoCode.validate
         .query({
           code: promoCode.code,
@@ -308,6 +331,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           subtotal: promoSubtotal,
         })
         .then((result) => {
+          if (check === promoCheckRef.current) setPromoCheckedFor(items);
           if (result.success && result.result) {
             const eligibleProductIds = result.result.eligibleProductIds;
             setPromoCode((current) =>
@@ -328,6 +352,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch(() => {
+          if (check === promoCheckRef.current) setPromoCheckedFor(items);
           /* Network hiccup — leave the code applied; checkout re-validates. */
         });
     }
@@ -350,6 +375,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         .query({ cartItems, subtotal: currentSubtotal })
         .then((result) => {
           if (evaluation !== offerEvaluationRef.current) return;
+          setOffersEvaluatedFor(items);
           if (result.success && result.result) {
             setAppliedOffers(result.result);
             const totalOfferDiscount = result.result.reduce((s, o) => s + o.discountAmount, 0);
@@ -363,10 +389,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => {
           if (evaluation !== offerEvaluationRef.current) return;
+          setOffersEvaluatedFor(items);
           setAppliedOffers([]);
           setOfferDiscount(0);
         });
     } else {
+      setOffersEvaluatedFor(items);
       setAppliedOffers([]);
       setOfferDiscount(0);
     }
@@ -614,6 +642,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Total: subtotal minus promo discount, minus offer discount, plus shipping
   const total = Math.max(0, subtotal - discount - offerDiscount + shipping);
 
+  const pricingPending =
+    !cartHydrated ||
+    !shippingFeeResolved ||
+    promoRestorePending ||
+    (items.length > 0 && offersEvaluatedFor !== items) ||
+    (items.length > 0 && promoCode !== null && promoCheckedFor !== items);
+
   return (
     <CartContext.Provider
       value={{
@@ -637,6 +672,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         offerDiscount,
         freeQuantities,
         freeGifts,
+        pricingPending,
       }}>
       {children}
     </CartContext.Provider>
