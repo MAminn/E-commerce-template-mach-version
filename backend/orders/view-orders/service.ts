@@ -12,6 +12,7 @@ import {
   desc,
   eq,
   gte,
+  ilike,
   inArray,
   isNotNull,
   lt,
@@ -42,12 +43,42 @@ export const viewOrdersSchema = z.object({
    * anything already in that state, or a regression, immediately.
    */
   paymentIssueOnly: z.boolean().optional(),
+  /**
+   * The dashboard search box. Applied in SQL before limit/offset so it
+   * searches every order, not just the page currently on screen.
+   */
+  search: z.string().trim().max(200).optional(),
 });
 
 export type OrderFilters = Pick<
   z.infer<typeof viewOrdersSchema>,
-  "status" | "dateFrom" | "dateTo" | "paymentIssueOnly"
+  "status" | "dateFrom" | "dateTo" | "paymentIssueOnly" | "search"
 >;
+
+/** ILIKE pattern for a literal substring. */
+function containsPattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * Free-text order search: order id, order number/reference ("#3F9A01C2",
+ * "ORD-3F9A01C2" or any part of it), customer name, email, or any item name
+ * contains the text (case-insensitive).
+ */
+export function orderSearchCondition(search: string): SQL | undefined {
+  const pattern = containsPattern(search);
+  const ref = search.toUpperCase().replace(/^#/, "").replace(/^ORD-/, "");
+  return or(
+    sql`${order.id}::text ilike ${pattern}`,
+    ilike(order.customerName, pattern),
+    ilike(order.customerEmail, pattern),
+    sql`exists (select 1 from ${orderItem} where ${orderItem.orderId} = ${order.id} and ${orderItem.name} ilike ${pattern})`,
+    // Legacy orders (no stored reference) show the first 8 hex chars of the id.
+    ref
+      ? sql`substr(coalesce(${order.reference}, 'ORD-' || upper(substr(replace(${order.id}::text, '-', ''), 1, 8))), 5) like ${containsPattern(ref)}`
+      : undefined,
+  );
+}
 
 /** The dashboard's server-side order filters — shared with the CSV export so
  * an export always matches what the filtered list shows. */
@@ -56,6 +87,7 @@ export function buildOrderFilterConditions({
   dateFrom,
   dateTo,
   paymentIssueOnly,
+  search,
 }: OrderFilters): SQL<unknown>[] {
   const conditions: SQL<unknown>[] = [];
 
@@ -83,6 +115,12 @@ export function buildOrderFilterConditions({
     );
   }
 
+  const searchText = search?.trim();
+  if (searchText) {
+    const condition = orderSearchCondition(searchText);
+    if (condition) conditions.push(condition);
+  }
+
   return conditions;
 }
 
@@ -107,7 +145,7 @@ export const viewOrders = (
     // Admin can view all orders, users can view their own orders
     // No special authentication needed beyond session check
 
-    const { limit, offset, status, dateFrom, dateTo, paymentIssueOnly } = input;
+    const { limit, offset, status, dateFrom, dateTo, paymentIssueOnly, search } = input;
     const isAdmin = session.role === "admin" || session.role === "superadmin";
 
     return yield* $(
@@ -118,6 +156,7 @@ export const viewOrders = (
             dateFrom,
             dateTo,
             paymentIssueOnly,
+            search,
           });
 
           // Users (non-admins) only see their own orders
@@ -193,7 +232,8 @@ export const viewOrders = (
             })
             .from(order)
             .where(whereClause)
-            .orderBy(desc(order.createdAt))
+            // id breaks createdAt ties so offset pages never overlap or skip.
+            .orderBy(desc(order.createdAt), desc(order.id))
             .limit(limit)
             .offset(offset)
             .execute();

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Card,
   CardHeader,
@@ -81,7 +81,7 @@ import {
   isOnlinePaymentMethod,
   type PaymentMethod,
 } from "#root/shared/config/payment-methods";
-import { displayOrderNumber, matchesOrderReference } from "#root/shared/orders/order-reference";
+import { displayOrderNumber } from "#root/shared/orders/order-reference";
 import {
   ORDERS_EXPORT_COUNT_HEADER,
   ORDERS_EXPORT_ENDPOINT,
@@ -163,6 +163,8 @@ export default function Orders() {
     () => new Date().toISOString().slice(0, 10),
   );
   const [searchQuery, setSearchQuery] = useState<string>("");
+  /** The trimmed search text actually sent to the server (debounced). */
+  const [appliedSearch, setAppliedSearch] = useState<string>("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -198,11 +200,24 @@ export default function Orders() {
       .catch(() => setBostaEnabled(false));
   }, [isAdmin]);
 
+  // Search runs server-side across every order, so wait for a pause in
+  // typing before querying. Page 1 is set in the same update as the new
+  // search, so a search started from page 5 never asks for page 5 of results.
+  useEffect(() => {
+    const next = searchQuery.trim();
+    if (next === appliedSearch) return;
+    const timer = setTimeout(() => {
+      setAppliedSearch(next);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, appliedSearch]);
+
   // Reset to page 1 when filters change
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, searchQuery, dateFilter, customDate, paymentIssueOnly]);
+  }, [statusFilter, appliedSearch, dateFilter, customDate, paymentIssueOnly]);
 
   /** Resolves the active date filter into a [from, to) local-day range. */
   const getDateRange = useCallback((): { from?: string; to?: string } => {
@@ -233,7 +248,12 @@ export default function Orders() {
     return {};
   }, [dateFilter, customDate]);
 
+  // Only the newest request may update the list — an older, slower response
+  // (e.g. the previous search term) must not overwrite newer results.
+  const fetchSeq = useRef(0);
+
   const fetchOrders = useCallback(async () => {
+    const seq = ++fetchSeq.current;
     setIsLoading(true);
     setError(null);
 
@@ -250,6 +270,7 @@ export default function Orders() {
         dateFrom?: string;
         dateTo?: string;
         paymentIssueOnly?: boolean;
+        search?: string;
       } = {
         limit: pageSize,
         offset: (page - 1) * pageSize,
@@ -268,8 +289,10 @@ export default function Orders() {
       if (from) params.dateFrom = from;
       if (to) params.dateTo = to;
       if (paymentIssueOnly) params.paymentIssueOnly = true;
+      if (appliedSearch) params.search = appliedSearch;
 
       const result = await trpc.order.view.query(params);
+      if (seq !== fetchSeq.current) return;
 
       if (result.success) {
         const items = result.result?.items ?? [];
@@ -294,12 +317,13 @@ export default function Orders() {
         setError(result.error || "Failed to fetch orders");
       }
     } catch (err) {
+      if (seq !== fetchSeq.current) return;
       setError("An error occurred while fetching orders");
       console.error(err);
     } finally {
-      setIsLoading(false);
+      if (seq === fetchSeq.current) setIsLoading(false);
     }
-  }, [statusFilter, page, getDateRange, paymentIssueOnly]);
+  }, [statusFilter, page, getDateRange, paymentIssueOnly, appliedSearch]);
 
   useEffect(() => {
     fetchOrders();
@@ -510,20 +534,6 @@ export default function Orders() {
       setOrderToDeleteId(null);
     }
   };
-
-  const filteredOrders = orders.filter((order) => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        order.id.toLowerCase().includes(query) ||
-        matchesOrderReference(order, query) ||
-        order.customerName.toLowerCase().includes(query) ||
-        order.customerEmail.toLowerCase().includes(query) ||
-        order.items?.some((item) => item.name.toLowerCase().includes(query))
-      );
-    }
-    return true;
-  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -855,12 +865,12 @@ export default function Orders() {
                   Try Again
                 </Button>
               </div>
-            ) : filteredOrders.length === 0 ? (
+            ) : orders.length === 0 ? (
               <div className='text-center py-10'>
                 <Package className='mx-auto h-12 w-12 text-muted-foreground' />
                 <h3 className='mt-4 text-lg font-semibold'>No orders found</h3>
                 <p className='mt-2 text-muted-foreground'>
-                  {searchQuery || statusFilter !== "all"
+                  {hasActiveFilters
                     ? "Try adjusting your filters"
                     : "When you receive orders, they'll appear here"}
                 </p>
@@ -886,7 +896,7 @@ export default function Orders() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredOrders.map((order) => (
+                      {orders.map((order) => (
                         <TableRow
                           key={order.id}
                           className={`hover:bg-muted/50 ${order.hasPaymentIssue || order.fulfillmentHold ? "bg-red-50/60" : ""}`}>
@@ -977,7 +987,7 @@ export default function Orders() {
 
                 {/* Mobile card list */}
                 <div className='md:hidden block space-y-3'>
-                  {filteredOrders.map((order) => (
+                  {orders.map((order) => (
                     <div
                       key={order.id}
                       className={`rounded-lg border bg-card p-4 shadow-sm ${order.hasPaymentIssue || order.fulfillmentHold ? "bg-red-50/60 border-red-200" : ""}`}>

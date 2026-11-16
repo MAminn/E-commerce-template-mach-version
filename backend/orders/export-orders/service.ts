@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { Writable } from "node:stream";
 import { z } from "zod";
 import type { DatabaseClient } from "#root/shared/database/drizzle/db";
@@ -41,36 +41,9 @@ export const exportOrdersQuerySchema = z.object({
 
 export type ExportOrdersQuery = z.infer<typeof exportOrdersQuerySchema>;
 
-/** ILIKE pattern for a literal substring. */
-function containsPattern(text: string): string {
-  return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-}
-
-/**
- * The dashboard's search box, applied to the whole history: order id, order
- * number/reference, customer name, email or any item name contains the text.
- */
-function searchCondition(search: string): SQL | undefined {
-  const pattern = containsPattern(search);
-  const ref = search.toUpperCase().replace(/^#/, "").replace(/^ORD-/, "");
-  return or(
-    sql`${order.id}::text ilike ${pattern}`,
-    ilike(order.customerName, pattern),
-    ilike(order.customerEmail, pattern),
-    sql`exists (select 1 from ${orderItem} where ${orderItem.orderId} = ${order.id} and ${orderItem.name} ilike ${pattern})`,
-    // Legacy orders (no stored reference) show the first 8 hex chars of the id.
-    ref
-      ? sql`substr(coalesce(${order.reference}, 'ORD-' || upper(substr(replace(${order.id}::text, '-', ''), 1, 8))), 5) like ${containsPattern(ref)}`
-      : undefined,
-  );
-}
-
+/** Same filters (search included) as the dashboard list. */
 export function buildExportWhere(query: ExportOrdersQuery): SQL | undefined {
   const conditions = buildOrderFilterConditions(query);
-  if (query.search) {
-    const condition = searchCondition(query.search);
-    if (condition) conditions.push(condition);
-  }
   return conditions.length > 0 ? and(...conditions) : undefined;
 }
 
