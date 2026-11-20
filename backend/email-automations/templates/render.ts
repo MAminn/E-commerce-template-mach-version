@@ -20,7 +20,7 @@ import {
   MarketingEmailLayout,
   type MarketingEmailFeaturedItem,
 } from "./MarketingEmailLayout";
-import type { EmailAutomationType } from "../queue/service";
+import { isTransactionalEmailType, type EmailAutomationType } from "../queue/service";
 
 function readString(
   payload: unknown,
@@ -70,6 +70,10 @@ async function renderGeneric(
   unsubscribeUrl: string,
   stepKey: string,
 ): Promise<RenderedScheduledEmail> {
+  if (isTransactionalEmailType(row.automationType)) {
+    // Order emails have their own renderer (backend/orders/order-emails).
+    throw new Error(`${row.automationType} is not a marketing template`);
+  }
   const [template, branding] = await Promise.all([
     getEffectiveTemplate(row.automationType, stepKey),
     getEmailBranding(),

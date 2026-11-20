@@ -30,6 +30,30 @@ export function db() {
   }
 }
 
+let sharedClient: ReturnType<typeof db> | null = null;
+let sharedClientUrl: string | undefined;
+
+/**
+ * One pooled client per process (per DATABASE_URL), for hot background
+ * paths — the email outbox worker and the order activity log. `db()` builds
+ * a brand-new pg Pool on every call, so a path that calls it several times
+ * per email holds several idle connections each time.
+ */
+export function sharedDb(): ReturnType<typeof db> {
+  const url = process.env.DATABASE_URL;
+  if (!sharedClient || sharedClientUrl !== url) {
+    sharedClient = db();
+    sharedClientUrl = url;
+    // An idle pooled connection dropped by the server emits "error" on the
+    // pool; unhandled, that would crash the process.
+    (sharedClient as unknown as { $client?: { on?: (e: string, cb: (err: unknown) => void) => void } }).$client?.on?.(
+      "error",
+      (err) => console.error("[DB] Idle shared pool connection error:", err instanceof Error ? err.message : err),
+    );
+  }
+  return sharedClient;
+}
+
 export class DatabaseClientService extends Context.Tag("DatabaseClientService")<
   DatabaseClientService,
   DatabaseClient

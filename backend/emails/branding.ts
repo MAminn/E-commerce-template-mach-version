@@ -4,7 +4,7 @@ import { getEmailAutomationSettingsRaw } from "#root/backend/email-automations/s
 import { db } from "#root/shared/database/drizzle/db";
 import { getStoreOwnerId } from "#root/shared/config/store";
 import { STORE_NAME, STORE_CURRENCY } from "#root/shared/config/branding";
-import { toAbsoluteUrl } from "#root/shared/config/site-url";
+import { getPublicOrigin, toAbsoluteUrl } from "#root/shared/config/site-url";
 
 export interface EmailBranding {
   storeName: string;
@@ -13,6 +13,19 @@ export interface EmailBranding {
   currency: string;
   isMinimal: boolean;
   socialLinks: Array<{ platform: string; url: string }>;
+  /**
+   * Where customers should write about an order: the storefront's contact
+   * email, else EMAIL_REPLY_TO. Undefined when neither is set (the order
+   * email then just says "reply to this email").
+   */
+  supportEmail: string | undefined;
+  /** Public storefront origin (PUBLIC_ORIGIN / BASE_URL), e.g. https://machsupplements.com */
+  websiteUrl: string;
+}
+
+function envSupportEmail(): string | undefined {
+  const value = (process.env.EMAIL_REPLY_TO || "").trim();
+  return value.includes("@") ? value : undefined;
 }
 
 /**
@@ -65,6 +78,8 @@ export async function getEmailBranding(): Promise<EmailBranding> {
       socialLinks: (settings.footer.socialLinks ?? []).filter(
         (s) => s.url && s.url !== "#",
       ),
+      supportEmail: settings.header.contactEmail || envSupportEmail(),
+      websiteUrl: getPublicOrigin(),
     };
   } catch {
     return {
@@ -74,6 +89,8 @@ export async function getEmailBranding(): Promise<EmailBranding> {
       currency: STORE_CURRENCY,
       isMinimal: false,
       socialLinks: [],
+      supportEmail: envSupportEmail(),
+      websiteUrl: getPublicOrigin(),
     };
   }
 }

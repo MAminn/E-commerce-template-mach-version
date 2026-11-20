@@ -1,6 +1,6 @@
-import { db } from "#root/shared/database/drizzle/db";
+import { sharedDb as db, type DatabaseClient } from "#root/shared/database/drizzle/db";
 import { scheduledEmail } from "#root/shared/database/drizzle/schema";
-import { and, desc, eq, inArray, like, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, like, lt, lte, sql } from "drizzle-orm";
 import { getOrCreateSubscriptionToken } from "#root/backend/email-subscription/service";
 
 export type EmailAutomationType =
@@ -12,6 +12,22 @@ export type EmailAutomationType =
   | "new_drops"
   | "flash_offer"
   | "retention";
+
+/**
+ * Transactional emails share the queue's durable rows, claim locking, dedupe
+ * and retries, but none of the marketing rules (master switch, test mode,
+ * unsubscribe, List-Unsubscribe). Kept out of EmailAutomationType so the
+ * marketing template/broadcast code never sees them.
+ */
+export const TRANSACTIONAL_EMAIL_TYPES = ["order_confirmation", "order_admin_notification"] as const;
+export type TransactionalEmailType = (typeof TRANSACTIONAL_EMAIL_TYPES)[number];
+
+/** Every value the scheduled_email.automation_type column can hold. */
+export type ScheduledEmailType = EmailAutomationType | TransactionalEmailType;
+
+export function isTransactionalEmailType(type: string): type is TransactionalEmailType {
+  return (TRANSACTIONAL_EMAIL_TYPES as readonly string[]).includes(type);
+}
 
 export type ScheduledEmailLocale = "en" | "ar";
 
@@ -105,6 +121,45 @@ export async function cancelScheduledEmailsByPrefix(
   }
 }
 
+type DbOrTx = DatabaseClient | Parameters<Parameters<DatabaseClient["transaction"]>[0]>[0];
+
+/**
+ * Queues one transactional email on the given client — pass the caller's
+ * transaction so the row commits (or rolls back) together with the business
+ * row it describes. Insert-only: an existing row with the same dedupeKey is
+ * left exactly as it is (pending, sending, sent or failed), so however many
+ * times this runs for one logical send, at most one row — and one email —
+ * exists. Returns true when this call created the row.
+ *
+ * Unlike enqueueScheduledEmail this THROWS: the caller decides whether a
+ * queueing failure is fatal, and must record it if not. It also never
+ * creates a marketing subscription row — an order is not an opt-in.
+ */
+export async function enqueueTransactionalEmail(
+  client: DbOrTx,
+  params: {
+    type: TransactionalEmailType;
+    recipientEmail: string;
+    payload: Record<string, unknown>;
+    dedupeKey: string;
+    scheduledFor?: Date;
+  },
+): Promise<boolean> {
+  const inserted = await client
+    .insert(scheduledEmail)
+    .values({
+      automationType: params.type,
+      recipientEmail: params.recipientEmail,
+      locale: "en",
+      payload: params.payload,
+      scheduledFor: params.scheduledFor ?? new Date(),
+      dedupeKey: params.dedupeKey,
+    })
+    .onConflictDoNothing({ target: scheduledEmail.dedupeKey })
+    .returning({ id: scheduledEmail.id });
+  return inserted.length > 0;
+}
+
 // ─── Worker-internal operations ─────────────────────────────────────────────
 // Unlike the enqueue/cancel helpers above (fire-and-forget side effects of
 // unrelated flows), these ARE the core logic of the worker loop — they
@@ -114,24 +169,54 @@ export async function cancelScheduledEmailsByPrefix(
 const MAX_ATTEMPTS = 5;
 
 /**
+ * Retry policy for transactional rows: bounded, with backoff, so a provider
+ * outage (rate limit, daily sending quota, DNS) is ridden out over about a
+ * day instead of burning every attempt in five minutes. Delay index =
+ * attempts already made (1 → wait 1 min before the 2nd attempt, ...).
+ */
+export const TRANSACTIONAL_MAX_ATTEMPTS = 8;
+export const TRANSACTIONAL_RETRY_DELAYS_MS = [
+  60_000, // 1 min
+  5 * 60_000,
+  15 * 60_000,
+  60 * 60_000,
+  3 * 60 * 60_000,
+  6 * 60 * 60_000,
+  12 * 60 * 60_000,
+] as const;
+
+export function transactionalRetryDelayMs(attemptsMade: number): number {
+  const i = Math.max(0, Math.min(attemptsMade - 1, TRANSACTIONAL_RETRY_DELAYS_MS.length - 1));
+  return TRANSACTIONAL_RETRY_DELAYS_MS[i] ?? 60_000;
+}
+
+/**
  * Atomically claims up to `limit` due rows and marks them "sending".
  * Uses SELECT ... FOR UPDATE SKIP LOCKED inside a transaction so multiple
  * app instances (or overlapping worker ticks) never claim the same row.
+ * `onlyTypes` restricts the claim (e.g. transactional rows while marketing
+ * automations are switched off). Transactional rows are claimed first.
  */
 export async function claimDueScheduledEmails(
   limit: number,
+  onlyTypes?: readonly ScheduledEmailType[],
 ): Promise<Array<typeof scheduledEmail.$inferSelect>> {
   return db().transaction(async (tx) => {
+    const now = new Date();
     const due = await tx
       .select({ id: scheduledEmail.id })
       .from(scheduledEmail)
       .where(
         and(
           eq(scheduledEmail.status, "pending"),
-          lte(scheduledEmail.scheduledFor, new Date()),
+          lte(scheduledEmail.scheduledFor, now),
+          onlyTypes ? inArray(scheduledEmail.automationType, [...onlyTypes]) : undefined,
         ),
       )
-      .orderBy(scheduledEmail.scheduledFor)
+      .orderBy(
+        sql`case when ${scheduledEmail.automationType} in ('order_confirmation', 'order_admin_notification') then 0 else 1 end`,
+        scheduledEmail.scheduledFor,
+      )
       .limit(limit)
       .for("update", { skipLocked: true });
 
@@ -140,38 +225,98 @@ export async function claimDueScheduledEmails(
     const ids = due.map((row) => row.id);
     return tx
       .update(scheduledEmail)
-      .set({ status: "sending", updatedAt: new Date() })
-      .where(inArray(scheduledEmail.id, ids))
+      .set({ status: "sending", lastAttemptAt: now, updatedAt: now })
+      .where(and(inArray(scheduledEmail.id, ids), eq(scheduledEmail.status, "pending")))
       .returning();
   });
 }
 
-export async function markScheduledEmailSent(id: string): Promise<void> {
+/**
+ * Marks a claimed row sent. `evidence` is the provider's acceptance (Message-ID
+ * and final SMTP reply) — acceptance, not inbox delivery. Guarded on
+ * status = 'sending' so a row re-queued as stale and re-claimed elsewhere is
+ * never double-finalised.
+ */
+export async function markScheduledEmailSent(
+  id: string,
+  evidence?: { messageId?: string; response?: string },
+): Promise<void> {
+  const now = new Date();
   await db()
     .update(scheduledEmail)
-    .set({ status: "sent", sentAt: new Date(), updatedAt: new Date() })
+    .set({
+      status: "sent",
+      sentAt: now,
+      updatedAt: now,
+      lastError: null,
+      providerMessageId: evidence?.messageId ?? null,
+      providerResponse: evidence?.response ?? null,
+    })
     .where(eq(scheduledEmail.id, id));
 }
 
 /**
- * Records a failed send attempt. Retries (back to "pending" for the next
- * tick) until MAX_ATTEMPTS, then marks permanently "failed".
+ * Records a failed send attempt. Retries (back to "pending") until the
+ * attempt limit, then marks permanently "failed". Marketing rows keep the
+ * original policy (5 attempts, next tick); pass `policy` for transactional
+ * rows (more attempts, backoff via scheduled_for).
  */
 export async function markScheduledEmailFailed(
   id: string,
   attempts: number,
   error: string,
-): Promise<void> {
+  policy?: { maxAttempts: number; retryDelayMs: (attemptsMade: number) => number },
+): Promise<{ attempts: number; willRetry: boolean }> {
   const nextAttempts = attempts + 1;
+  const maxAttempts = policy?.maxAttempts ?? MAX_ATTEMPTS;
+  const willRetry = nextAttempts < maxAttempts;
+  const now = new Date();
   await db()
     .update(scheduledEmail)
     .set({
-      status: nextAttempts >= MAX_ATTEMPTS ? "failed" : "pending",
+      status: willRetry ? "pending" : "failed",
       attempts: nextAttempts,
-      lastError: error,
-      updatedAt: new Date(),
+      lastError: error.slice(0, 1000),
+      updatedAt: now,
+      ...(willRetry && policy
+        ? { scheduledFor: new Date(now.getTime() + policy.retryDelayMs(nextAttempts)) }
+        : {}),
     })
     .where(eq(scheduledEmail.id, id));
+  return { attempts: nextAttempts, willRetry };
+}
+
+/**
+ * Rows of the given types stuck in "sending" since before `staleMs` ago were
+ * orphaned by a crash or restart mid-send. Each goes back to "pending" and
+ * the interrupted try counts as an attempt (so a row that crashes the
+ * process cannot loop forever); past the limit it is marked "failed".
+ * Whether the interrupted send reached the provider is unknowable — the
+ * retry reuses the same Message-ID so a duplicate is recognisable.
+ */
+export async function requeueStaleSendingEmails(
+  types: readonly ScheduledEmailType[],
+  staleMs: number,
+  maxAttempts: number = TRANSACTIONAL_MAX_ATTEMPTS,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - staleMs);
+  const rows = await db()
+    .update(scheduledEmail)
+    .set({
+      status: sql`case when ${scheduledEmail.attempts} + 1 >= ${maxAttempts} then 'failed'::scheduled_email_status else 'pending'::scheduled_email_status end`,
+      attempts: sql`${scheduledEmail.attempts} + 1`,
+      lastError: "Interrupted mid-send (process restart or crash) — provider outcome unknown",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(scheduledEmail.status, "sending"),
+        inArray(scheduledEmail.automationType, [...types]),
+        lt(sql`coalesce(${scheduledEmail.lastAttemptAt}, ${scheduledEmail.updatedAt})`, cutoff),
+      ),
+    )
+    .returning({ id: scheduledEmail.id });
+  return rows.length;
 }
 
 /**

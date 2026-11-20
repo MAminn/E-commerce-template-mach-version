@@ -17,23 +17,42 @@ import {
 import * as React from "react";
 import type { OrderEmailNotice } from "../order-email-notice";
 
-interface OrderItem {
+/**
+ * The ONE order email template (customer confirmation + store notification).
+ * Every brand value comes from props — resolved from the store's own layout
+ * settings and env (backend/emails/branding.ts) — so no other store's name,
+ * address or domain can ever appear in it. (The old second template
+ * hard-coded "Lebsy" / support@lebsy.com and was what every store whose
+ * navbar is not "minimal" — MACH included — actually sent.)
+ */
+
+export interface OrderEmailLine {
   name: string;
   quantity: number;
-  price: number;
-  vendorName?: string;
-  id?: string;
-  discountPrice?: number;
+  /** What one unit cost the customer (after product discount). */
+  unitPrice: number;
+  /** Shown struck through when higher than unitPrice. */
+  listUnitPrice?: number;
+  lineTotal: number;
+  /** BOGO / offer gift: printed as "Free". */
+  isFreeGift?: boolean;
 }
 
-interface MinimalOrderEmailProps {
+export interface OrderEmailTemplateProps {
   storeName: string;
   logoUrl?: string;
-  contactEmail?: string;
+  supportEmail?: string;
+  websiteUrl?: string;
   currency: string;
-  items: OrderItem[];
-  shippingFees: number;
+  orderNumber: string;
+  /** Already formatted for display, e.g. "20 Nov 2026". */
+  orderDate: string;
+  paymentMethodLabel: string;
+  items: OrderEmailLine[];
   subTotal: number;
+  discount: number;
+  promoCode?: string;
+  shippingFees: number;
   total: number;
   address: string;
   city: string;
@@ -43,18 +62,26 @@ interface MinimalOrderEmailProps {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
-  /** Replaces the confirmation copy (e.g. paid order under review). */
+  /** Replaces the confirmation copy (e.g. paid order under review / admin hold). */
   notice?: OrderEmailNotice;
+  /** "admin" adds a short header line for the store; the body is identical. */
+  audience?: "customer" | "admin";
 }
 
-export const MinimalOrderEmailTemplate = ({
+export const OrderConfirmationEmailTemplate = ({
   storeName,
   logoUrl,
-  contactEmail,
+  supportEmail,
+  websiteUrl,
   currency,
+  orderNumber,
+  orderDate,
+  paymentMethodLabel,
   items,
-  shippingFees,
   subTotal,
+  discount,
+  promoCode,
+  shippingFees,
   total,
   address,
   city,
@@ -65,24 +92,22 @@ export const MinimalOrderEmailTemplate = ({
   customerEmail,
   customerPhone,
   notice,
-}: MinimalOrderEmailProps) => {
-  const fmt = (price: number) => price.toFixed(2);
+  audience = "customer",
+}: OrderEmailTemplateProps) => {
+  const fmt = (price: number) => `${price.toFixed(2)} ${currency}`;
+  const title = notice ? notice.title : "Order Confirmation";
+  const preview = notice
+    ? notice.preview
+    : audience === "admin"
+      ? `New order ${orderNumber} — ${fmt(total)}`
+      : `Thank you for your order ${orderNumber} at ${storeName}.`;
 
   return (
     <Html>
       <Head>
-        {notice ? (
-          <>
-            <title>{notice.title}</title>
-            <Preview>{notice.preview}</Preview>
-          </>
-        ) : (
-          <>
-            <title>Your Order Confirmation</title>
-            <Preview>Thank you for your order at {storeName}!</Preview>
-          </>
-        )}
+        <title>{title}</title>
       </Head>
+      <Preview>{preview}</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header */}
@@ -103,43 +128,55 @@ export const MinimalOrderEmailTemplate = ({
 
           <Hr style={divider} />
 
-          {/* Greeting */}
-          {notice ? (
-            <Section style={section}>
-              {notice.alert && notice.alert.length > 0 && (
-                <Section style={noticeAlert}>
-                  {notice.alert.map((line) => (
-                    <Text key={line} style={noticeAlertText}>
-                      {line}
-                    </Text>
-                  ))}
-                </Section>
-              )}
-              <Heading as="h2" style={sectionTitle}>
-                {notice.title}
-              </Heading>
-              <Text style={paragraph}>Dear {customerName},</Text>
-              {notice.paragraphs.map((line) => (
+          {/* Greeting / notice */}
+          <Section style={section}>
+            {notice?.alert && notice.alert.length > 0 && (
+              <Section style={noticeAlert}>
+                {notice.alert.map((line) => (
+                  <Text key={line} style={noticeAlertText}>
+                    {line}
+                  </Text>
+                ))}
+              </Section>
+            )}
+            <Heading as="h2" style={sectionTitle}>
+              {title}
+            </Heading>
+            {audience === "admin" && !notice && (
+              <Text style={paragraph}>A new order was placed on {storeName}.</Text>
+            )}
+            <Text style={paragraph}>Dear {customerName},</Text>
+            {notice ? (
+              notice.paragraphs.map((line) => (
                 <Text key={line} style={paragraph}>
                   {line}
                 </Text>
-              ))}
-              {notice.orderNumber && (
-                <Text style={paragraph}>Order number: {notice.orderNumber}</Text>
-              )}
-            </Section>
-          ) : (
-          <Section style={section}>
-            <Heading as="h2" style={sectionTitle}>
-              Order Confirmation
-            </Heading>
-            <Text style={paragraph}>Dear {customerName},</Text>
-            <Text style={paragraph}>
-              Thank you for your purchase at {storeName}. We&apos;re currently
-              processing your order and will keep you updated on its status.
-            </Text>
+              ))
+            ) : (
+              <Text style={paragraph}>
+                Thank you for your purchase at {storeName}. We&apos;ve received your order and
+                will keep you updated on its status.
+              </Text>
+            )}
           </Section>
-          )}
+
+          {/* Order facts */}
+          <Section style={factsWrap}>
+            <Section style={factsBox}>
+            <Row>
+              <Column style={factLabel}>Order number</Column>
+              <Column style={factValue}>{orderNumber}</Column>
+            </Row>
+            <Row>
+              <Column style={factLabel}>Order date</Column>
+              <Column style={factValue}>{orderDate}</Column>
+            </Row>
+            <Row>
+              <Column style={factLabel}>Payment</Column>
+              <Column style={factValue}>{paymentMethodLabel}</Column>
+            </Row>
+            </Section>
+          </Section>
 
           {/* Order Summary */}
           <Section style={section}>
@@ -147,60 +184,69 @@ export const MinimalOrderEmailTemplate = ({
               Order Summary
             </Heading>
             <Row style={tableHeaderRow}>
-              <Column style={tableHeaderCell}>Item</Column>
-              <Column style={tableHeaderCell}>Qty</Column>
+              <Column style={tableHeaderCellItem}>Item</Column>
+              <Column style={tableHeaderCellCenter}>Qty</Column>
               <Column style={tableHeaderCellRight}>Price</Column>
             </Row>
 
-            {items.map((item) => (
-              <React.Fragment key={item.id || `${item.name}-${item.price}`}>
-                <Row style={tableRow}>
-                  <Column style={tableCell}>{item.name}</Column>
-                  <Column style={tableCell}>{item.quantity}</Column>
-                  <Column style={tableCellRight}>
-                    {item.discountPrice ? (
-                      <>
-                        <span style={{ textDecoration: "line-through", color: "#999" }}>
-                          {fmt(item.price)} {currency}
-                        </span>
-                        <br />
-                        <span style={{ color: "#b91c1c" }}>
-                          {fmt(item.discountPrice)} {currency}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        {fmt(item.price)} {currency}
-                      </>
-                    )}
-                  </Column>
-                </Row>
-              </React.Fragment>
+            {items.map((item, index) => (
+              <Row key={`${index}-${item.name}`} style={tableRow}>
+                <Column style={tableCellItem}>
+                  {item.name}
+                  {item.isFreeGift ? <span style={giftTag}> · Gift</span> : null}
+                </Column>
+                <Column style={tableCellCenter}>{item.quantity}</Column>
+                <Column style={tableCellRight}>
+                  {item.isFreeGift ? (
+                    <span style={{ color: "#15803d", fontWeight: 600 }}>Free</span>
+                  ) : (
+                    <>
+                      {item.listUnitPrice !== undefined && item.listUnitPrice > item.unitPrice ? (
+                        <>
+                          <span style={{ textDecoration: "line-through", color: "#999" }}>
+                            {fmt(item.listUnitPrice * item.quantity)}
+                          </span>
+                          <br />
+                        </>
+                      ) : null}
+                      {fmt(item.lineTotal)}
+                      {item.quantity > 1 ? (
+                        <>
+                          <br />
+                          <span style={unitNote}>{fmt(item.unitPrice)} each</span>
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                </Column>
+              </Row>
             ))}
 
-            <Row style={summaryRow}>
-              <Column style={summaryLabel} colSpan={2}>
+            <Row>
+              <Column style={summaryLabel}>
                 Subtotal
               </Column>
-              <Column style={summaryValue}>
-                {fmt(subTotal)} {currency}
-              </Column>
+              <Column style={summaryValue}>{fmt(subTotal)}</Column>
             </Row>
-            <Row style={summaryRow}>
-              <Column style={summaryLabel} colSpan={2}>
+            {discount > 0 ? (
+              <Row>
+                <Column style={summaryLabel}>
+                  Discount{promoCode ? ` (${promoCode})` : ""}
+                </Column>
+                <Column style={summaryValue}>−{fmt(discount)}</Column>
+              </Row>
+            ) : null}
+            <Row>
+              <Column style={summaryLabel}>
                 Shipping
               </Column>
-              <Column style={summaryValue}>
-                {fmt(shippingFees)} {currency}
-              </Column>
+              <Column style={summaryValue}>{shippingFees > 0 ? fmt(shippingFees) : "Free"}</Column>
             </Row>
             <Row style={totalRow}>
-              <Column style={totalLabel} colSpan={2}>
+              <Column style={totalLabel}>
                 Total
               </Column>
-              <Column style={totalValue}>
-                {fmt(total)} {currency}
-              </Column>
+              <Column style={totalValue}>{fmt(total)}</Column>
             </Row>
           </Section>
 
@@ -210,22 +256,26 @@ export const MinimalOrderEmailTemplate = ({
               Shipping Address
             </Heading>
             <Text style={infoText}>
+              {customerName}
+              <br />
               {address}
               <br />
-              {city}, {state} {postalCode}
-              <br />
-              {country}
+              {[city, state, postalCode].filter((part) => part?.trim()).join(", ")}
+              {country ? (
+                <>
+                  <br />
+                  {country}
+                </>
+              ) : null}
             </Text>
           </Section>
 
-          {/* Customer Info */}
+          {/* Contact */}
           <Section style={section}>
             <Heading as="h3" style={sectionTitle}>
-              Customer Information
+              Contact Details
             </Heading>
             <Text style={infoText}>
-              {customerName}
-              <br />
               {customerEmail}
               <br />
               {customerPhone}
@@ -236,14 +286,24 @@ export const MinimalOrderEmailTemplate = ({
 
           {/* Footer */}
           <Section style={footer}>
-            {contactEmail && (
+            {supportEmail ? (
               <Text style={footerText}>
-                Questions? Contact us at{" "}
-                <Link href={`mailto:${contactEmail}`} style={link}>
-                  {contactEmail}
+                Questions about your order? Reply to this email or contact us at{" "}
+                <Link href={`mailto:${supportEmail}`} style={link}>
+                  {supportEmail}
+                </Link>
+                .
+              </Text>
+            ) : (
+              <Text style={footerText}>Questions about your order? Just reply to this email.</Text>
+            )}
+            {websiteUrl ? (
+              <Text style={footerText}>
+                <Link href={websiteUrl} style={link}>
+                  {websiteUrl.replace(/^https?:\/\//, "")}
                 </Link>
               </Text>
-            )}
+            ) : null}
             <Text style={footerText}>
               &copy; {new Date().getFullYear()} {storeName}. All rights reserved.
             </Text>
@@ -272,7 +332,7 @@ const noticeAlertText = {
 
 const main = {
   backgroundColor: "#f9fafb",
-  fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
   padding: "24px 0",
 };
 
@@ -289,11 +349,11 @@ const header = {
 };
 
 const logoText = {
-  fontSize: "28px",
+  fontSize: "26px",
   fontWeight: "700",
   letterSpacing: "0.12em",
   textTransform: "uppercase" as const,
-  color: "#1c1917",
+  color: "#111111",
   margin: "0",
   textAlign: "center" as const,
 };
@@ -305,6 +365,30 @@ const divider = {
 
 const section = {
   padding: "20px 24px",
+};
+
+const factsWrap = {
+  padding: "0 24px",
+};
+
+const factsBox = {
+  padding: "12px 16px",
+  backgroundColor: "#f5f5f4",
+};
+
+const factLabel = {
+  fontSize: "13px",
+  color: "#78716c",
+  padding: "3px 0",
+  width: "40%",
+};
+
+const factValue = {
+  fontSize: "13px",
+  color: "#1c1917",
+  fontWeight: "600",
+  padding: "3px 0",
+  textAlign: "right" as const,
 };
 
 const sectionTitle = {
@@ -337,10 +421,13 @@ const tableHeaderCell = {
   textAlign: "left" as const,
 };
 
-const tableHeaderCellRight = {
-  ...tableHeaderCell,
-  textAlign: "right" as const,
-};
+const COL_ITEM = "58%";
+const COL_QTY = "12%";
+const COL_PRICE = "30%";
+
+const tableHeaderCellItem = { ...tableHeaderCell, width: COL_ITEM };
+const tableHeaderCellCenter = { ...tableHeaderCell, textAlign: "center" as const, width: COL_QTY };
+const tableHeaderCellRight = { ...tableHeaderCell, textAlign: "right" as const, width: COL_PRICE };
 
 const tableRow = {
   borderBottom: "1px solid #f5f5f4",
@@ -351,16 +438,18 @@ const tableCell = {
   color: "#1c1917",
   padding: "10px 4px",
   textAlign: "left" as const,
+  verticalAlign: "top" as const,
 };
 
-const tableCellRight = {
-  ...tableCell,
-  textAlign: "right" as const,
-};
+const tableCellItem = { ...tableCell, width: COL_ITEM };
+const tableCellCenter = { ...tableCell, textAlign: "center" as const, width: COL_QTY };
+const tableCellRight = { ...tableCell, textAlign: "right" as const, width: COL_PRICE };
 
-const summaryRow = {};
+const giftTag = { color: "#15803d", fontSize: "12px", fontWeight: "600" };
+const unitNote = { color: "#a8a29e", fontSize: "11px" };
 
 const summaryLabel = {
+  width: "70%",
   fontSize: "13px",
   padding: "6px 4px",
   textAlign: "right" as const,
@@ -379,6 +468,7 @@ const totalRow = {
 };
 
 const totalLabel = {
+  width: "70%",
   fontSize: "15px",
   fontWeight: "700",
   padding: "12px 4px",

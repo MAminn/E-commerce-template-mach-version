@@ -1,5 +1,5 @@
 import type { ScheduledEmailRow } from "#root/shared/database/drizzle/schema";
-import type { EmailAutomationType } from "./queue/service";
+import type { ScheduledEmailType } from "./queue/service";
 
 export interface RenderedScheduledEmail {
   subject: string;
@@ -11,6 +11,14 @@ export interface RenderedScheduledEmail {
    * accidentally omit them.
    */
   headers?: Record<string, string>;
+  /** Stable Message-ID for this logical send (transactional rows). */
+  messageId?: string;
+  /**
+   * Set when the row must NOT be sent (e.g. the order is not payable/paid,
+   * the recipient address is unusable). The worker cancels the row with this
+   * reason instead of sending or retrying.
+   */
+  skip?: string;
 }
 
 export type ScheduledEmailRenderer = (
@@ -27,10 +35,10 @@ export type ScheduledEmailRenderer = (
 // it claimed. Missing/unregistered types fail loudly with a clear error
 // instead of silently no-oping forever.
 
-const renderers = new Map<EmailAutomationType, ScheduledEmailRenderer>();
+const renderers = new Map<ScheduledEmailType, ScheduledEmailRenderer>();
 
 export function registerEmailRenderer(
-  type: EmailAutomationType,
+  type: ScheduledEmailType,
   renderer: ScheduledEmailRenderer,
 ): void {
   renderers.set(type, renderer);

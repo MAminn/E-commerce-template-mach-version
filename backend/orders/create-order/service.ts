@@ -13,11 +13,12 @@ import { Effect } from "effect";
 import { z } from "zod";
 import type { ClientSession } from "#root/backend/auth/shared/entities";
 import { ServerError } from "#root/shared/error/server";
-import { EmailService, renderEmailTemplate } from "#root/shared/email/service";
 import { STORE_NAME } from "#root/shared/config/branding";
-import { NewOrderEmailTemplate } from "./email-template";
-import { MinimalOrderEmailTemplate } from "#root/backend/emails/minimal/order-confirmation";
-import { getEmailBranding } from "#root/backend/emails/branding";
+import {
+  ensureOrderEmailsQueued,
+  kickOrderEmailWorker,
+  queueOrderPlacedEmailsInTx,
+} from "#root/backend/orders/order-emails/service";
 import axios from "axios";
 import { validatePromoCode } from "#root/backend/promo-codes/validate-promo-code/validate-promo-code";
 import {
@@ -43,7 +44,6 @@ import { logOrderEvent } from "#root/backend/orders/order-log";
 import { PAYMENT_METHODS, isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
 import type { PaymentAttemptItemSnapshot } from "#root/shared/types/payment-attempt";
 import { claimOrderReference } from "#root/backend/orders/order-reference";
-import type { OrderEmailNotice } from "#root/backend/emails/order-email-notice";
 
 const OrderItemSchema = z.object({
   productId: z.string().uuid(),
@@ -717,78 +717,6 @@ export async function priceCheckout(
  * The "Order Confirmation" / "New Order Received" email body — shared by COD
  * checkout and paid online-order materialization so both send the same email.
  */
-export function renderNewOrderEmail(
-  result: {
-    shipping: string;
-    subtotal: string;
-    total: string;
-    shippingAddress: string;
-    shippingCity: string;
-    shippingState: string;
-    shippingCountry: string;
-    shippingPostalCode: string;
-    customerName: string;
-    customerEmail: string;
-    customerPhone: string;
-    items: Array<{
-      name: string | null;
-      quantity: number | null;
-      price: string | null;
-      discountPrice: string | null;
-      vendorName: string | null;
-    }>;
-  },
-  branding: Awaited<ReturnType<typeof getEmailBranding>>,
-  /** Optional replacement copy (paid order on hold); omitted for every normal order. */
-  notice?: OrderEmailNotice,
-) {
-  const orderItems = result.items.map((i) => ({
-    name: i.name ?? "-",
-    quantity: i.quantity ?? 0,
-    price: i.price ? Number.parseFloat(i.price) : 0,
-    discountPrice: i.discountPrice ? Number.parseFloat(i.discountPrice) : undefined,
-    vendorName: i.vendorName ?? undefined,
-  }));
-
-  return renderEmailTemplate(
-    branding.isMinimal
-      ? MinimalOrderEmailTemplate({
-          storeName: branding.storeName,
-          logoUrl: branding.logoUrl,
-          contactEmail: branding.contactEmail,
-          currency: branding.currency,
-          items: orderItems,
-          shippingFees: Number.parseFloat(result.shipping),
-          subTotal: Number.parseFloat(result.subtotal),
-          total: Number.parseFloat(result.total),
-          address: result.shippingAddress,
-          city: result.shippingCity,
-          state: result.shippingState,
-          country: result.shippingCountry,
-          postalCode: result.shippingPostalCode,
-          customerName: result.customerName,
-          customerEmail: result.customerEmail,
-          customerPhone: result.customerPhone,
-          notice,
-        })
-      : NewOrderEmailTemplate({
-          items: orderItems,
-          shippingFees: Number.parseFloat(result.shipping),
-          subTotal: Number.parseFloat(result.subtotal),
-          total: Number.parseFloat(result.total),
-          address: result.shippingAddress,
-          city: result.shippingCity,
-          state: result.shippingState,
-          country: result.shippingCountry,
-          postalCode: result.shippingPostalCode,
-          customerName: result.customerName,
-          customerEmail: result.customerEmail,
-          customerPhone: result.customerPhone,
-          notice,
-        }),
-  );
-}
-
 // ─── Main create-order service ────────────────────────────────────────────────
 
 export const createOrder = (
@@ -816,7 +744,7 @@ export const createOrder = (
     }
 
     // We no longer require a session for ordering
-    const result = yield* $(
+    const { emailQueueFailed, ...result } = yield* $(
       query(async (db) => {
         return await db.transaction(async (tx) => {
           // Get user ID if the user is logged in, otherwise set to null
@@ -963,9 +891,18 @@ export const createOrder = (
             orderItems.push(orderItemRow);
           }
 
+          // Transactional outbox: the confirmation + store notification rows
+          // commit with the order (SAVEPOINT — a queueing failure cannot
+          // roll the order back). Online methods are queued when their
+          // payment is confirmed instead (confirm-online-payment.ts).
+          const emailQueue = isOnlinePayment
+            ? null
+            : await queueOrderPlacedEmailsInTx(tx, newOrder.id);
+
           return {
             ...newOrder,
             items: orderItems,
+            emailQueueFailed: emailQueue !== null && !emailQueue.ok,
           };
         });
       }),
@@ -987,57 +924,15 @@ export const createOrder = (
       ),
     );
 
-    const emailService = yield* $(EmailService);
-
-    const branding = yield* $(Effect.promise(() => getEmailBranding()));
-
-    const emailTemplate = yield* $(renderNewOrderEmail(result, branding));
-
-    const admins = yield* $(
-      query(
-        async (db) =>
-          await db.select().from(user).where(eq(user.role, "admin")),
-      ),
-    );
-
-    // Send emails, but don't let failures block the order creation
-    // Single-shop mode: Only send customer notification, no vendor emails
-    try {
-      yield* $(
-        emailService.sendEmail(
-          input.customerEmail,
-          `${branding.storeName} Order Confirmation`,
-          emailTemplate,
-        ),
-      );
-    } catch (error) {
-      console.error(
-        `Failed to send confirmation email to customer ${input.customerEmail}:`,
-        error,
-      );
-      // Continue with order creation even if email fails
+    // Order emails are sent by the email worker from the outbox rows written
+    // in the transaction above — never inline, so a slow or failing mail
+    // server can neither delay nor fail checkout. If the in-transaction
+    // queueing failed, retry it now (recorded on the order log if that fails
+    // too), then wake the worker.
+    if (emailQueueFailed) {
+      yield* $(Effect.promise(() => ensureOrderEmailsQueued(result.id)));
     }
-
-    // Send admin notifications
-    for (const admin of admins) {
-      try {
-        yield* $(
-          emailService.sendEmail(
-            admin.email,
-            "New Order Received",
-            emailTemplate,
-          ),
-        );
-      } catch (error) {
-        console.error(
-          `Failed to send notification email to admin ${admin.email}:`,
-          error,
-        );
-        // Continue with order creation even if email fails
-      }
-    }
-
-    // Single-shop mode: No vendor notifications needed
+    kickOrderEmailWorker();
 
     // Send order to Fincart (opt-in via FINCART_ENABLED=true)
     const isOnlinePaymentOrder = isOnlinePaymentMethod(input.paymentMethod);

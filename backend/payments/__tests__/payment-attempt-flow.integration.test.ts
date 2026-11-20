@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 /**
  * Payment-attempt-first online checkout, end to end against a real Postgres.
@@ -122,6 +122,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
   // ── Email spy ─────────────────────────────────────────────────────────────
   const sent: Array<{ to: string; subject: string; html: string }> = [];
   let emailSpy: import("#root/shared/email/service").EmailServiceInterface;
+  let emailWorker: typeof import("#root/backend/email-automations/worker");
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const silentLog = { info: () => {}, warn: () => {}, error: () => {} };
@@ -267,7 +268,16 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     const [row] = await db.select().from(schema.promoCode).where(eq(schema.promoCode.id, promoId));
     return row!;
   }
-  const emailsTo = (to: string) => sent.filter((m) => m.to === to);
+  /** Runs the email worker's transactional pass (the real claim → render → send path) with the spy. */
+  const drainEmails = () => emailWorker.drainTransactionalEmails(emailSpy);
+  const allSent = async () => {
+    await drainEmails();
+    return sent;
+  };
+  const emailsTo = async (to: string) => {
+    await drainEmails();
+    return sent.filter((m) => m.to === to);
+  };
   const dispatchCallsFor = (orderId: string) =>
     dispatchMock.mock.calls.filter((c) => c[1] === orderId);
 
@@ -307,7 +317,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
           return { success: true };
         }),
     };
-    attempts.__setPaymentAttemptEmailService(emailSpy);
+    emailWorker = await import("#root/backend/email-automations/worker");
 
     const liveOffers = await db
       .select({ id: schema.cartOffer.id })
@@ -330,7 +340,9 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     await db.insert(schema.category).values({ id: ids.category, name: "PA Cat", slug: `pa-cat-${ids.category}` });
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Earlier tests' queued-but-unchecked emails must not count in this one.
+    await drainEmails();
     sent.length = 0;
     failCreate = false;
     dispatchMock.mockClear();
@@ -339,7 +351,6 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
 
   afterAll(async () => {
     if (!db) return;
-    attempts?.__setPaymentAttemptEmailService(null);
     const orderIds = [
       ...ids.orders,
       ...(ids.attempts.length
@@ -358,6 +369,9 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     }
     if (ids.attempts.length) await db.delete(schema.paymentAttempt).where(inArray(schema.paymentAttempt.id, ids.attempts));
     if (orderIds.length) {
+      await db
+        .delete(schema.scheduledEmail)
+        .where(sql`${schema.scheduledEmail.payload}->>'orderId' in (${sql.join(orderIds.map((id) => sql`${id}`), sql`, `)})`);
       await db.delete(schema.orderLog).where(inArray(schema.orderLog.orderId, orderIds));
       await db.delete(schema.orderItem).where(inArray(schema.orderItem.orderId, orderIds));
       await db.delete(schema.order).where(inArray(schema.order.id, orderIds));
@@ -396,7 +410,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(row?.total).toBe("275.00"); // 200 - 10 promo + 85 shipping
     expect(await stockOf(productId)).toBe(8);
     expect((await promoOf(promoId)).usedCount).toBe(1);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(dispatchCallsFor(result.id)).toHaveLength(1);
     expect(dispatchCallsFor(result.id)[0]?.[2]).toEqual({ trigger: "checkout_cod" });
     // No payment attempt is involved in COD.
@@ -419,7 +433,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     );
     expect(result._tag).toBe("Left");
     expect(await stockOf(productId)).toBe(10);
-    expect(sent).toHaveLength(0);
+    expect(await allSent()).toHaveLength(0);
   });
 
   // ── B–F. attempt, no order ────────────────────────────────────────────────
@@ -448,7 +462,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     // D: zero promo usage
     expect((await promoOf(promoId)).usedCount).toBe(0);
     // E: zero emails
-    expect(sent).toHaveLength(0);
+    expect(await allSent()).toHaveLength(0);
     // F: Bosta never touched
     expect(dispatchMock).not.toHaveBeenCalled();
     // Cart not converted
@@ -520,8 +534,8 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     // S: promo usage recorded at materialization
     expect((await promoOf(promoId)).usedCount).toBe(1);
     // AG: confirmation email to the customer + admin email(s), once
-    expect(emailsTo(email)).toHaveLength(1);
-    expect(emailsTo(email)[0]?.subject).toMatch(/Order Confirmation/);
+    expect(await emailsTo(email)).toHaveLength(1);
+    expect((await emailsTo(email))[0]?.subject).toMatch(/Order Confirmation/);
     // V: Bosta only now, once, via the payment-confirmed path
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(1);
     expect(dispatchCallsFor(r.attemptId)[0]?.[2]).toEqual({ trigger: "payment_confirmed" });
@@ -559,7 +573,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
 
     expect(await ordersWithId(r.attemptId)).toHaveLength(1);
     expect(await stockOf(productId)).toBe(4);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(1);
   });
 
@@ -577,7 +591,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(await ordersWithId(r.attemptId)).toHaveLength(1);
     expect(await stockOf(productId)).toBe(3);
     expect((await promoOf(promoId)).usedCount).toBe(1);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(1);
   });
 
@@ -606,7 +620,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     ).toHaveLength(1);
     expect(await stockOf(productId)).toBe(16);
     expect((await promoOf(promoId)).usedCount).toBe(1);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(1);
     const createdLogs = (
       await db.select().from(schema.orderLog).where(eq(schema.orderLog.orderId, r.attemptId))
@@ -637,7 +651,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(await ordersWithId(r.attemptId)).toHaveLength(0);
     expect(await stockOf(productId)).toBe(5);
     expect((await promoOf(promoId)).usedCount).toBe(0);
-    expect(sent).toHaveLength(0);
+    expect(await allSent()).toHaveLength(0);
     expect(dispatchMock).not.toHaveBeenCalled();
     expect((await browserVerify(r.attemptId)).order).toBeNull();
 
@@ -671,7 +685,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
       expect(await ordersWithId(r.attemptId)).toHaveLength(0);
       expect(await stockOf(productId)).toBe(5);
     }
-    expect(sent).toHaveLength(0);
+    expect(await allSent()).toHaveLength(0);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
@@ -714,7 +728,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(await ordersWithId(failedRows[0]!.id)).toHaveLength(0);
     expect(await stockOf(productId)).toBe(5);
     expect((await promoOf(promoId)).usedCount).toBe(0);
-    expect(sent).toHaveLength(0);
+    expect(await allSent()).toHaveLength(0);
     expect(dispatchMock).not.toHaveBeenCalled();
 
     // Retry works and opens a fresh attempt (a session_failed one is never resumed).
@@ -834,12 +848,12 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(0);
     // Customer: a truthful "payment received, under review" email — never the
     // normal Order Confirmation. Admins: the hold in the subject.
-    expect(emailsTo(email)).toHaveLength(1);
-    expect(emailsTo(email)[0]?.subject).toMatch(/Payment received, order #[0-9A-F]{8} under review/);
-    expect(emailsTo(email)[0]?.subject).not.toMatch(/Order Confirmation/);
-    expect(emailsTo(email)[0]?.html).toContain("Your order is currently under review.");
-    expect(emailsTo(email)[0]?.html).toContain("contact you shortly regarding availability");
-    expect(emailsTo(email)[0]?.html).not.toMatch(/processing your order|shipped|prepar/i);
+    expect(await emailsTo(email)).toHaveLength(1);
+    expect((await emailsTo(email))[0]?.subject).toMatch(/Payment received, order #[0-9A-F]{8} under review/);
+    expect((await emailsTo(email))[0]?.subject).not.toMatch(/Order Confirmation/);
+    expect((await emailsTo(email))[0]?.html).toContain("Your order is currently under review.");
+    expect((await emailsTo(email))[0]?.html).toContain("contact you shortly regarding availability");
+    expect((await emailsTo(email))[0]?.html).not.toMatch(/processing your order|shipped|prepar/i);
     for (const m of sent.filter((x) => x.to !== email)) {
       expect(m.subject).toMatch(/PAID ORDER ON HOLD .* DO NOT PREPARE/);
       expect(m.html).toContain("DO NOT PREPARE · MANUAL REVIEW REQUIRED");
@@ -1120,7 +1134,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     const [o] = await ordersWithId(r.attemptId);
     expect(o?.paymentStatus).toBe("paid");
     expect(await stockOf(productId)).toBe(3);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(1);
     const [cart] = await db.select().from(schema.capturedCart).where(eq(schema.capturedCart.sessionToken, token));
     expect(cart?.convertedOrderId).toBe(r.attemptId);
@@ -1184,7 +1198,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(await ordersWithId(r.attemptId)).toHaveLength(1);
     expect(await stockOf(productId)).toBe(7);
     expect((await promoOf(promoId)).usedCount).toBe(1);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(1);
   });
 
@@ -1281,7 +1295,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(att.materializationError).toMatch(/no longer exist/);
     expect(att.materializationAttempts).toBe(1);
     expect(await ordersWithId(r.attemptId)).toHaveLength(0);
-    expect(sent).toHaveLength(0);
+    expect(await allSent()).toHaveLength(0);
     expect(dispatchMock).not.toHaveBeenCalled();
 
     // The customer is told the payment was received — never that it failed.
@@ -1298,7 +1312,7 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     expect(await ordersWithId(r.attemptId)).toHaveLength(1);
     expect((await attemptRow(r.attemptId)).status).toBe("materialized");
     expect(await stockOf(productId)).toBe(4);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(dispatchCallsFor(r.attemptId)).toHaveLength(1);
   });
 
@@ -1307,17 +1321,30 @@ describeIfDb("payment-attempt-first online checkout (integration)", () => {
     const r = await start([[productId, 1]]);
     const { intentKey, txn } = await providerPays(r.attemptId);
     await sendPaidWebhook(r.attemptId, intentKey, txn);
-    expect(emailsTo(email)).toHaveLength(1);
+    // The confirmation was queued WITH the order (outbox), not by the effects
+    // step — a crash before effects can no longer lose it. Not drained yet:
+    // the process "dies" with the row still pending.
+    const [queued] = await db
+      .select()
+      .from(schema.scheduledEmail)
+      .where(eq(schema.scheduledEmail.dedupeKey, `order_confirmation:${r.attemptId}`));
+    expect(queued?.status).toBe("pending");
 
     // Simulate "process died after commit, before effects": clear the claim.
     await db
       .update(schema.paymentAttempt)
       .set({ effectsClaimedAt: null })
       .where(eq(schema.paymentAttempt.id, r.attemptId));
-    sent.length = 0;
     await attempts.reconcilePaidAttempts(db as never);
     await attempts.reconcilePaidAttempts(db as never);
-    expect(emailsTo(email)).toHaveLength(1);
+    expect(await emailsTo(email)).toHaveLength(1);
+    // Re-running effects again never re-sends.
+    await db
+      .update(schema.paymentAttempt)
+      .set({ effectsClaimedAt: null })
+      .where(eq(schema.paymentAttempt.id, r.attemptId));
+    await attempts.reconcilePaidAttempts(db as never);
+    expect(await emailsTo(email)).toHaveLength(1);
     expect(await ordersWithId(r.attemptId)).toHaveLength(1);
   });
 

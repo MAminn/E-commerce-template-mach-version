@@ -1049,6 +1049,10 @@ export const orderLogAction = pgEnum("order_log_action", [
   "bosta_skipped",
   "bosta_cancelled",
   "bosta_status_updated",
+  // Transactional order emails (backend/orders/order-emails) — migration 0064.
+  "confirmation_email_queued",
+  "confirmation_email_sent",
+  "confirmation_email_failed",
 ]);
 
 export const orderLog = pgTable("order_log", {
@@ -1910,6 +1914,11 @@ export const emailAutomationType = pgEnum("email_automation_type", [
   "new_drops",
   "flash_offer",
   "retention",
+  // Transactional, not marketing (migration 0064). The worker sends these
+  // with none of the marketing gates: no master switch, no test mode, no
+  // unsubscribe check. See backend/orders/order-emails/service.ts.
+  "order_confirmation",
+  "order_admin_notification",
 ]);
 
 export const scheduledEmailStatus = pgEnum("scheduled_email_status", [
@@ -1951,6 +1960,16 @@ export const scheduledEmail = pgTable(
      */
     dedupeKey: text("dedupe_key").notNull(),
     sentAt: timestamp("sent_at", { withTimezone: true, mode: "date" }),
+    /**
+     * Provider acceptance evidence (migration 0064): the Message-ID the SMTP
+     * server accepted and its final reply (e.g. "250 2.0.0 OK ... gsmtp").
+     * Acceptance is NOT inbox delivery — it only proves the provider took
+     * the message. Null until a send is accepted.
+     */
+    providerMessageId: text("provider_message_id"),
+    providerResponse: text("provider_response"),
+    /** When the most recent send attempt started (sent, failed or crashed). */
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .defaultNow()
       .notNull(),

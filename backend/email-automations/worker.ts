@@ -6,11 +6,22 @@ import {
   markScheduledEmailSent,
   markScheduledEmailFailed,
   markScheduledEmailCancelled,
+  isTransactionalEmailType,
+  requeueStaleSendingEmails,
+  TRANSACTIONAL_EMAIL_TYPES,
+  TRANSACTIONAL_MAX_ATTEMPTS,
+  transactionalRetryDelayMs,
 } from "./queue/service";
 import { renderScheduledEmail } from "./render";
 // Side effect: registers every automation type's HTML renderer. Must happen
 // before the worker's first tick.
 import "./templates/render";
+// Side effect: registers the transactional order-email renderers.
+import {
+  recordOrderEmailOutcome,
+  setOrderEmailWorkerKick,
+} from "#root/backend/orders/order-emails/service";
+import { describeSendingIdentity } from "#root/shared/email/from-env";
 import { isEmailUnsubscribed } from "./unsubscribe-check";
 import {
   getOrCreateSubscriptionToken,
@@ -27,12 +38,113 @@ const CLAIM_BATCH_SIZE = 20;
 // thresholds are measured in hours/days, so a coarser scan interval is
 // both sufficient and lighter on the DB.
 const TRIGGER_SCAN_INTERVAL_MS = 10 * 60_000;
+// A transactional row still "sending" after this long was orphaned by a
+// crash/restart (a live send is bounded by the transport's own timeouts and
+// the 120s guard in shared/email/service.ts).
+const STALE_SENDING_MS = 10 * 60_000;
 
 const consoleLogger: EmailEnvLogger = {
   info: (obj, msg) => console.info("[EmailWorker]", msg ?? obj, msg ? obj : undefined),
   warn: (obj, msg) => console.warn("[EmailWorker]", msg ?? obj, msg ? obj : undefined),
   error: (obj, msg) => console.error("[EmailWorker]", msg ?? obj, msg ? obj : undefined),
 };
+
+const TRANSACTIONAL_RETRY_POLICY = {
+  maxAttempts: TRANSACTIONAL_MAX_ATTEMPTS,
+  retryDelayMs: transactionalRetryDelayMs,
+};
+
+/**
+ * Transactional order emails (order confirmation, store notification). They
+ * share the queue's claim-locking, dedupe and retries, but none of the
+ * marketing rules: no unsubscribe check (an order confirmation is not
+ * marketing and goes to whoever placed the order), no automation test mode,
+ * no List-Unsubscribe headers or unsubscribe link. "Sent" is recorded only
+ * when the SMTP server accepted the recipient.
+ */
+async function processTransactionalRow(
+  row: ScheduledEmailRow,
+  emailService: EmailServiceInterface,
+): Promise<void> {
+  try {
+    const rendered = await renderScheduledEmail(row, "");
+    if (rendered.skip) {
+      await markScheduledEmailCancelled(row.id, rendered.skip);
+      await recordOrderEmailOutcome(row, { status: "cancelled", reason: rendered.skip });
+      return;
+    }
+    const result = await Effect.runPromise(
+      emailService.sendEmail(row.recipientEmail, rendered.subject, rendered.html, {
+        headers: rendered.headers,
+        messageId: rendered.messageId,
+      }),
+    );
+    if (result.success) {
+      await markScheduledEmailSent(row.id, { messageId: result.messageId, response: result.response });
+      await recordOrderEmailOutcome(row, {
+        status: "sent",
+        messageId: result.messageId,
+        response: result.response,
+      });
+      return;
+    }
+    const error = result.error ?? "Unknown send failure";
+    const outcome = await markScheduledEmailFailed(row.id, row.attempts, error, TRANSACTIONAL_RETRY_POLICY);
+    await recordOrderEmailOutcome(row, { status: "failed", error, ...outcome });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[EmailWorker] Failed to process transactional email ${row.id} (${row.automationType}): ${message}`,
+    );
+    try {
+      const outcome = await markScheduledEmailFailed(row.id, row.attempts, message, TRANSACTIONAL_RETRY_POLICY);
+      await recordOrderEmailOutcome(row, { status: "failed", error: message, ...outcome });
+    } catch (markErr) {
+      console.error(`[EmailWorker] Failed to record failure for ${row.id}:`, markErr);
+    }
+  }
+}
+
+/** Exported for the integration tests, which drive one claimed row through render + send. */
+export async function processScheduledEmailRow(
+  row: ScheduledEmailRow,
+  emailService: EmailServiceInterface,
+  testMode: { enabled: boolean; email: string },
+): Promise<void> {
+  if (isTransactionalEmailType(row.automationType)) {
+    await processTransactionalRow(row, emailService);
+    return;
+  }
+  await processRow(row, emailService, testMode);
+}
+
+/**
+ * Sends every due transactional email now (stale "sending" rows are first
+ * re-queued). Used by the worker tick and by tests; safe to run
+ * concurrently with other workers — claims are SKIP LOCKED.
+ */
+export async function drainTransactionalEmails(
+  emailService: EmailServiceInterface,
+  options: { staleMs?: number; limit?: number } = {},
+): Promise<{ processed: number; requeued: number }> {
+  const requeued = await requeueStaleSendingEmails(
+    TRANSACTIONAL_EMAIL_TYPES,
+    options.staleMs ?? STALE_SENDING_MS,
+  );
+  if (requeued > 0) {
+    console.warn(`[EmailWorker] Re-queued ${requeued} order email(s) orphaned in "sending"`);
+  }
+  let processed = 0;
+  for (;;) {
+    const rows = await claimDueScheduledEmails(options.limit ?? CLAIM_BATCH_SIZE, TRANSACTIONAL_EMAIL_TYPES);
+    if (rows.length === 0) break;
+    for (const row of rows) {
+      await processTransactionalRow(row, emailService);
+      processed++;
+    }
+  }
+  return { processed, requeued };
+}
 
 async function processRow(
   row: ScheduledEmailRow,
@@ -106,13 +218,29 @@ async function processRow(
 }
 
 let tickInFlight = false;
+/** A run was requested while one was in flight — run once more when it ends. */
+let rerunRequested = false;
 
 async function tick(emailService: EmailServiceInterface): Promise<void> {
-  if (tickInFlight) return; // previous tick still running (slow send/DB) — skip, don't overlap
+  if (tickInFlight) {
+    // previous tick still running (slow send/DB) — don't overlap, but make
+    // sure a just-queued order email isn't left waiting for the next poll.
+    rerunRequested = true;
+    return;
+  }
   tickInFlight = true;
   try {
+    // Transactional order emails first and ALWAYS — independent of the
+    // marketing master switch and test mode below.
+    try {
+      await drainTransactionalEmails(emailService);
+    } catch (err) {
+      console.error("[EmailWorker] Order email pass failed:", err);
+    }
+
     // Re-read every tick (not cached) so the admin's on/off + test-mode
-    // toggles take effect within a minute, no redeploy needed.
+    // toggles take effect within a minute, no redeploy needed. These only
+    // govern MARKETING sends.
     const settings = await getEmailAutomationSettingsRaw();
     if (!settings.workerEnabled) return;
 
@@ -128,13 +256,22 @@ async function tick(emailService: EmailServiceInterface): Promise<void> {
     // a bulk sender — sequential sends are gentler on SMTP rate limits and
     // keep failures isolated and easy to reason about.
     for (const row of rows) {
-      await processRow(row, emailService, testMode);
+      await processScheduledEmailRow(row, emailService, testMode);
     }
   } catch (err) {
     console.error("[EmailWorker] Tick failed:", err);
   } finally {
     tickInFlight = false;
+    if (rerunRequested) {
+      rerunRequested = false;
+      void tick(emailService);
+    }
   }
+}
+
+/** One worker tick, exactly as the interval runs it — exported for tests. */
+export function runEmailWorkerTick(emailService: EmailServiceInterface): Promise<void> {
+  return tick(emailService);
 }
 
 /**
@@ -177,8 +314,32 @@ export async function startEmailAutomationWorker(): Promise<EmailAutomationWorke
   scanIntervalId.unref?.();
 
   console.info(
-    `[EmailWorker] Started — polling every ${TICK_INTERVAL_MS / 1000}s, scanning triggers every ${TRIGGER_SCAN_INTERVAL_MS / 60_000}m (actual sending gated by admin settings, off by default)`,
+    `[EmailWorker] Started — polling every ${TICK_INTERVAL_MS / 1000}s, scanning triggers every ${TRIGGER_SCAN_INTERVAL_MS / 60_000}m (order emails always on; marketing sending gated by admin settings, off by default)`,
   );
+
+  // A newly placed order nudges the worker so its confirmation goes out
+  // within seconds instead of at the next poll.
+  setOrderEmailWorkerKick(() => {
+    void tick(emailService);
+  });
+
+  // Diagnostic only — connects + authenticates, sends nothing. A pass is NOT
+  // evidence that any email was delivered; per-order outcomes are on each
+  // order's activity log.
+  if (emailService.verifyConnection) {
+    const identity = describeSendingIdentity(process.env);
+    void emailService.verifyConnection().then((check) => {
+      if (check.ok) {
+        console.info(`[EmailWorker] SMTP login check passed (${identity.smtpHost}) — not a delivery check`);
+      } else {
+        console.error(`[EmailWorker] SMTP login check FAILED (${identity.smtpHost}): ${check.error}`);
+      }
+    });
+  } else {
+    console.error(
+      "[EmailWorker] No SMTP transport configured — order confirmation emails will be queued and recorded as failed until SMTP_* is set",
+    );
+  }
 
   // Run one tick/scan immediately rather than waiting a full interval on startup.
   void tick(emailService);
@@ -188,6 +349,7 @@ export async function startEmailAutomationWorker(): Promise<EmailAutomationWorke
     stop: () => {
       clearInterval(intervalId);
       clearInterval(scanIntervalId);
+      setOrderEmailWorkerKick(() => {});
     },
   };
 }

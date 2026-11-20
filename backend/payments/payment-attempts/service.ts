@@ -18,8 +18,12 @@
  *                             so the primary key forbids a second order),
  *                             commits stock and promo usage, marks it
  *                             materialized
- *                          3. post-order effects (emails, cart conversion,
- *                             Bosta) run once, by whoever claims them.
+ *                             and queues the order emails (outbox rows in
+ *                             the same transaction — see
+ *                             backend/orders/order-emails)
+ *                          3. post-order effects (cart conversion, Bosta)
+ *                             run once, by whoever claims them; the email
+ *                             worker sends the queued emails.
  *
  * Callers must have verified the payment with the provider before passing a
  * VerifiedPayment; this module trusts it.
@@ -27,7 +31,6 @@
 
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
-import { Effect, Either } from "effect";
 import { z } from "zod";
 import type { ClientSession } from "#root/backend/auth/shared/entities";
 import type { DatabaseClient } from "#root/shared/database/drizzle/db";
@@ -38,7 +41,6 @@ import {
   paymentAttempt,
   product,
   promoCode,
-  user,
   type PaymentAttemptRow,
 } from "#root/shared/database/drizzle/schema";
 import { ServerError } from "#root/shared/error/server";
@@ -46,13 +48,14 @@ import {
   buildOrderAddressFields,
   createOrderSchema,
   priceCheckout,
-  renderNewOrderEmail,
   resolveCheckoutUserId,
 } from "#root/backend/orders/create-order/service";
 import { getStoreOwnerId } from "#root/shared/config/store";
-import { getEmailBranding } from "#root/backend/emails/branding";
-import { createEmailServiceFromEnv } from "#root/shared/email/from-env";
-import type { EmailServiceInterface } from "#root/shared/email/service";
+import {
+  ensureOrderEmailsQueued,
+  kickOrderEmailWorker,
+  queueOrderPlacedEmailsInTx,
+} from "#root/backend/orders/order-emails/service";
 import { markCartConverted } from "#root/backend/cart-capture/service";
 import { isBostaEnabled } from "#root/backend/orders/bosta/service";
 import { dispatchOrderToBosta } from "#root/backend/orders/bosta/dispatch";
@@ -65,11 +68,6 @@ import {
 } from "#root/backend/payments/fawaterak-service";
 import type { PaymentAttemptOrderSnapshot } from "#root/shared/types/payment-attempt";
 import { claimOrderReference } from "#root/backend/orders/order-reference";
-import { displayOrderNumber } from "#root/shared/orders/order-reference";
-import {
-  paidOnHoldAdminNotice,
-  paidUnderReviewCustomerNotice,
-} from "#root/backend/emails/order-email-notice";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -692,6 +690,7 @@ export async function finalizePaidAttempt(
 
   if (outcome.kind === "materialized" || outcome.kind === "already_materialized") {
     await runPostOrderEffects(db, attemptId);
+    kickOrderEmailWorker();
   }
   return outcome;
 }
@@ -976,6 +975,12 @@ export async function materializeAttempt(
         ])
         .execute();
 
+      // Order emails — outbox rows committed with the order. A held order's
+      // rows render the truthful "payment received, under review" copy (and
+      // the red admin hold notice) at send time. SAVEPOINT: a queueing
+      // failure never rolls back a paid order; runPostOrderEffects re-queues.
+      await queueOrderPlacedEmailsInTx(tx, att.id);
+
       const now = new Date();
       await tx
         .update(paymentAttempt)
@@ -1022,21 +1027,6 @@ export async function materializeAttempt(
 
 // ─── Post-order effects ─────────────────────────────────────────────────────
 
-let emailServicePromise: Promise<EmailServiceInterface> | null = null;
-function getEmailService(): Promise<EmailServiceInterface> {
-  emailServicePromise ??= createEmailServiceFromEnv({
-    info: (obj, msg) => console.info("[PaymentAttempt email]", msg ?? obj),
-    warn: (obj, msg) => console.warn("[PaymentAttempt email]", msg ?? obj),
-    error: (obj, msg) => console.error("[PaymentAttempt email]", msg ?? obj),
-  });
-  return emailServicePromise;
-}
-
-/** Test hook. */
-export function __setPaymentAttemptEmailService(service: EmailServiceInterface | null) {
-  emailServicePromise = service ? Promise.resolve(service) : null;
-}
-
 /**
  * Step 3 — the order's business side effects, run at most once: the caller
  * that wins the effects_claimed_at claim runs them. If the process dies
@@ -1064,51 +1054,10 @@ export async function runPostOrderEffects(db: DatabaseClient, attemptId: string)
   if (!orderRow) return false;
   const held = !!orderRow.fulfillmentHold;
 
-  // Emails — the same templates COD sends. A held order never gets the normal
-  // "Order Confirmation" (it would imply normal fulfillment): the customer
-  // gets a truthful "payment received, under review" email instead, and
-  // admins get the hold in red at the top. Runs once, under the claim above.
-  try {
-    const items = await db.select().from(orderItem).where(eq(orderItem.orderId, orderId)).execute();
-    const branding = await getEmailBranding();
-    const emailData = { ...orderRow, items };
-    const number = displayOrderNumber(orderRow);
-    const customerHtml = await Effect.runPromise(
-      renderNewOrderEmail(emailData, branding, held ? paidUnderReviewCustomerNotice(number) : undefined),
-    );
-    const adminHtml = held
-      ? await Effect.runPromise(
-          renderNewOrderEmail(emailData, branding, paidOnHoldAdminNotice(number, orderRow.fulfillmentHoldNote)),
-        )
-      : customerHtml;
-    const emailService = await getEmailService();
-    const send = async (to: string, subject: string, html: string) => {
-      const result = await Effect.runPromise(Effect.either(emailService.sendEmail(to, subject, html)));
-      if (Either.isLeft(result)) {
-        console.error(`[PaymentAttempt] Email to ${to} failed for order ${orderId}:`, result.left);
-      }
-    };
-
-    await send(
-      orderRow.customerEmail,
-      held
-        ? `${branding.storeName} — Payment received, order ${number} under review`
-        : `${branding.storeName} Order Confirmation`,
-      customerHtml,
-    );
-    const admins = await db.select({ email: user.email }).from(user).where(eq(user.role, "admin")).execute();
-    for (const admin of admins) {
-      await send(
-        admin.email,
-        held
-          ? `PAID ORDER ON HOLD ${number} — stock issue, DO NOT PREPARE (manual review)`
-          : "New Order Received",
-        adminHtml,
-      );
-    }
-  } catch (error) {
-    console.error(`[PaymentAttempt] Order emails failed for ${orderId}:`, error);
-  }
+  // Emails are queued inside materialization's transaction; this is the
+  // idempotent safety net (a failed savepoint, or an attempt materialized
+  // before the outbox existed). Dedupe keys make a second call a no-op.
+  await ensureOrderEmailsQueued(orderId);
 
   // Cart conversion — now that a real, paid order exists.
   if (claimed.cartSessionToken) {

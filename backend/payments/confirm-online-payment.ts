@@ -8,6 +8,7 @@ import { order } from "#root/shared/database/drizzle/schema";
 import { isBostaEnabled } from "#root/backend/orders/bosta/service";
 import { dispatchOrderToBosta } from "#root/backend/orders/bosta/dispatch";
 import { logOrderEvent } from "#root/backend/orders/order-log";
+import { ensureOrderEmailsQueued, kickOrderEmailWorker } from "#root/backend/orders/order-emails/service";
 
 type PaymentStatus = "paid" | "failed" | "processing";
 
@@ -122,6 +123,12 @@ export async function applyOnlinePaymentUpdate(
   }
 
   if (update.paymentStatus === "paid" && !wasAlreadyPaid) {
+    // Order-first online orders get their confirmation only now that the
+    // payment is verified (createOrder queues COD only). Idempotent: a
+    // duplicate webhook finds the existing outbox rows and adds nothing.
+    await ensureOrderEmailsQueued(orderId);
+    kickOrderEmailWorker();
+
     try {
       const [freshRow] = await db
         .select()

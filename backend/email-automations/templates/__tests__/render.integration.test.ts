@@ -137,6 +137,9 @@ describeIfDb("email template system (integration)", () => {
       lastError: null,
       dedupeKey: "test",
       sentAt: null,
+      providerMessageId: null,
+      providerResponse: null,
+      lastAttemptAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -175,6 +178,9 @@ describeIfDb("email template system (integration)", () => {
         lastError: null,
         dedupeKey: `test-${automationType}-${stepKey}`,
         sentAt: null,
+        providerMessageId: null,
+        providerResponse: null,
+        lastAttemptAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -205,6 +211,9 @@ describeIfDb("email template system (integration)", () => {
       lastError: null,
       dedupeKey: "test-ar",
       sentAt: null,
+      providerMessageId: null,
+      providerResponse: null,
+      lastAttemptAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

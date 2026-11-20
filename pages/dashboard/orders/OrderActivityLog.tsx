@@ -39,6 +39,9 @@ const ACTION_LABELS: Record<string, { label: string; dot: string }> = {
   bosta_skipped: { label: "Bosta deferred", dot: "bg-gray-400" },
   bosta_cancelled: { label: "Bosta delivery cancelled", dot: "bg-gray-500" },
   bosta_status_updated: { label: "Bosta status updated", dot: "bg-orange-400" },
+  confirmation_email_queued: { label: "Confirmation email queued", dot: "bg-gray-400" },
+  confirmation_email_sent: { label: "Confirmation email accepted by mail server", dot: "bg-green-500" },
+  confirmation_email_failed: { label: "Confirmation email failed", dot: "bg-red-500" },
 };
 
 function formatTimestamp(value: string | Date) {

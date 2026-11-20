@@ -65,6 +65,9 @@ function buildPreviewRow(
     lastError: null,
     dedupeKey: "preview",
     sentAt: null,
+    providerMessageId: null,
+    providerResponse: null,
+    lastAttemptAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
