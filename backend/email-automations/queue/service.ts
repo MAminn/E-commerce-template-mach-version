@@ -1,6 +1,6 @@
 import { sharedDb as db, type DatabaseClient } from "#root/shared/database/drizzle/db";
 import { scheduledEmail } from "#root/shared/database/drizzle/schema";
-import { and, desc, eq, inArray, like, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, lt, lte, ne, sql } from "drizzle-orm";
 import { getOrCreateSubscriptionToken } from "#root/backend/email-subscription/service";
 
 export type EmailAutomationType =
@@ -233,9 +233,9 @@ export async function claimDueScheduledEmails(
 
 /**
  * Marks a claimed row sent. `evidence` is the provider's acceptance (Message-ID
- * and final SMTP reply) — acceptance, not inbox delivery. Guarded on
- * status = 'sending' so a row re-queued as stale and re-claimed elsewhere is
- * never double-finalised.
+ * and final SMTP reply) — acceptance, not inbox delivery. Deliberately NOT
+ * guarded on status: an acceptance that arrives after the row was re-queued
+ * as stale must still win, or the retry would send a duplicate.
  */
 export async function markScheduledEmailSent(
   id: string,
@@ -266,12 +266,12 @@ export async function markScheduledEmailFailed(
   attempts: number,
   error: string,
   policy?: { maxAttempts: number; retryDelayMs: (attemptsMade: number) => number },
-): Promise<{ attempts: number; willRetry: boolean }> {
+): Promise<{ attempts: number; willRetry: boolean; recorded: boolean }> {
   const nextAttempts = attempts + 1;
   const maxAttempts = policy?.maxAttempts ?? MAX_ATTEMPTS;
   const willRetry = nextAttempts < maxAttempts;
   const now = new Date();
-  await db()
+  const updated = await db()
     .update(scheduledEmail)
     .set({
       status: willRetry ? "pending" : "failed",
@@ -282,8 +282,12 @@ export async function markScheduledEmailFailed(
         ? { scheduledFor: new Date(now.getTime() + policy.retryDelayMs(nextAttempts)) }
         : {}),
     })
-    .where(eq(scheduledEmail.id, id));
-  return { attempts: nextAttempts, willRetry };
+    // Never downgrade a row that is already "sent" (a re-claimed copy of a
+    // stale row succeeded first) — flipping it back to pending would send a
+    // duplicate. `recorded: false` tells the caller nothing changed.
+    .where(and(eq(scheduledEmail.id, id), ne(scheduledEmail.status, "sent")))
+    .returning({ id: scheduledEmail.id });
+  return { attempts: nextAttempts, willRetry, recorded: updated.length > 0 };
 }
 
 /**

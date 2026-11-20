@@ -292,3 +292,45 @@ describe("describeSendingIdentity", () => {
     expect(id.warnings.some((w) => w.includes("EMAIL_REPLY_TO"))).toBe(true);
   });
 });
+
+describe("SMTP security mode", () => {
+  beforeEach(() => {
+    createTransportMock.mockClear();
+  });
+
+  it("follows the port when SMTP_SECURE is unset: 465 implicit TLS, others STARTTLS", async () => {
+    const { resolveSmtpSecure } = await import("#root/shared/email/service");
+    expect(resolveSmtpSecure(465)).toBe(true);
+    expect(resolveSmtpSecure(587)).toBe(false);
+    expect(resolveSmtpSecure(25)).toBe(false);
+    expect(resolveSmtpSecure(2525, "")).toBe(false);
+  });
+
+  it("honours an explicit SMTP_SECURE override", async () => {
+    const { resolveSmtpSecure } = await import("#root/shared/email/service");
+    expect(resolveSmtpSecure(587, "true")).toBe(true);
+    expect(resolveSmtpSecure(587, "SSL")).toBe(true);
+    expect(resolveSmtpSecure(465, "false")).toBe(false);
+    expect(resolveSmtpSecure(465, "starttls")).toBe(false);
+    expect(resolveSmtpSecure(465, "nonsense")).toBe(true);
+  });
+
+  it("port 465 → implicit TLS transport (unchanged behaviour)", async () => {
+    await Effect.runPromise(makeEmailService(baseInput({ smtpPort: 465 })));
+    const opts = createTransportMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(opts).toMatchObject({ port: 465, secure: true });
+    expect(opts.requireTLS).toBeUndefined();
+  });
+
+  it("port 587 → STARTTLS required (never authenticates in plain text)", async () => {
+    await Effect.runPromise(makeEmailService(baseInput({ smtpPort: 587 })));
+    const opts = createTransportMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(opts).toMatchObject({ port: 587, secure: false, requireTLS: true });
+  });
+
+  it("explicit smtpSecure wins over the port default", async () => {
+    await Effect.runPromise(makeEmailService(baseInput({ smtpPort: 587, smtpSecure: true })));
+    const opts = createTransportMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(opts).toMatchObject({ port: 587, secure: true });
+  });
+});

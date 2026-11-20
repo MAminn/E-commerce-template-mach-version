@@ -220,4 +220,25 @@ describeIfDb("scheduled email queue (integration)", () => {
     expect(current?.status).toBe("failed");
     expect(current?.attempts).toBe(5);
   });
+  it("never downgrades a row that is already sent (late failure of a re-claimed copy)", async () => {
+    await queue.enqueueScheduledEmail({
+      automationType: "welcome",
+      recipientEmail: "sent-wins@example.com",
+      payload: {},
+      scheduledFor: new Date(Date.now() - 1000),
+      dedupeKey: "sent-wins-row",
+    });
+    const [row] = await db.select().from(schema.scheduledEmail);
+    await queue.markScheduledEmailSent(row!.id, { messageId: "<m@test>", response: "250 OK" });
+
+    const outcome = await queue.markScheduledEmailFailed(row!.id, 0, "late timeout");
+    expect(outcome.recorded).toBe(false);
+    const [current] = await db
+      .select()
+      .from(schema.scheduledEmail)
+      .where(eq(schema.scheduledEmail.id, row!.id));
+    expect(current?.status).toBe("sent");
+    expect(current?.attempts).toBe(0);
+    expect(current?.providerMessageId).toBe("<m@test>");
+  });
 });

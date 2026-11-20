@@ -6,6 +6,7 @@ import {
   makeEmailService,
   createDummyEmailService,
   maskEmailAddress,
+  resolveSmtpSecure,
 } from "./service";
 
 const domainOf = (address: string | undefined) => {
@@ -127,10 +128,12 @@ export async function createEmailServiceFromEnv(
     }
 
     const identity = describeSendingIdentity(process.env);
+    const smtpSecure = resolveSmtpSecure(validationResult.data.smtpPort, process.env.SMTP_SECURE);
     logger.info({
       msg: "Setting up email service with configuration",
       host: identity.smtpHost,
       port: validationResult.data.smtpPort,
+      security: smtpSecure ? "implicit TLS" : "STARTTLS (required)",
       user: maskEmailAddress(validationResult.data.smtpUser),
       from: maskEmailAddress(identity.fromAddress),
       fromName: identity.fromName ?? "(unset)",
@@ -143,6 +146,7 @@ export async function createEmailServiceFromEnv(
     const data = {
       ...validationResult.data,
       smtpPassword: Redacted.make(validationResult.data.smtpPassword),
+      smtpSecure,
       fromAddress: identity.fromAddress || undefined,
       fromName: identity.fromName || undefined,
       replyTo: identity.replyTo || undefined,

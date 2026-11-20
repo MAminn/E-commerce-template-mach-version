@@ -89,16 +89,17 @@ async function processTransactionalRow(
       return;
     }
     const error = result.error ?? "Unknown send failure";
-    const outcome = await markScheduledEmailFailed(row.id, row.attempts, error, TRANSACTIONAL_RETRY_POLICY);
-    await recordOrderEmailOutcome(row, { status: "failed", error, ...outcome });
+    const { recorded, ...outcome } = await markScheduledEmailFailed(row.id, row.attempts, error, TRANSACTIONAL_RETRY_POLICY);
+    // Not recorded = the row was already marked sent; don't log a failure.
+    if (recorded) await recordOrderEmailOutcome(row, { status: "failed", error, ...outcome });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(
       `[EmailWorker] Failed to process transactional email ${row.id} (${row.automationType}): ${message}`,
     );
     try {
-      const outcome = await markScheduledEmailFailed(row.id, row.attempts, message, TRANSACTIONAL_RETRY_POLICY);
-      await recordOrderEmailOutcome(row, { status: "failed", error: message, ...outcome });
+      const { recorded, ...outcome } = await markScheduledEmailFailed(row.id, row.attempts, message, TRANSACTIONAL_RETRY_POLICY);
+      if (recorded) await recordOrderEmailOutcome(row, { status: "failed", error: message, ...outcome });
     } catch (markErr) {
       console.error(`[EmailWorker] Failed to record failure for ${row.id}:`, markErr);
     }

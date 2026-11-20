@@ -7,6 +7,7 @@ import * as schema from "#root/shared/database/drizzle/schema.js";
 const dbInstance = db();
 import { getEmailBranding } from "#root/backend/emails/branding.js";
 import { createTransport } from "nodemailer";
+import { resolveSmtpSecure } from "#root/shared/email/service.js";
 
 const BASE_URL =
   (process.env.BASE_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -29,14 +30,31 @@ async function sendEmail(to: string, subject: string, html: string) {
       return;
     }
 
+    // Same transport rules and sending identity as order emails
+    // (shared/email/from-env.ts): TLS mode from SMTP_PORT/SMTP_SECURE, From =
+    // EMAIL_FROM_ADDRESS (else SMTP_USER), optional name and Reply-To.
+    const secure = resolveSmtpSecure(smtpPort, process.env.SMTP_SECURE);
     const transport = createTransport({
       host: smtpHost,
       port: smtpPort,
-      secure: true,
+      secure,
+      ...(secure ? {} : { requireTLS: true }),
       auth: { user: smtpUser, pass: smtpPassword },
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 45_000,
     });
 
-    await transport.sendMail({ from: smtpUser, to, subject, html });
+    const fromAddress = (process.env.EMAIL_FROM_ADDRESS || "").trim() || smtpUser;
+    const fromName = (process.env.EMAIL_FROM_NAME || "").trim();
+    const replyTo = (process.env.EMAIL_REPLY_TO || "").trim();
+    await transport.sendMail({
+      from: fromName ? `"${fromName.replace(/"/g, "'")}" <${fromAddress}>` : fromAddress,
+      to,
+      subject,
+      html,
+      ...(replyTo ? { replyTo } : {}),
+    });
   } catch (err) {
     console.error(`[Email] Failed to send email to ${to}:`, err);
   }

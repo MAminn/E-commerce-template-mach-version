@@ -75,11 +75,29 @@ export class EmailService extends Context.Tag("EmailService")<
   EmailServiceInterface
 >() {}
 
+/**
+ * SMTP security mode. SMTP_SECURE=true|ssl forces implicit TLS,
+ * SMTP_SECURE=false|starttls forces STARTTLS; unset/anything else follows the
+ * port: 465 is implicit TLS, every other port (587, 25, 2525) is STARTTLS.
+ */
+export function resolveSmtpSecure(port: number, raw?: string): boolean {
+  const value = raw?.trim().toLowerCase();
+  if (value === "true" || value === "1" || value === "ssl" || value === "tls") return true;
+  if (value === "false" || value === "0" || value === "starttls") return false;
+  return port === 465;
+}
+
 export const makeEmailService = (input: {
   smtpHost: string;
   smtpUser: string;
   smtpPassword: Redacted.Redacted<string>;
   smtpPort: number;
+  /**
+   * true = implicit TLS from the first byte (port 465); false = plain connect
+   * upgraded with STARTTLS, which is then REQUIRED (port 587). Defaults from
+   * the port — see resolveSmtpSecure.
+   */
+  smtpSecure?: boolean;
   /** Default From address for all sends. Falls back to smtpUser when unset. */
   fromAddress?: string;
   /** Default From display name for all sends. */
@@ -127,10 +145,15 @@ export const makeEmailService = (input: {
       const transport = yield* $(
         Effect.sync(() => {
           try {
+            const secure = input.smtpSecure ?? resolveSmtpSecure(input.smtpPort);
             return createTransport({
               host: cleanedHost,
               port: input.smtpPort,
-              secure: true,
+              secure,
+              // Without implicit TLS, refuse to log in unless the server
+              // upgrades the session with STARTTLS — credentials and order
+              // details never cross the network in plain text.
+              ...(secure ? {} : { requireTLS: true }),
               auth: {
                 user: input.smtpUser,
                 pass: Redacted.value(input.smtpPassword),
