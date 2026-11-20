@@ -1831,6 +1831,89 @@ export const cartOffer = pgTable("cart_offer", {
     .notNull(),
 });
 
+// ─── Sale Countdown ─────────────────────────────────────────────────────────
+// The countdown shown in the top promotional banner, and the optional
+// automatic end of a sale when it reaches zero (migration 0065). Managed from
+// Dashboard → Homepage → Promotional Banner; logic in backend/sale-countdown.
+//
+// A "sale" here is not its own pricing rule: it is the set of products listed
+// in sale_countdown_item, each with the price it must go back to. Until the
+// countdown expires nothing in this section changes any product price.
+
+/** One row per store (id "default"). Absent until an admin first saves. */
+export const saleCountdown = pgTable("sale_countdown", {
+  id: text("id").primaryKey().default("default"),
+  /** Master switch. Off = never shown, never started, never expires a sale. */
+  enabled: boolean("enabled").notNull().default(false),
+  /** Length of a countdown started with "Start countdown". */
+  durationMinutes: integer("duration_minutes").notNull().default(60),
+  /** Words before the clock, e.g. "Sale ends in". */
+  label: text("label").notNull().default("Sale ends in"),
+  /** Stored phase. A "running" row whose ends_at has passed is expired even
+   * before the expiry transaction has run — see effectiveCountdownStatus. */
+  status: text("status", { enum: ["inactive", "running", "expired"] })
+    .notNull()
+    .default("inactive"),
+  /** New for every start; ties events of one countdown together. */
+  runId: uuid("run_id"),
+  startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+  /** The single server-side deadline every visitor counts down to. */
+  endsAt: timestamp("ends_at", { withTimezone: true, mode: "date" }),
+  /** At expiry, switch every sale_countdown_item product to its post-sale price. */
+  autoEndSale: boolean("auto_end_sale").notNull().default(false),
+  /** When the expiry transaction finalized this run. */
+  expiredAt: timestamp("expired_at", { withTimezone: true, mode: "date" }),
+  /** When that transaction also ended the sale (null if auto end was off). */
+  saleEndedAt: timestamp("sale_ended_at", { withTimezone: true, mode: "date" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
+    .notNull(),
+  updatedBy: text("updated_by"),
+});
+
+/** A product in the sale and the price it must return to when the sale ends. */
+export const saleCountdownItem = pgTable("sale_countdown_item", {
+  id: uuid("id")
+    .$defaultFn(() => v7())
+    .primaryKey(),
+  productId: uuid("product_id")
+    .notNull()
+    .unique()
+    .references(() => product.id, { onDelete: "cascade" }),
+  /** Explicit price after the sale. NULL = not configured yet, which blocks
+   * automatic sale end. Never derived from anything else. */
+  postSalePrice: decimal("post_sale_price", { precision: 10, scale: 2 }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
+    .notNull(),
+});
+
+/** Append-only audit trail: every admin action, expiry and rollback. */
+export const saleCountdownEvent = pgTable(
+  "sale_countdown_event",
+  {
+    id: uuid("id")
+      .$defaultFn(() => v7())
+      .primaryKey(),
+    runId: uuid("run_id"),
+    type: text("type").notNull(),
+    /** Admin email, or "system" for the automatic expiry. */
+    actor: text("actor").notNull(),
+    details: jsonb("details").notNull().$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("sale_countdown_event_created_idx").on(table.createdAt)],
+);
+
+export type SaleCountdownRow = typeof saleCountdown.$inferSelect;
+export type SaleCountdownItemRow = typeof saleCountdownItem.$inferSelect;
+export type SaleCountdownEventRow = typeof saleCountdownEvent.$inferSelect;
+
 // ─── Offer type helpers ─────────────────────────────────────────────────────
 
 export type OfferCondition =

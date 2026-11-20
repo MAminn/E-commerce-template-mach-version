@@ -44,11 +44,21 @@ import { logOrderEvent } from "#root/backend/orders/order-log";
 import { PAYMENT_METHODS, isOnlinePaymentMethod } from "#root/shared/config/payment-methods";
 import type { PaymentAttemptItemSnapshot } from "#root/shared/types/payment-attempt";
 import { claimOrderReference } from "#root/backend/orders/order-reference";
+import {
+  assertNoPendingSaleExpiry,
+  finalizeDueSaleCountdown,
+} from "#root/backend/sale-countdown/service";
+import { toCents } from "#root/shared/sale-countdown/countdown";
 
 const OrderItemSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().min(1),
   selectedOptions: z.string().optional(),
+  /** The unit price the shopper's bag showed. Optional (older clients don't
+   * send it); when sent, checkout refuses to charge MORE than this — e.g. a
+   * bag cached before a sale ended — instead of silently charging the new
+   * price. A lower server price is simply charged. */
+  expectedUnitPrice: z.number().nonnegative().optional(),
 });
 
 export const createOrderSchema = z.object({
@@ -402,6 +412,10 @@ export async function priceCheckout(
 ): Promise<PricedCheckout> {
   const productIds = input.items.map((item) => item.productId);
 
+  // A sale countdown past its deadline whose price switch hasn't committed
+  // yet: refuse rather than price from sale prices that already ended.
+  await assertNoPendingSaleExpiry(tx);
+
   // Fetch products (single-shop mode: no vendor data needed)
   const products = await tx
     .select({
@@ -446,6 +460,22 @@ export async function priceCheckout(
       });
     }
 
+  }
+
+  // Never charge more than the bag showed (see OrderItemSchema).
+  for (const item of input.items) {
+    if (item.expectedUnitPrice === undefined) continue;
+    const p = products.find((row) => row.id === item.productId) as PricedProduct;
+    const serverCents = toCents(p.discountPrice ?? p.price) ?? 0;
+    const shownCents = toCents(item.expectedUnitPrice) ?? 0;
+    if (serverCents > shownCents) {
+      throw new ServerError({
+        tag: "PriceChanged",
+        message: `Price of ${p.name} is ${p.discountPrice ?? p.price}, bag showed ${item.expectedUnitPrice}`,
+        statusCode: 409,
+        clientMessage: `The price of ${p.name.trim()} has changed. Your bag has been updated — please review the new total and place your order again.`,
+      });
+    }
   }
 
   // Per product, not per line: two variants of one product share its stock.
@@ -746,6 +776,9 @@ export const createOrder = (
     // We no longer require a session for ordering
     const { emailQueueFailed, ...result } = yield* $(
       query(async (db) => {
+        // Apply a due sale-countdown expiry first, in its own transaction and
+        // before this one locks product rows (lock order: countdown → products).
+        await finalizeDueSaleCountdown(db);
         return await db.transaction(async (tx) => {
           // Get user ID if the user is logged in, otherwise set to null
           const userId = await resolveCheckoutUserId(tx, session);

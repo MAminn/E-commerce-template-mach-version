@@ -89,6 +89,7 @@ export default function CheckoutPage() {
     appliedOffers,
     freeGifts,
     pricingPending,
+    refreshPrices,
   } = useCart();
   const { getTemplateId } = useTemplate();
   const { trackEvent } = useTracking();
@@ -262,6 +263,8 @@ export default function CheckoutPage() {
           productId: item.id,
           quantity: item.quantity,
           selectedOptions: variantStr || undefined,
+          // The server refuses to charge more than this (stale bag).
+          expectedUnitPrice: item.price,
         };
       });
 
@@ -423,6 +426,9 @@ export default function CheckoutPage() {
     } catch (error) {
       console.error("[Checkout] Order submission failed:", error);
       setErrorMessage(parseOrderError(error));
+      // A refusal may mean prices changed (e.g. a sale just ended): show the
+      // shopper the prices the retry will be charged.
+      void refreshPrices?.();
     } finally {
       setIsSubmitting(false);
     }

@@ -41,6 +41,11 @@ import { envSyncApiPlugin } from "#root/backend/env-sync/api.js";
 import { bootstrapSuperadmin } from "#root/backend/auth/superadmin-bootstrap.js";
 import { startEmailAutomationWorker } from "#root/backend/email-automations/worker.js";
 import { startPaymentReconciliationWorker } from "#root/backend/payments/payment-attempts/worker.js";
+import {
+  ensureSaleExpiryApplied,
+  startSaleCountdownWorker,
+} from "#root/backend/sale-countdown/worker.js";
+import { saleCountdownApiPlugin } from "#root/backend/sale-countdown/api.js";
 import { emailUnsubscribeApiPlugin } from "#root/backend/email-subscription/api.js";
 
 // Normalize env vars — Coolify sometimes injects a leading '=' into values
@@ -145,6 +150,14 @@ async function buildServer() {
   // Health check endpoint - registered FIRST so it's always reachable
   instance.get("/health", async (_request, reply) => {
     return reply.send({ status: "ok", timestamp: Date.now() });
+  });
+
+  // Sale countdown: once this process knows a countdown's deadline passed,
+  // the next request (page, tRPC, anything) waits for the single shared
+  // expiry, so nothing is rendered from sale prices that just ended. An
+  // in-memory check otherwise — no database work per request. Never throws.
+  instance.addHook("onRequest", async () => {
+    await ensureSaleExpiryApplied();
   });
 
   // Security headers (CSP is disabled because Vike injects inline scripts)
@@ -304,6 +317,9 @@ async function buildServer() {
     prefix: "/api/webhooks",
   });
 
+  // Public sale countdown for the top banner (Cache-Control: no-store)
+  await instance.register(saleCountdownApiPlugin);
+
   // Register tracking beacon endpoint
   await instance.register(trackBeaconPlugin, {
     prefix: "/api/track",
@@ -451,6 +467,7 @@ async function main() {
 
   await startEmailAutomationWorker();
   startPaymentReconciliationWorker();
+  startSaleCountdownWorker();
 
   fastify.listen({ port: port, host: "0.0.0.0" }, (err) => {
     console.info(`Server running at http://localhost:${port}`);

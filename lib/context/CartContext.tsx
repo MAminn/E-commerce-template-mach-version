@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from "react";
+import React, { createContext, useCallback, useContext, useState, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import type { Product } from "../mock-data/products";
 import { trpc } from "#root/shared/trpc/client";
 import type { AppliedOffer, AppliedOfferGift } from "#root/backend/offers/service";
 import { getCartSessionToken } from "#root/lib/cart-session";
 import { computeLinePromoDiscount, deriveEffectiveShipping, computeFreeItemQuantities } from "#root/shared/pricing/cart-math";
+import { SALE_COUNTDOWN_ENDED_EVENT } from "#root/shared/sale-countdown/countdown";
 import {
   describePromoDiscount,
   isFreeShippingPromo,
@@ -134,9 +135,46 @@ interface CartContextType {
    * answered yet. Lets UI derived from the total (e.g. the valU installment
    * estimate) say "calculating" instead of showing a number about to change. */
   pricingPending: boolean;
+  /** Re-read every line's price from the server (true if any changed). Runs
+   * on load, when a sale countdown ends, and after a refused checkout. */
+  refreshPrices: () => Promise<boolean>;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+
+/** A product's current server price, as product.getByIds returns it. */
+export interface ServerProductPrice {
+  id: string;
+  price: number;
+  discountPrice: number | null;
+}
+
+/**
+ * The cart with each line's price replaced by the product's current server
+ * price (discount price if set, else list price) wherever they differ — e.g.
+ * a bag saved before a sale ended. Same array back when nothing changed;
+ * products the server didn't return are left alone (checkout refuses them).
+ */
+export function applyServerPrices<T extends { id: string; price: number; originalPrice?: number }>(
+  items: T[],
+  rows: readonly ServerProductPrice[],
+): T[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  let changed = false;
+  const next = items.map((item) => {
+    const row = byId.get(item.id);
+    if (!row) return item;
+    const price = row.discountPrice ?? row.price;
+    if (Math.round(price * 100) === Math.round(item.price * 100)) return item;
+    changed = true;
+    return {
+      ...item,
+      price,
+      originalPrice: row.discountPrice !== null && row.discountPrice < row.price ? row.price : undefined,
+    };
+  });
+  return changed ? next : items;
+}
 
 /**
  * Pulls the server's user-facing reason out of a failed tRPC result.
@@ -258,6 +296,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => setShippingFeeResolved(true));
   }, []);
+
+  // Prices in a saved bag can be stale (a sale ended, an admin changed a
+  // price). Checkout always charges server prices, so show those.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const refreshPrices = useCallback(async (): Promise<boolean> => {
+    const ids = [...new Set(itemsRef.current.map((i) => i.id))].slice(0, 100);
+    if (ids.length === 0) return false;
+    try {
+      const res = await trpc.product.getByIds.query({ ids });
+      if (!res.success) return false;
+      const changed = applyServerPrices(itemsRef.current, res.result) !== itemsRef.current;
+      if (changed) setItems((prev) => applyServerPrices(prev, res.result));
+      return changed;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (cartHydrated) void refreshPrices();
+  }, [cartHydrated, refreshPrices]);
+
+  useEffect(() => {
+    const onSaleEnded = () => void refreshPrices();
+    window.addEventListener(SALE_COUNTDOWN_ENDED_EVENT, onSaleEnded);
+    return () => window.removeEventListener(SALE_COUNTDOWN_ENDED_EVENT, onSaleEnded);
+  }, [refreshPrices]);
 
   // Calculate subtotal
   const subtotal = items.reduce(
@@ -673,6 +739,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         freeQuantities,
         freeGifts,
         pricingPending,
+        refreshPrices,
       }}>
       {children}
     </CartContext.Provider>

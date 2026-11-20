@@ -17,6 +17,7 @@ import { analyticsRouter } from "#root/backend/analytics/trpc";
 import { contactRouter } from "#root/backend/contact/trpc";
 import { usersRouter } from "#root/backend/users/trpc";
 import { offersRouter } from "#root/backend/offers/trpc";
+import { saleCountdownRouter } from "#root/backend/sale-countdown/trpc";
 import { emailSubscriptionRouter } from "#root/backend/email-subscription/trpc";
 import { emailTemplatesRouter } from "#root/backend/email-automations/templates/trpc";
 import { popupRouter } from "#root/backend/popup/trpc";
@@ -59,6 +60,7 @@ export const appRouter = router({
   contact: contactRouter,
   users: usersRouter,
   offer: offersRouter,
+  saleCountdown: saleCountdownRouter,
   emailSubscription: emailSubscriptionRouter,
   emailTemplates: emailTemplatesRouter,
   popup: popupRouter,

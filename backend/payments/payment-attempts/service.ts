@@ -30,6 +30,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { finalizeDueSaleCountdown } from "#root/backend/sale-countdown/service";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { ClientSession } from "#root/backend/auth/shared/entities";
@@ -176,6 +177,9 @@ export async function startOnlineCheckout(
   options: { newId?: () => string } = {},
 ): Promise<StartCheckoutResult> {
   // 1. Authoritative pricing — the same function COD uses. Read-only.
+  //    A due sale-countdown expiry is applied first, so a sale that just
+  //    ended can't be frozen into a new attempt.
+  await finalizeDueSaleCountdown(db);
   const userId = await resolveCheckoutUserId(db, session);
   const priced = await priceCheckout(db, input, userId);
 

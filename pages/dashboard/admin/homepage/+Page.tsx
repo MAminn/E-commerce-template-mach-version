@@ -56,6 +56,7 @@ import {
 } from "#root/components/template-system/templateConfig";
 import { useTemplate } from "#root/frontend/contexts/TemplateContext";
 import { HomepageProductPicker } from "#root/components/admin/HomepageProductPicker";
+import { SaleCountdownPanel } from "./SaleCountdownPanel";
 import {
   ImportTestimonialsDialog,
   downloadTestimonialTemplateCsv,
@@ -2096,6 +2097,11 @@ export default function HomepageAdminPage() {
                   disabled={!content.promoBanner.enabled}
                 />
               </div>
+
+              {/* Sale countdown — its own server state (one deadline for
+                  every visitor), saved by its own buttons, not by "Save". Only
+                  the Mach banner renders it. */}
+              {isMach && <SaleCountdownPanel bannerEnabled={content.promoBanner.enabled} />}
             </CardContent>
           </Card>
         )}

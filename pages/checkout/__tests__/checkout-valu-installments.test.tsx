@@ -476,7 +476,8 @@ describe("Place Order", () => {
     const input = startCheckout.mock.calls[0]![0];
     expect(input.paymentMethod).toBe("fawaterak");
     expect(JSON.stringify(input)).not.toContain("valu");
-    expect(input.items).toEqual([{ productId: STRAPS, quantity: 1, selectedOptions: undefined }]);
+    // The bag price is sent so the server can refuse to charge more (stale bag).
+    expect(input.items).toEqual([{ productId: STRAPS, quantity: 1, selectedOptions: undefined, expectedUnitPrice: PRICE }]);
     expect(hrefSetter).toHaveBeenCalledWith("https://fawaterak.test/pay/x");
     expect(orderCreate).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
